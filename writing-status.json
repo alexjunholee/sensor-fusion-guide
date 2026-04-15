@@ -1,0 +1,18 @@
+{
+  "_schema": "writing-pipeline-v1",
+  "_stages": ["1-prewriting", "2-drafting", "3-revising", "3b-coherence", "4-editing", "done"],
+  "units": {
+    "sensor_fusion_guide": {
+      "title": "센서 퓨전 심화 가이드",
+      "stage": "done",
+      "outline": "outlines/sensor_fusion_guide.md",
+      "chapters": 13,
+      "prewriting_date": "2026-04-15",
+      "drafting_date": "2026-04-15",
+      "revising_date": "2026-04-15",
+      "coherence_date": "2026-04-15",
+      "editing_date": "2026-04-15",
+      "notes": "Stage 3 Ch.1-5, Ch.6-7, Ch.11-13 수정 완료. Ch.1-3: 4건 수정. Ch.4-5: 3건 수정. Ch.6-7: 8건 수정. Ch.11-13: 7건 수정. Stage 4 교정 Ch.1-5 완료: 10건 수정. Stage 4 교정 Ch.6-10 완료: Ch.6 마지날라이즈→마지널라이즈 용어 통일(Ch.4 기준), Ch.6-7 헤딩 포맷 Ch.N — 형식으로 통일. Ch.8-10 교정 사항 없음. Stage 4 교정 Ch.11-13 완료: 9건 수정. Stage 3b 흐름(Coherence) 완료: 총 22건 수정 — Ch.1 도입추가+전환1, Ch.2 도입연결+마무리1, Ch.3 도입연결+전환2+마무리1, Ch.4 도입연결, Ch.5 도입연결+마무리1, Ch.6 도입연결, Ch.7 도입연결, Ch.8 마무리1, Ch.9 도입연결+마무리1, Ch.10 도입연결+마무리1, Ch.11 도입연결+마무리1, Ch.12 도입연결+마무리1, Ch.13 도입연결+가이드전체마무리 추가."
+    }
+  }
+}
