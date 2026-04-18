@@ -52,6 +52,8 @@ body {
   background: var(--bg);
   overflow-x: hidden;
   font-feature-settings: "kern", "liga", "calt";
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 /* Progress bar */
@@ -493,6 +495,91 @@ mark.search-highlight {
   color: inherit;
   padding: 1px 3px;
   border-radius: 3px;
+}
+
+/* Guide Overview (at top of content) */
+.guide-overview {
+  margin: 0 0 80px 0;
+  padding: 0 0 48px 0;
+  border-bottom: 1px solid var(--border);
+}
+.guide-overview .overview-header {
+  margin-bottom: 40px;
+}
+.guide-overview .overview-title {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.018em;
+  color: var(--text-heading);
+  margin: 0 0 10px 0;
+}
+.guide-overview .overview-subtitle {
+  font-size: 17px;
+  color: var(--text-muted);
+  letter-spacing: -0.014em;
+  margin: 0;
+}
+.overview-group {
+  margin-top: 36px;
+}
+.overview-group:first-child { margin-top: 0; }
+.overview-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.42);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 14px 0;
+}
+.overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.overview-card {
+  display: block;
+  padding: 18px 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.overview-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+.overview-card-ch {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+.overview-card-title {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-heading);
+  letter-spacing: -0.014em;
+  line-height: 1.25;
+  margin-bottom: 10px;
+}
+.overview-card-sections {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.overview-card-sections li {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  padding: 2px 0;
+  letter-spacing: -0.01em;
 }
 
 /* Responsive */
@@ -13287,6 +13374,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
     });
 
     // Build TOC, setup interactions
+    buildOverview();
     buildTOC();
     setupScrollTracking();
     setupSearch();
@@ -13294,6 +13382,120 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
     setupMobileMenu();
     setupKeyboard();
   });
+
+  // ---- Build Guide Overview (top of page) ----
+  function buildOverview() {
+    var chapterGroups = [
+      { label: '기초 (Foundations)', chapters: [1, 2, 3] },
+      { label: '방법론 기초 (Methods)', chapters: [4, 5] },
+      { label: 'Odometry & Fusion', chapters: [6, 7, 8] },
+      { label: 'Place Recognition & Loop Closure', chapters: [9, 10] },
+      { label: '표현 · 실전 · 미래', chapters: [11, 12, 13] }
+    ];
+
+    var h1s = contentEl.querySelectorAll('h1');
+    var chapters = {};
+
+    h1s.forEach(function(h1) {
+      var m = h1.textContent.trim().match(/Chapter\s+(\d+)\s*[\u2014\u2013-]\s*(.+)/);
+      if (!m) return;
+      var chNum = parseInt(m[1], 10);
+      if (!h1.id) h1.id = 'chapter-' + chNum;
+
+      var sections = [];
+      var node = h1.nextElementSibling;
+      while (node && node.tagName !== 'H1') {
+        if (node.tagName === 'H2') {
+          if (!node.id) {
+            node.id = node.textContent.toLowerCase()
+              .replace(/[^\w\s가-힣-]/g, '').replace(/\s+/g, '-').substring(0, 60);
+          }
+          sections.push({ text: node.textContent.trim(), id: node.id });
+        }
+        node = node.nextElementSibling;
+      }
+
+      chapters[chNum] = { title: m[2].trim(), id: h1.id, sections: sections };
+    });
+
+    var total = Object.keys(chapters).length;
+    if (total === 0) return;
+
+    var overview = document.createElement('section');
+    overview.className = 'guide-overview';
+
+    var header = document.createElement('div');
+    header.className = 'overview-header';
+    var oTitle = document.createElement('h1');
+    oTitle.className = 'overview-title';
+    oTitle.textContent = '센서 퓨전 심화 가이드';
+    header.appendChild(oTitle);
+    var oSub = document.createElement('p');
+    oSub.className = 'overview-subtitle';
+    oSub.textContent = '로컬라이제이션 · 매핑 · 멀티센서 융합 심화 레퍼런스 · 전 ' + total + '장';
+    header.appendChild(oSub);
+    overview.appendChild(header);
+
+    chapterGroups.forEach(function(group) {
+      var valid = group.chapters.filter(function(n) { return chapters[n]; });
+      if (valid.length === 0) return;
+
+      var groupEl = document.createElement('div');
+      groupEl.className = 'overview-group';
+
+      var label = document.createElement('div');
+      label.className = 'overview-group-label';
+      label.textContent = group.label;
+      groupEl.appendChild(label);
+
+      var cards = document.createElement('div');
+      cards.className = 'overview-cards';
+
+      valid.forEach(function(chNum) {
+        var ch = chapters[chNum];
+        var card = document.createElement('a');
+        card.className = 'overview-card';
+        card.href = '#' + ch.id;
+
+        var chLabel = document.createElement('div');
+        chLabel.className = 'overview-card-ch';
+        chLabel.textContent = 'Ch. ' + chNum;
+        card.appendChild(chLabel);
+
+        var title = document.createElement('div');
+        title.className = 'overview-card-title';
+        title.textContent = ch.title;
+        card.appendChild(title);
+
+        if (ch.sections.length) {
+          var ul = document.createElement('ul');
+          ul.className = 'overview-card-sections';
+          ch.sections.forEach(function(s) {
+            var li = document.createElement('li');
+            li.textContent = s.text;
+            ul.appendChild(li);
+          });
+          card.appendChild(ul);
+        }
+
+        card.addEventListener('click', function(e) {
+          e.preventDefault();
+          var target = document.getElementById(ch.id);
+          if (target) {
+            var top = target.getBoundingClientRect().top + window.scrollY - 60;
+            window.scrollTo(0, top);
+          }
+        });
+
+        cards.appendChild(card);
+      });
+
+      groupEl.appendChild(cards);
+      overview.appendChild(groupEl);
+    });
+
+    contentEl.insertBefore(overview, contentEl.firstChild);
+  }
 
   // ---- Build Table of Contents ----
   function buildTOC() {
@@ -13355,7 +13557,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
         if (target) {
           var offset = 60;
           var top = target.getBoundingClientRect().top + window.scrollY - offset;
-          window.scrollTo({ top: top, behavior: 'smooth' });
+          window.scrollTo(0, top);
         }
         closeMobileSidebar();
       });
