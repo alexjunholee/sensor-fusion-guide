@@ -41,7 +41,7 @@
   --shadow-elev: rgba(0, 0, 0, 0.22) 3px 5px 30px 0px;
 }
 
-html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 body {
   font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -539,26 +539,32 @@ mark.search-highlight {
   gap: 14px;
 }
 .overview-card {
-  display: block;
-  padding: 18px 20px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.overview-card:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06); }
+.overview-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+}
+.overview-card-link {
+  flex: 1;
+  min-width: 0;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
-}
-.overview-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
 }
 .overview-card-ch {
   font-size: 12px;
   font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.02em;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .overview-card-title {
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
@@ -567,20 +573,52 @@ mark.search-highlight {
   color: var(--text-heading);
   letter-spacing: -0.014em;
   line-height: 1.25;
-  margin-bottom: 10px;
 }
+.overview-card-toggle {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.overview-card-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text); }
+.overview-card.expanded .overview-card-toggle { transform: rotate(180deg); color: var(--accent); }
 .overview-card-sections {
   list-style: none;
   padding: 0;
   margin: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+  border-top: 1px solid transparent;
 }
-.overview-card-sections li {
+.overview-card.expanded .overview-card-sections {
+  max-height: 600px;
+  border-top-color: var(--border);
+}
+.overview-card-sections li { margin: 0; padding: 0; }
+.overview-card-sections a {
+  display: block;
+  padding: 8px 18px;
   font-size: 13.5px;
-  color: var(--text-muted);
+  color: var(--text-body);
   line-height: 1.45;
-  padding: 2px 0;
   letter-spacing: -0.01em;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+  cursor: pointer;
 }
+.overview-card-sections a:hover { background: rgba(0, 113, 227, 0.06); color: var(--accent); }
+
 
 /* Responsive */
 @media (max-width: 1024px) {
@@ -673,7 +711,7 @@ mark.search-highlight {
 </main>
 
 <textarea id="md-source" style="display:none;">
-# Chapter 1 — Introduction: 왜 센서 퓨전인가
+# Ch.1 — Why Sensor Fusion?
 
 이 가이드는 센서 퓨전(Sensor Fusion)의 이론과 실전을 체계적으로 다루는 심화 레퍼런스이다. 로보틱스 입문자이면서 선형대수와 확률론의 기초는 갖춘 독자를 대상으로 한다. 첫 챕터에서는 센서 퓨전이라는 분야의 전체 지도를 그린다 — 왜 단일 센서로는 부족한지, 어떤 방식으로 센서를 결합할 수 있는지, 그리고 고전적 방법과 딥러닝 기반 방법이 각각 어떤 역할을 맡고 있는지를 조망한다.
 
@@ -1038,7 +1076,7 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 
 ---
 
-# Chapter 2 — 센서 모델링 (Sensor Modeling)
+# Ch.2 — Sensor Modeling
 
 Ch.1에서 센서 퓨전의 분류와 설계 원칙을 살펴보았다. 이제 본격적으로 각 센서가 세상을 어떻게 "보는지"를 수학적으로 정의한다. 센서의 관측 모델은 Ch.4에서 다룰 칼만 필터와 팩터 그래프의 관측 함수 $h(\mathbf{x})$에 직접 대입되므로, 이 챕터의 수식들은 이후 모든 알고리즘의 기초가 된다.
 
@@ -13384,6 +13422,14 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
   });
 
   // ---- Build Guide Overview (top of page) ----
+
+  function jumpTo(id) {
+    var target = document.getElementById(id);
+    if (!target) return;
+    var top = target.getBoundingClientRect().top + window.scrollY - 60;
+    window.scrollTo(0, top);
+  }
+
   function buildOverview() {
     var chapterGroups = [
       { label: '기초 (Foundations)', chapters: [1, 2, 3] },
@@ -13397,7 +13443,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
     var chapters = {};
 
     h1s.forEach(function(h1) {
-      var m = h1.textContent.trim().match(/Chapter\s+(\d+)\s*[\u2014\u2013-]\s*(.+)/);
+      var m = h1.textContent.trim().match(/(?:Chapter|Ch\.?)\s*(\d+)\s*[\u2014\u2013-]\s*(.+)/);
       if (!m) return;
       var chNum = parseInt(m[1], 10);
       if (!h1.id) h1.id = 'chapter-' + chNum;
@@ -13453,39 +13499,63 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 
       valid.forEach(function(chNum) {
         var ch = chapters[chNum];
-        var card = document.createElement('a');
+        var card = document.createElement('div');
         card.className = 'overview-card';
-        card.href = '#' + ch.id;
 
+        var head = document.createElement('div');
+        head.className = 'overview-card-head';
+
+        var link = document.createElement('a');
+        link.className = 'overview-card-link';
+        link.href = '#' + ch.id;
         var chLabel = document.createElement('div');
         chLabel.className = 'overview-card-ch';
         chLabel.textContent = 'Ch. ' + chNum;
-        card.appendChild(chLabel);
-
+        link.appendChild(chLabel);
         var title = document.createElement('div');
         title.className = 'overview-card-title';
         title.textContent = ch.title;
-        card.appendChild(title);
+        link.appendChild(title);
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          jumpTo(ch.id);
+        });
+        head.appendChild(link);
+
+        if (ch.sections.length) {
+          var toggle = document.createElement('button');
+          toggle.className = 'overview-card-toggle';
+          toggle.setAttribute('aria-label', '섹션 목록 펼치기');
+          toggle.setAttribute('aria-expanded', 'false');
+          toggle.innerHTML = '&#9662;';
+          toggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var expanded = card.classList.toggle('expanded');
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+          });
+          head.appendChild(toggle);
+        }
+
+        card.appendChild(head);
 
         if (ch.sections.length) {
           var ul = document.createElement('ul');
           ul.className = 'overview-card-sections';
           ch.sections.forEach(function(s) {
             var li = document.createElement('li');
-            li.textContent = s.text;
+            var sLink = document.createElement('a');
+            sLink.href = '#' + s.id;
+            sLink.textContent = s.text;
+            sLink.addEventListener('click', function(e) {
+              e.preventDefault();
+              jumpTo(s.id);
+            });
+            li.appendChild(sLink);
             ul.appendChild(li);
           });
           card.appendChild(ul);
         }
-
-        card.addEventListener('click', function(e) {
-          e.preventDefault();
-          var target = document.getElementById(ch.id);
-          if (target) {
-            var top = target.getBoundingClientRect().top + window.scrollY - 60;
-            window.scrollTo(0, top);
-          }
-        });
 
         cards.appendChild(card);
       });
@@ -13496,6 +13566,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 
     contentEl.insertBefore(overview, contentEl.firstChild);
   }
+
 
   // ---- Build Table of Contents ----
   function buildTOC() {
@@ -13605,7 +13676,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
           var itemRect = item.getBoundingClientRect();
           var containerRect = tocContainer.getBoundingClientRect();
           if (itemRect.top < containerRect.top || itemRect.bottom > containerRect.bottom) {
-            item.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            item.scrollIntoView({ block: 'center', behavior: 'auto' });
           }
         }
       }

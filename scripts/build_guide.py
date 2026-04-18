@@ -35,6 +35,278 @@ TOC_GROUPS_JS = """\
     };
 """
 
+# Guide overview — CSS for card grid at top of content (with expand/collapse)
+OVERVIEW_CSS = """\
+/* Guide Overview (at top of content) */
+.guide-overview {
+  margin: 0 0 80px 0;
+  padding: 0 0 48px 0;
+  border-bottom: 1px solid var(--border);
+}
+.guide-overview .overview-header {
+  margin-bottom: 40px;
+}
+.guide-overview .overview-title {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.018em;
+  color: var(--text-heading);
+  margin: 0 0 10px 0;
+}
+.guide-overview .overview-subtitle {
+  font-size: 17px;
+  color: var(--text-muted);
+  letter-spacing: -0.014em;
+  margin: 0;
+}
+.overview-group {
+  margin-top: 36px;
+}
+.overview-group:first-child { margin-top: 0; }
+.overview-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.42);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 14px 0;
+}
+.overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.overview-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.overview-card:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06); }
+.overview-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+}
+.overview-card-link {
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+.overview-card-ch {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+  margin-bottom: 3px;
+}
+.overview-card-title {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-heading);
+  letter-spacing: -0.014em;
+  line-height: 1.25;
+}
+.overview-card-toggle {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.overview-card-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text); }
+.overview-card.expanded .overview-card-toggle { transform: rotate(180deg); color: var(--accent); }
+.overview-card-sections {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+  border-top: 1px solid transparent;
+}
+.overview-card.expanded .overview-card-sections {
+  max-height: 600px;
+  border-top-color: var(--border);
+}
+.overview-card-sections li { margin: 0; padding: 0; }
+.overview-card-sections a {
+  display: block;
+  padding: 8px 18px;
+  font-size: 13.5px;
+  color: var(--text-body);
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+  cursor: pointer;
+}
+.overview-card-sections a:hover { background: rgba(0, 113, 227, 0.06); color: var(--accent); }
+"""
+
+# Guide overview — JS for rendering and interaction
+OVERVIEW_JS = r"""
+  function jumpTo(id) {
+    var target = document.getElementById(id);
+    if (!target) return;
+    var top = target.getBoundingClientRect().top + window.scrollY - 60;
+    window.scrollTo(0, top);
+  }
+
+  function buildOverview() {
+    var chapterGroups = [
+      { label: '기초 (Foundations)', chapters: [1, 2, 3] },
+      { label: '방법론 기초 (Methods)', chapters: [4, 5] },
+      { label: 'Odometry & Fusion', chapters: [6, 7, 8] },
+      { label: 'Place Recognition & Loop Closure', chapters: [9, 10] },
+      { label: '표현 · 실전 · 미래', chapters: [11, 12, 13] }
+    ];
+
+    var h1s = contentEl.querySelectorAll('h1');
+    var chapters = {};
+
+    h1s.forEach(function(h1) {
+      var m = h1.textContent.trim().match(/(?:Chapter|Ch\.?)\s*(\d+)\s*[\u2014\u2013-]\s*(.+)/);
+      if (!m) return;
+      var chNum = parseInt(m[1], 10);
+      if (!h1.id) h1.id = 'chapter-' + chNum;
+
+      var sections = [];
+      var node = h1.nextElementSibling;
+      while (node && node.tagName !== 'H1') {
+        if (node.tagName === 'H2') {
+          if (!node.id) {
+            node.id = node.textContent.toLowerCase()
+              .replace(/[^\w\s가-힣-]/g, '').replace(/\s+/g, '-').substring(0, 60);
+          }
+          sections.push({ text: node.textContent.trim(), id: node.id });
+        }
+        node = node.nextElementSibling;
+      }
+
+      chapters[chNum] = { title: m[2].trim(), id: h1.id, sections: sections };
+    });
+
+    var total = Object.keys(chapters).length;
+    if (total === 0) return;
+
+    var overview = document.createElement('section');
+    overview.className = 'guide-overview';
+
+    var header = document.createElement('div');
+    header.className = 'overview-header';
+    var oTitle = document.createElement('h1');
+    oTitle.className = 'overview-title';
+    oTitle.textContent = '센서 퓨전 심화 가이드';
+    header.appendChild(oTitle);
+    var oSub = document.createElement('p');
+    oSub.className = 'overview-subtitle';
+    oSub.textContent = '로컬라이제이션 · 매핑 · 멀티센서 융합 심화 레퍼런스 · 전 ' + total + '장';
+    header.appendChild(oSub);
+    overview.appendChild(header);
+
+    chapterGroups.forEach(function(group) {
+      var valid = group.chapters.filter(function(n) { return chapters[n]; });
+      if (valid.length === 0) return;
+
+      var groupEl = document.createElement('div');
+      groupEl.className = 'overview-group';
+
+      var label = document.createElement('div');
+      label.className = 'overview-group-label';
+      label.textContent = group.label;
+      groupEl.appendChild(label);
+
+      var cards = document.createElement('div');
+      cards.className = 'overview-cards';
+
+      valid.forEach(function(chNum) {
+        var ch = chapters[chNum];
+        var card = document.createElement('div');
+        card.className = 'overview-card';
+
+        var head = document.createElement('div');
+        head.className = 'overview-card-head';
+
+        var link = document.createElement('a');
+        link.className = 'overview-card-link';
+        link.href = '#' + ch.id;
+        var chLabel = document.createElement('div');
+        chLabel.className = 'overview-card-ch';
+        chLabel.textContent = 'Ch. ' + chNum;
+        link.appendChild(chLabel);
+        var title = document.createElement('div');
+        title.className = 'overview-card-title';
+        title.textContent = ch.title;
+        link.appendChild(title);
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          jumpTo(ch.id);
+        });
+        head.appendChild(link);
+
+        if (ch.sections.length) {
+          var toggle = document.createElement('button');
+          toggle.className = 'overview-card-toggle';
+          toggle.setAttribute('aria-label', '섹션 목록 펼치기');
+          toggle.setAttribute('aria-expanded', 'false');
+          toggle.innerHTML = '&#9662;';
+          toggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var expanded = card.classList.toggle('expanded');
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+          });
+          head.appendChild(toggle);
+        }
+
+        card.appendChild(head);
+
+        if (ch.sections.length) {
+          var ul = document.createElement('ul');
+          ul.className = 'overview-card-sections';
+          ch.sections.forEach(function(s) {
+            var li = document.createElement('li');
+            var sLink = document.createElement('a');
+            sLink.href = '#' + s.id;
+            sLink.textContent = s.text;
+            sLink.addEventListener('click', function(e) {
+              e.preventDefault();
+              jumpTo(s.id);
+            });
+            li.appendChild(sLink);
+            ul.appendChild(li);
+          });
+          card.appendChild(ul);
+        }
+
+        cards.appendChild(card);
+      });
+
+      groupEl.appendChild(cards);
+      overview.appendChild(groupEl);
+    });
+
+    contentEl.insertBefore(overview, contentEl.firstChild);
+  }
+"""
+
 def build_html(md_content):
     return f'''<!DOCTYPE html>
 <html lang="ko">
@@ -79,7 +351,7 @@ def build_html(md_content):
   --shadow-elev: rgba(0, 0, 0, 0.22) 3px 5px 30px 0px;
 }}
 
-html {{ scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }}
+html {{ -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }}
 
 body {{
   font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -90,6 +362,8 @@ body {{
   background: var(--bg);
   overflow-x: hidden;
   font-feature-settings: "kern", "liga", "calt";
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }}
 
 /* Progress bar */
@@ -533,6 +807,8 @@ mark.search-highlight {{
   border-radius: 3px;
 }}
 
+{OVERVIEW_CSS}
+
 /* Responsive */
 @media (max-width: 1024px) {{
   #main-content {{ padding-left: 40px; padding-right: 40px; }}
@@ -733,6 +1009,7 @@ mark.search-highlight {{
     }});
 
     // Build TOC, setup interactions
+    buildOverview();
     buildTOC();
     setupScrollTracking();
     setupSearch();
@@ -740,6 +1017,9 @@ mark.search-highlight {{
     setupMobileMenu();
     setupKeyboard();
   }});
+
+  // ---- Build Guide Overview (top of page) ----
+{OVERVIEW_JS}
 
   // ---- Build Table of Contents ----
   function buildTOC() {{
@@ -794,7 +1074,7 @@ mark.search-highlight {{
         if (target) {{
           var offset = 60;
           var top = target.getBoundingClientRect().top + window.scrollY - offset;
-          window.scrollTo({{ top: top, behavior: 'smooth' }});
+          window.scrollTo(0, top);
         }}
         closeMobileSidebar();
       }});
@@ -842,7 +1122,7 @@ mark.search-highlight {{
           var itemRect = item.getBoundingClientRect();
           var containerRect = tocContainer.getBoundingClientRect();
           if (itemRect.top < containerRect.top || itemRect.bottom > containerRect.bottom) {{
-            item.scrollIntoView({{ block: 'center', behavior: 'smooth' }});
+            item.scrollIntoView({{ block: 'center', behavior: 'auto' }});
           }}
         }}
       }}
