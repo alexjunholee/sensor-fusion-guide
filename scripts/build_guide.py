@@ -107,32 +107,8 @@ OVERVIEW_CSS = """\
 }
 """
 
-# Guide overview — JS for rendering (text prose, no toggle/animation)
+# Guide overview — JS for rendering (text prose, native hash nav)
 OVERVIEW_JS = r"""
-  function jumpTo(id, push) {
-    var target = document.getElementById(id);
-    if (!target) return;
-    var top = target.getBoundingClientRect().top + window.scrollY - 60;
-    window.scrollTo(0, top);
-    if (push !== false) {
-      if (window.location.hash.slice(1) !== id) {
-        history.pushState(null, '', '#' + id);
-      }
-    }
-  }
-
-  function setupHistory() {
-    window.addEventListener('popstate', function() {
-      var hash = window.location.hash.slice(1);
-      if (hash) jumpTo(hash, false);
-      else window.scrollTo(0, 0);
-    });
-    if (window.location.hash) {
-      var id = window.location.hash.slice(1);
-      setTimeout(function() { jumpTo(id, false); }, 0);
-    }
-  }
-
   function buildOverview() {
     var chapterGroups = [
       { label: '기초 (Foundations)', chapters: [1, 2, 3] },
@@ -210,10 +186,6 @@ OVERVIEW_JS = r"""
         numSpan.textContent = 'Ch.' + chNum;
         chLink.appendChild(numSpan);
         chLink.appendChild(document.createTextNode(ch.title));
-        chLink.addEventListener('click', function(e) {
-          e.preventDefault();
-          jumpTo(ch.id);
-        });
         chWrap.appendChild(chLink);
 
         if (ch.sections.length) {
@@ -229,10 +201,6 @@ OVERVIEW_JS = r"""
             var sLink = document.createElement('a');
             sLink.href = '#' + s.id;
             sLink.textContent = s.text;
-            sLink.addEventListener('click', function(e) {
-              e.preventDefault();
-              jumpTo(s.id);
-            });
             secsDiv.appendChild(sLink);
           });
           chWrap.appendChild(secsDiv);
@@ -257,6 +225,9 @@ def build_html(md_content):
 <title>센서 퓨전 심화 가이드</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
@@ -545,6 +516,7 @@ body {{
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
   color: var(--text-heading);
   font-feature-settings: "ss01", "kern";
+  scroll-margin-top: 72px;
 }}
 
 #content h1 {{
@@ -635,7 +607,7 @@ body {{
 
 /* Code */
 #content code {{
-  font-family: 'SF Mono', ui-monospace, 'Menlo', 'Monaco', 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   font-size: 0.9em;
   letter-spacing: 0;
 }}
@@ -957,7 +929,16 @@ mark.search-highlight {{
     setupProgressBar();
     setupMobileMenu();
     setupKeyboard();
-    setupHistory();
+
+    // On initial load with a URL hash, scroll to target (content just rendered)
+    if (window.location.hash) {{
+      var initId = window.location.hash.slice(1);
+      var initTarget = document.getElementById(initId);
+      if (initTarget) {{
+        var initTop = initTarget.getBoundingClientRect().top + window.scrollY - 60;
+        window.scrollTo(0, initTop);
+      }}
+    }}
   }});
 
   // ---- Build Guide Overview (top of page) ----
@@ -1011,8 +992,6 @@ mark.search-highlight {{
       link.dataset.headingId = id;
 
       link.addEventListener('click', function(e) {{
-        e.preventDefault();
-        jumpTo(id);
         closeMobileSidebar();
       }});
 
