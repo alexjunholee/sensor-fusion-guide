@@ -109,11 +109,28 @@ OVERVIEW_CSS = """\
 
 # Guide overview — JS for rendering (text prose, no toggle/animation)
 OVERVIEW_JS = r"""
-  function jumpTo(id) {
+  function jumpTo(id, push) {
     var target = document.getElementById(id);
     if (!target) return;
     var top = target.getBoundingClientRect().top + window.scrollY - 60;
     window.scrollTo(0, top);
+    if (push !== false) {
+      if (window.location.hash.slice(1) !== id) {
+        history.pushState(null, '', '#' + id);
+      }
+    }
+  }
+
+  function setupHistory() {
+    window.addEventListener('popstate', function() {
+      var hash = window.location.hash.slice(1);
+      if (hash) jumpTo(hash, false);
+      else window.scrollTo(0, 0);
+    });
+    if (window.location.hash) {
+      var id = window.location.hash.slice(1);
+      setTimeout(function() { jumpTo(id, false); }, 0);
+    }
   }
 
   function buildOverview() {
@@ -940,6 +957,7 @@ mark.search-highlight {{
     setupProgressBar();
     setupMobileMenu();
     setupKeyboard();
+    setupHistory();
   }});
 
   // ---- Build Guide Overview (top of page) ----
@@ -994,12 +1012,7 @@ mark.search-highlight {{
 
       link.addEventListener('click', function(e) {{
         e.preventDefault();
-        var target = document.getElementById(id);
-        if (target) {{
-          var offset = 60;
-          var top = target.getBoundingClientRect().top + window.scrollY - offset;
-          window.scrollTo(0, top);
-        }}
+        jumpTo(id);
         closeMobileSidebar();
       }});
 
