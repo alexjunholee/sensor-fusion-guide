@@ -10,10 +10,14 @@ import glob
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT = os.path.join(PROJECT_ROOT, "guide.html")
+EN_DIR = os.path.join(PROJECT_ROOT, "en")
 
-def read_chapters():
-    """Read all chapter markdown files in order."""
-    pattern = os.path.join(PROJECT_ROOT, "chapter_*.md")
+def read_chapters(lang="ko"):
+    """Read all chapter markdown files in order for the given language."""
+    if lang == "ko":
+        pattern = os.path.join(PROJECT_ROOT, "chapter_*.md")
+    else:
+        pattern = os.path.join(EN_DIR, "chapter_*.md")
     files = sorted(glob.glob(pattern))
     parts = []
     for f in files:
@@ -22,18 +26,8 @@ def read_chapters():
         parts.append(content)
     return "\n\n---\n\n".join(parts)
 
-# Chapter groupings for TOC sidebar labels
-# Ch.1-3: 기초, Ch.4-5: 방법론 기초, Ch.6-8: Odometry & Fusion,
-# Ch.9-10: Loop Closure, Ch.11-13: 표현·실전·미래
-TOC_GROUPS_JS = """\
-    var groupFirstChapter = {
-      '1.1': '기초 (Foundations)',
-      '4.1': '방법론 기초 (Methods)',
-      '6.1': 'Odometry & Fusion',
-      '9.1': 'Place Recognition & Loop Closure',
-      '11.1': '표현 · 실전 · 미래'
-    };
-"""
+# Chapter groupings — now parameterized by language via I18N object in JS.
+# Kept here as a Python-side reference for documentation.
 
 # Guide overview — CSS for text-prose list at top of content
 OVERVIEW_CSS = """\
@@ -110,13 +104,8 @@ OVERVIEW_CSS = """\
 # Guide overview — JS for rendering (text prose, native hash nav)
 OVERVIEW_JS = r"""
   function buildOverview() {
-    var chapterGroups = [
-      { label: '기초 (Foundations)', chapters: [1, 2, 3] },
-      { label: '방법론 기초 (Methods)', chapters: [4, 5] },
-      { label: 'Odometry & Fusion', chapters: [6, 7, 8] },
-      { label: 'Place Recognition & Loop Closure', chapters: [9, 10] },
-      { label: '표현 · 실전 · 미래', chapters: [11, 12, 13] }
-    ];
+    var strs = I18N[state.lang];
+    var chapterGroups = strs.groups;
 
     var h1s = contentEl.querySelectorAll('h1');
     var chapters = {};
@@ -153,11 +142,11 @@ OVERVIEW_JS = r"""
     header.className = 'overview-header';
     var oTitle = document.createElement('h1');
     oTitle.className = 'overview-title';
-    oTitle.textContent = '센서 퓨전 심화 가이드';
+    oTitle.textContent = strs.overviewTitle;
     header.appendChild(oTitle);
     var oSub = document.createElement('p');
     oSub.className = 'overview-subtitle';
-    oSub.textContent = '로컬라이제이션 · 매핑 · 멀티센서 융합 심화 레퍼런스 · 전 ' + total + '장';
+    oSub.textContent = strs.overviewSubtitle(total);
     header.appendChild(oSub);
     overview.appendChild(header);
 
@@ -216,7 +205,7 @@ OVERVIEW_JS = r"""
   }
 """
 
-def build_html(md_content):
+def build_html(md_content_ko, md_content_en):
     return f'''<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -351,6 +340,29 @@ body {{
   border-color: var(--accent);
   color: var(--accent);
 }}
+
+/* Language toggle — inline link style (no box) */
+#topbar .lang-toggle {{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: -0.010em;
+}}
+#topbar .lang-toggle a {{
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 4px 2px;
+  transition: color 0.15s;
+  cursor: pointer;
+}}
+#topbar .lang-toggle a:hover {{ color: var(--text); }}
+#topbar .lang-toggle a.active {{
+  color: var(--text-heading);
+  font-weight: 600;
+}}
+#topbar .lang-toggle .sep {{ color: var(--border-strong); }}
 
 /* Sidebar */
 #sidebar {{
@@ -792,29 +804,37 @@ mark.search-highlight {{
 
 <div id="topbar">
   <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation">&#9776;</button>
-  <span class="title">센서 퓨전 심화 가이드</span>
+  <span class="title" id="topbar-title">센서 퓨전 심화 가이드</span>
+  <div class="lang-toggle" id="lang-toggle" role="group" aria-label="Language">
+    <a data-lang="ko" tabindex="0" role="button">한국어</a>
+    <span class="sep">/</span>
+    <a data-lang="en" tabindex="0" role="button">English</a>
+  </div>
 </div>
 
 <div id="sidebar-overlay"></div>
 
 <nav id="sidebar">
   <div id="search-box">
-    <input type="text" id="search-input" placeholder="Search headings... (Ctrl+K)">
+    <input type="text" id="search-input" placeholder="섹션 검색... (Ctrl+K)">
   </div>
   <div id="toc-container"></div>
-  <div class="toc-no-results" id="toc-no-results">No matching sections</div>
+  <div class="toc-no-results" id="toc-no-results">검색 결과 없음</div>
 </nav>
 
 <main id="main-content">
   <div id="loading">
     <div class="spinner"></div>
-    <span>Rendering guide...</span>
+    <span id="loading-text">Rendering guide...</span>
   </div>
   <div id="content" style="display:none;"></div>
 </main>
 
-<textarea id="md-source" style="display:none;">
-{md_content}
+<textarea id="md-source-ko" style="display:none;">
+{md_content_ko}
+</textarea>
+<textarea id="md-source-en" style="display:none;">
+{md_content_en}
 </textarea>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
@@ -899,48 +919,173 @@ mark.search-highlight {{
     }});
   }}
 
-  // ---- Render markdown ----
-  var mdSource = document.getElementById('md-source').value;
-  // Fix: marked.js doesn't recognize **text** when immediately followed by Korean characters
-  mdSource = mdSource.replace(/\\*\\*([^*\\n]+)\\*\\*(?=[가-힣])/g, '<strong>$1</strong>');
+  // ---- I18N strings ----
+  var I18N = {{
+    ko: {{
+      docTitle: '센서 퓨전 심화 가이드',
+      topbarTitle: '센서 퓨전 심화 가이드',
+      overviewTitle: '센서 퓨전 심화 가이드',
+      overviewSubtitle: function(n) {{ return '로컬라이제이션 · 매핑 · 멀티센서 융합 심화 레퍼런스 · 전 ' + n + '장'; }},
+      groups: [
+        {{ label: '기초 (Foundations)', chapters: [1, 2, 3] }},
+        {{ label: '방법론 기초 (Methods)', chapters: [4, 5] }},
+        {{ label: 'Odometry & Fusion', chapters: [6, 7, 8] }},
+        {{ label: 'Place Recognition & Loop Closure', chapters: [9, 10] }},
+        {{ label: '표현 · 실전 · 미래', chapters: [11, 12, 13] }}
+      ],
+      tocGroupFirst: {{
+        '1.1': '기초 (Foundations)',
+        '4.1': '방법론 기초 (Methods)',
+        '6.1': 'Odometry & Fusion',
+        '9.1': 'Place Recognition & Loop Closure',
+        '11.1': '표현 · 실전 · 미래'
+      }},
+      searchPlaceholder: '섹션 검색... (Ctrl+K)',
+      noResults: '검색 결과 없음',
+      loading: '가이드 렌더링 중...'
+    }},
+    en: {{
+      docTitle: 'Sensor Fusion — Advanced Guide',
+      topbarTitle: 'Sensor Fusion — Advanced Guide',
+      overviewTitle: 'Sensor Fusion — Advanced Guide',
+      overviewSubtitle: function(n) {{ return 'Localization · Mapping · Multi-sensor Fusion reference · ' + n + ' chapters'; }},
+      groups: [
+        {{ label: 'Foundations', chapters: [1, 2, 3] }},
+        {{ label: 'Methods', chapters: [4, 5] }},
+        {{ label: 'Odometry & Fusion', chapters: [6, 7, 8] }},
+        {{ label: 'Place Recognition & Loop Closure', chapters: [9, 10] }},
+        {{ label: 'Representations · Systems · Frontiers', chapters: [11, 12, 13] }}
+      ],
+      tocGroupFirst: {{
+        '1.1': 'Foundations',
+        '4.1': 'Methods',
+        '6.1': 'Odometry & Fusion',
+        '9.1': 'Place Recognition & Loop Closure',
+        '11.1': 'Representations · Systems · Frontiers'
+      }},
+      searchPlaceholder: 'Search sections... (Ctrl+K)',
+      noResults: 'No matching sections',
+      loading: 'Rendering guide...'
+    }}
+  }};
+
+  var state = {{
+    lang: (function() {{
+      var saved = null;
+      try {{ saved = localStorage.getItem('sfg-lang'); }} catch(e) {{}}
+      return (saved === 'en' || saved === 'ko') ? saved : 'ko';
+    }})(),
+    cache: {{}},
+    observer: null,
+    scrollHandler: null
+  }};
+
   var contentEl = document.getElementById('content');
   var loadingEl = document.getElementById('loading');
+  var tocContainer = document.getElementById('toc-container');
 
-  requestAnimationFrame(function() {{
-    var mathData = protectMath(mdSource);
-    var html = marked.parse(mathData.src);
-    html = restoreAndRenderMath(html, mathData.placeholders);
-    contentEl.innerHTML = html;
-    contentEl.style.display = 'block';
-    loadingEl.style.display = 'none';
+  function applyI18N(lang) {{
+    var strs = I18N[lang];
+    document.documentElement.lang = lang;
+    document.body.setAttribute('data-lang', lang);
+    document.title = strs.docTitle;
+    document.getElementById('topbar-title').textContent = strs.topbarTitle;
+    document.getElementById('search-input').placeholder = strs.searchPlaceholder;
+    document.getElementById('toc-no-results').textContent = strs.noResults;
+    document.getElementById('loading-text').textContent = strs.loading;
+    var links = document.querySelectorAll('#lang-toggle a');
+    links.forEach(function(a) {{
+      if (a.getAttribute('data-lang') === lang) a.classList.add('active');
+      else a.classList.remove('active');
+    }});
+  }}
 
-    // Tag person-quote blockquotes
-    contentEl.querySelectorAll('blockquote').forEach(function(bq) {{
-      var text = bq.textContent;
-      if (text.indexOf('\\u2014') !== -1 && !bq.querySelector('strong')) {{
-        bq.classList.add('quote-person');
+  function renderLanguage(lang) {{
+    state.lang = lang;
+    applyI18N(lang);
+    try {{ localStorage.setItem('sfg-lang', lang); }} catch(e) {{}}
+
+    // Disconnect prior observer
+    if (state.observer) {{ state.observer.disconnect(); state.observer = null; }}
+
+    if (state.cache[lang]) {{
+      contentEl.innerHTML = state.cache[lang].content;
+      tocContainer.innerHTML = state.cache[lang].toc;
+      contentEl.style.display = 'block';
+      loadingEl.style.display = 'none';
+      setupScrollTracking();
+      return;
+    }}
+
+    // First render for this language — show spinner during parse
+    contentEl.style.display = 'none';
+    loadingEl.style.display = 'flex';
+
+    requestAnimationFrame(function() {{
+      var src = document.getElementById('md-source-' + lang).value;
+      src = src.replace(/\\*\\*([^*\\n]+)\\*\\*(?=[가-힣])/g, '<strong>$1</strong>');
+      var mathData = protectMath(src);
+      var html = marked.parse(mathData.src);
+      html = restoreAndRenderMath(html, mathData.placeholders);
+      contentEl.innerHTML = html;
+
+      contentEl.querySelectorAll('blockquote').forEach(function(bq) {{
+        var text = bq.textContent;
+        if (text.indexOf('\\u2014') !== -1 && !bq.querySelector('strong')) {{
+          bq.classList.add('quote-person');
+        }}
+      }});
+
+      tocContainer.innerHTML = '';
+      buildOverview();
+      buildTOC();
+
+      state.cache[lang] = {{
+        content: contentEl.innerHTML,
+        toc: tocContainer.innerHTML
+      }};
+
+      contentEl.style.display = 'block';
+      loadingEl.style.display = 'none';
+      setupScrollTracking();
+
+      if (window.location.hash) {{
+        var initId = window.location.hash.slice(1);
+        var initTarget = document.getElementById(initId);
+        if (initTarget) {{
+          var initTop = initTarget.getBoundingClientRect().top + window.scrollY - 60;
+          window.scrollTo(0, initTop);
+        }}
       }}
     }});
+  }}
 
-    // Build TOC, setup interactions
-    buildOverview();
-    buildTOC();
-    setupScrollTracking();
-    setupSearch();
-    setupProgressBar();
-    setupMobileMenu();
-    setupKeyboard();
+  // Kick off initial render + one-time listeners
+  renderLanguage(state.lang);
+  setupSearch();
+  setupProgressBar();
+  setupMobileMenu();
+  setupKeyboard();
+  setupLangToggle();
+  setupTocDelegation();
 
-    // On initial load with a URL hash, scroll to target (content just rendered)
-    if (window.location.hash) {{
-      var initId = window.location.hash.slice(1);
-      var initTarget = document.getElementById(initId);
-      if (initTarget) {{
-        var initTop = initTarget.getBoundingClientRect().top + window.scrollY - 60;
-        window.scrollTo(0, initTop);
+  function setupLangToggle() {{
+    var toggle = document.getElementById('lang-toggle');
+    toggle.addEventListener('click', function(e) {{
+      var t = e.target;
+      if (t.tagName === 'A' && t.hasAttribute('data-lang')) {{
+        e.preventDefault();
+        var newLang = t.getAttribute('data-lang');
+        if (newLang !== state.lang) renderLanguage(newLang);
       }}
-    }}
-  }});
+    }});
+  }}
+
+  function setupTocDelegation() {{
+    tocContainer.addEventListener('click', function(e) {{
+      if (e.target.closest('.toc-item')) closeMobileSidebar();
+    }});
+  }}
 
   // ---- Build Guide Overview (top of page) ----
 {OVERVIEW_JS}
@@ -948,10 +1093,8 @@ mark.search-highlight {{
   // ---- Build Table of Contents ----
   function buildTOC() {{
     var headings = contentEl.querySelectorAll('h2, h3');
-    var tocContainer = document.getElementById('toc-container');
     var fragment = document.createDocumentFragment();
-
-{TOC_GROUPS_JS}
+    var groupFirstChapter = Object.assign({{}}, I18N[state.lang].tocGroupFirst);
 
     function getGroupLabel(text) {{
       var trimmed = text.trim();
@@ -992,10 +1135,6 @@ mark.search-highlight {{
       link.textContent = heading.textContent;
       link.dataset.headingId = id;
 
-      link.addEventListener('click', function(e) {{
-        closeMobileSidebar();
-      }});
-
       fragment.appendChild(link);
     }});
 
@@ -1005,7 +1144,7 @@ mark.search-highlight {{
   // ---- Scroll tracking ----
   function setupScrollTracking() {{
     var headings = contentEl.querySelectorAll('h2, h3');
-    var tocItems = document.querySelectorAll('.toc-item');
+    var tocItems = tocContainer.querySelectorAll('.toc-item');
     if (headings.length === 0) return;
 
     var tocMap = {{}};
@@ -1035,7 +1174,6 @@ mark.search-highlight {{
         if (item) {{
           item.classList.add('active');
           currentActive = item;
-          var tocContainer = document.getElementById('toc-container');
           var itemRect = item.getBoundingClientRect();
           var containerRect = tocContainer.getBoundingClientRect();
           if (itemRect.top < containerRect.top || itemRect.bottom > containerRect.bottom) {{
@@ -1049,49 +1187,49 @@ mark.search-highlight {{
     }});
 
     headings.forEach(function(h) {{ observer.observe(h); }});
+    state.observer = observer;
 
-    var ticking = false;
-    window.addEventListener('scroll', function() {{
-      if (!ticking) {{
-        requestAnimationFrame(function() {{
-          updateActiveFromScroll(headings, tocMap);
-          ticking = false;
-        }});
-        ticking = true;
-      }}
-    }});
-
-    function updateActiveFromScroll(headings, tocMap) {{
-      var found = null;
-      var scrollTop = window.scrollY + 80;
-
-      for (var i = headings.length - 1; i >= 0; i--) {{
-        if (headings[i].offsetTop <= scrollTop) {{
-          found = headings[i];
-          break;
+    if (!state.scrollHandler) {{
+      var ticking = false;
+      state.scrollHandler = function() {{
+        if (!ticking) {{
+          requestAnimationFrame(function() {{
+            var curHeadings = contentEl.querySelectorAll('h2, h3');
+            var curTocItems = tocContainer.querySelectorAll('.toc-item');
+            var curMap = {{}};
+            curTocItems.forEach(function(item) {{ curMap[item.dataset.headingId] = item; }});
+            var found = null;
+            var scrollTop = window.scrollY + 80;
+            for (var i = curHeadings.length - 1; i >= 0; i--) {{
+              if (curHeadings[i].offsetTop <= scrollTop) {{
+                found = curHeadings[i];
+                break;
+              }}
+            }}
+            if (found) {{
+              var active = tocContainer.querySelector('.toc-item.active');
+              if (active) active.classList.remove('active');
+              var item = curMap[found.id];
+              if (item) item.classList.add('active');
+            }}
+            ticking = false;
+          }});
+          ticking = true;
         }}
-      }}
-
-      if (found) {{
-        if (currentActive) currentActive.classList.remove('active');
-        var item = tocMap[found.id];
-        if (item) {{
-          item.classList.add('active');
-          currentActive = item;
-        }}
-      }}
+      }};
+      window.addEventListener('scroll', state.scrollHandler);
     }}
   }}
 
   // ---- Search ----
   function setupSearch() {{
     var searchInput = document.getElementById('search-input');
-    var tocItems = document.querySelectorAll('.toc-item');
-    var groupLabels = document.querySelectorAll('.toc-group-label');
     var noResults = document.getElementById('toc-no-results');
 
     searchInput.addEventListener('input', function() {{
       var query = this.value.trim().toLowerCase();
+      var tocItems = tocContainer.querySelectorAll('.toc-item');
+      var groupLabels = tocContainer.querySelectorAll('.toc-group-label');
 
       if (!query) {{
         tocItems.forEach(function(item) {{ item.classList.remove('toc-hidden'); }});
@@ -1179,14 +1317,21 @@ mark.search-highlight {{
 
 
 def main():
-    md_content = read_chapters()
+    md_ko = read_chapters("ko")
+    md_en = read_chapters("en")
+    if not md_en.strip():
+        md_en = ("# English edition — coming soon\n\n"
+                 "The English edition is being translated. "
+                 "Switch back to 한국어 to read the current content.\n")
     # Escape textarea closing tag if it appears in content
-    md_content = md_content.replace("</textarea>", "&lt;/textarea&gt;")
-    html = build_html(md_content)
+    md_ko = md_ko.replace("</textarea>", "&lt;/textarea&gt;")
+    md_en = md_en.replace("</textarea>", "&lt;/textarea&gt;")
+    html = build_html(md_ko, md_en)
     with open(OUTPUT, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"Built {OUTPUT}")
-    print(f"  Markdown content: {len(md_content):,} chars")
+    print(f"  KO content: {len(md_ko):,} chars")
+    print(f"  EN content: {len(md_en):,} chars")
     print(f"  HTML output: {len(html):,} chars")
 
 
