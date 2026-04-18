@@ -503,9 +503,7 @@ mark.search-highlight {
   padding: 0 0 48px 0;
   border-bottom: 1px solid var(--border);
 }
-.guide-overview .overview-header {
-  margin-bottom: 40px;
-}
+.guide-overview .overview-header { margin-bottom: 44px; }
 .guide-overview .overview-title {
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
   font-size: 48px;
@@ -521,9 +519,7 @@ mark.search-highlight {
   letter-spacing: -0.014em;
   margin: 0;
 }
-.overview-group {
-  margin-top: 36px;
-}
+.overview-group { margin-top: 36px; }
 .overview-group:first-child { margin-top: 0; }
 .overview-group-label {
   font-size: 11px;
@@ -531,93 +527,44 @@ mark.search-highlight {
   color: rgba(0, 0, 0, 0.42);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin: 0 0 14px 0;
+  margin: 0 0 18px 0;
 }
-.overview-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-}
-.overview-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.overview-card:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06); }
-.overview-card-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 18px;
-}
-.overview-card-link {
-  flex: 1;
-  min-width: 0;
-  text-decoration: none;
-  color: inherit;
-  cursor: pointer;
-}
-.overview-card-ch {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  letter-spacing: 0.02em;
-  margin-bottom: 3px;
-}
-.overview-card-title {
+.overview-chapter { margin: 0 0 22px 0; }
+.overview-chapter:last-child { margin-bottom: 0; }
+.overview-chapter-link {
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 600;
   color: var(--text-heading);
-  letter-spacing: -0.014em;
-  line-height: 1.25;
-}
-.overview-card-toggle {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--text-muted);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, transform 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.overview-card-toggle:hover { background: rgba(0, 0, 0, 0.05); color: var(--text); }
-.overview-card.expanded .overview-card-toggle { transform: rotate(180deg); color: var(--accent); }
-.overview-card-sections {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.25s ease;
-  border-top: 1px solid transparent;
-}
-.overview-card.expanded .overview-card-sections {
-  max-height: 600px;
-  border-top-color: var(--border);
-}
-.overview-card-sections li { margin: 0; padding: 0; }
-.overview-card-sections a {
-  display: block;
-  padding: 8px 18px;
-  font-size: 13.5px;
-  color: var(--text-body);
-  line-height: 1.45;
-  letter-spacing: -0.01em;
   text-decoration: none;
-  transition: background 0.12s, color 0.12s;
-  cursor: pointer;
+  letter-spacing: -0.014em;
+  display: inline-block;
 }
-.overview-card-sections a:hover { background: rgba(0, 113, 227, 0.06); color: var(--accent); }
+.overview-chapter-link:hover { color: var(--accent); }
+.overview-chapter-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.overview-sections {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  letter-spacing: -0.01em;
+}
+.overview-sections a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.overview-sections a:hover { color: var(--accent); }
+.overview-sections .sep {
+  margin: 0 8px;
+  color: var(--border-strong);
+}
 
 
 /* Responsive */
@@ -13494,56 +13441,35 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
       label.textContent = group.label;
       groupEl.appendChild(label);
 
-      var cards = document.createElement('div');
-      cards.className = 'overview-cards';
-
       valid.forEach(function(chNum) {
         var ch = chapters[chNum];
-        var card = document.createElement('div');
-        card.className = 'overview-card';
+        var chWrap = document.createElement('div');
+        chWrap.className = 'overview-chapter';
 
-        var head = document.createElement('div');
-        head.className = 'overview-card-head';
-
-        var link = document.createElement('a');
-        link.className = 'overview-card-link';
-        link.href = '#' + ch.id;
-        var chLabel = document.createElement('div');
-        chLabel.className = 'overview-card-ch';
-        chLabel.textContent = 'Ch. ' + chNum;
-        link.appendChild(chLabel);
-        var title = document.createElement('div');
-        title.className = 'overview-card-title';
-        title.textContent = ch.title;
-        link.appendChild(title);
-        link.addEventListener('click', function(e) {
+        var chLink = document.createElement('a');
+        chLink.className = 'overview-chapter-link';
+        chLink.href = '#' + ch.id;
+        var numSpan = document.createElement('span');
+        numSpan.className = 'overview-chapter-num';
+        numSpan.textContent = 'Ch.' + chNum;
+        chLink.appendChild(numSpan);
+        chLink.appendChild(document.createTextNode(ch.title));
+        chLink.addEventListener('click', function(e) {
           e.preventDefault();
           jumpTo(ch.id);
         });
-        head.appendChild(link);
+        chWrap.appendChild(chLink);
 
         if (ch.sections.length) {
-          var toggle = document.createElement('button');
-          toggle.className = 'overview-card-toggle';
-          toggle.setAttribute('aria-label', '섹션 목록 펼치기');
-          toggle.setAttribute('aria-expanded', 'false');
-          toggle.innerHTML = '&#9662;';
-          toggle.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var expanded = card.classList.toggle('expanded');
-            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-          });
-          head.appendChild(toggle);
-        }
-
-        card.appendChild(head);
-
-        if (ch.sections.length) {
-          var ul = document.createElement('ul');
-          ul.className = 'overview-card-sections';
-          ch.sections.forEach(function(s) {
-            var li = document.createElement('li');
+          var secsDiv = document.createElement('div');
+          secsDiv.className = 'overview-sections';
+          ch.sections.forEach(function(s, i) {
+            if (i > 0) {
+              var sep = document.createElement('span');
+              sep.className = 'sep';
+              sep.textContent = '·';
+              secsDiv.appendChild(sep);
+            }
             var sLink = document.createElement('a');
             sLink.href = '#' + s.id;
             sLink.textContent = s.text;
@@ -13551,16 +13477,14 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
               e.preventDefault();
               jumpTo(s.id);
             });
-            li.appendChild(sLink);
-            ul.appendChild(li);
+            secsDiv.appendChild(sLink);
           });
-          card.appendChild(ul);
+          chWrap.appendChild(secsDiv);
         }
 
-        cards.appendChild(card);
+        groupEl.appendChild(chWrap);
       });
 
-      groupEl.appendChild(cards);
       overview.appendChild(groupEl);
     });
 
