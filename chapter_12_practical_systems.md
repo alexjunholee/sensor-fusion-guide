@@ -1,8 +1,8 @@
 # Ch.12 — 실전 시스템 & 벤치마크
 
-Ch.2-11에서 센서 모델링부터 상태 추정, odometry, place recognition, 공간 표현까지 개별 알고리즘을 다루었다. 이 챕터에서는 시선을 알고리즘에서 **시스템**으로 넓히어, 이 기술들이 실제 플랫폼에서 어떻게 조합되는지를 살펴본다.
+Ch.2-11에서 센서 모델링부터 상태 추정, odometry, place recognition, 공간 표현까지 개별 알고리즘을 다루었다. 이 챕터에서는 시선을 알고리즘에서 시스템으로 넓히어, 이 기술들이 실제 플랫폼에서 어떻게 조합되는지를 살펴본다.
 
-센서 퓨전의 이론과 알고리즘을 다루었으니, 이제 실제 시스템에서 이것들이 어떻게 통합되는지 살펴본다. 자율주행, 드론, 핸드헬드 매핑이라는 세 가지 대표적 플랫폼에서의 센서 퓨전 아키텍처를 분석하고, 시스템을 평가하기 위한 벤치마크와 도구를 소개한다.
+자율주행, 드론, 핸드헬드 매핑이라는 세 대표 플랫폼에서 센서 퓨전 아키텍처를 분석하고, 시스템을 평가하기 위한 벤치마크와 도구를 소개한다.
 
 ---
 
@@ -55,11 +55,11 @@ Ch.2-11에서 센서 모델링부터 상태 추정, odometry, place recognition,
 [Planning & Control]
 ```
 
-**Late Fusion vs Deep Fusion**:
+Late Fusion과 Deep Fusion은 서로 다른 설계 철학을 대표한다.
 
-- **Late fusion (전통)**: 각 센서에서 독립적으로 3D bounding box를 검출하고, NMS(Non-Maximum Suppression)로 결합한다. 장점: 모듈화, 디버깅 용이. 단점: 센서 간 상보성 활용 어려움.
+**Late fusion (전통)** 방식은 각 센서에서 독립적으로 3D bounding box를 검출하고 NMS(Non-Maximum Suppression)로 결합한다. 모듈화와 디버깅이 쉬운 반면, 센서 간 상보성을 충분히 활용하기 어렵다.
 
-- **Deep fusion (현대)**: BEV (Bird's Eye View) 공간에서 여러 센서의 feature를 직접 결합한다. [BEVFusion](https://arxiv.org/abs/2205.13542) (MIT/Nvidia), TransFusion 등이 대표적. 장점: 센서 간 상보적 정보를 네트워크가 학습으로 활용. 단점: end-to-end로 학습해야 하므로 대규모 레이블 데이터 필요.
+**Deep fusion (현대)** 방식은 BEV(Bird's Eye View) 공간에서 여러 센서의 feature를 직접 결합한다. [BEVFusion](https://arxiv.org/abs/2205.13542) (MIT/Nvidia), TransFusion 등이 대표적이며, 센서 간 상보적 정보를 네트워크가 학습으로 활용한다. 단, end-to-end 학습에 대규모 레이블 데이터가 필요하다는 부담이 있다.
 
 ```python
 # BEV Fusion 개념도 (pseudo-code)
@@ -120,11 +120,7 @@ $$\mathbf{x}^* = \arg\min \underbrace{f_{\text{IMU}}}_{\text{예측}} + \underbr
 
 ### 12.2.1 Visual-Inertial 중심 시스템
 
-드론에서 가장 많이 사용되는 센서 조합은 **카메라 + IMU**다. 이유:
-
-- **무게/크기 제약**: 소형 드론은 LiDAR를 탑재하기 어렵다 (Livox Mid-360 같은 소형 solid-state LiDAR가 등장하면서 변화 중).
-- **전력 제약**: 카메라와 IMU는 전력 소비가 적다.
-- **진동**: 드론의 프로펠러 진동이 IMU 데이터에 노이즈를 추가한다. 방진 마운트와 소프트웨어 필터링이 필요하다.
+드론에서 가장 많이 사용되는 센서 조합은 카메라 + IMU다. 소형 드론은 무게와 전력 제약 때문에 LiDAR를 탑재하기 어렵고, 카메라와 IMU는 두 제약을 모두 만족한다(Livox Mid-360 같은 소형 solid-state LiDAR가 등장하면서 변화 중이긴 하다). 별도의 과제는 진동이다. 드론의 프로펠러 진동이 IMU 데이터에 노이즈를 추가하므로, 방진 마운트와 소프트웨어 필터링이 함께 필요하다.
 
 대표적 VIO 시스템 for 드론:
 - **VINS-Mono/Fusion**: tightly-coupled optimization 기반. PX4와 통합 가능.
@@ -135,21 +131,18 @@ $$\mathbf{x}^* = \arg\min \underbrace{f_{\text{IMU}}}_{\text{예측}} + \underbr
 
 드론의 핵심 도전은 GPS 신호가 없는 환경 — 실내, 터널, 숲 캐노피 아래, 전자전 환경 — 에서의 자율 비행이다.
 
-**해결 접근**:
+접근 방식은 사전 인프라 여부에 따라 갈린다.
 
-1. **VIO 단독**: 단기적으로 안정적이지만 드리프트 누적. 수 분 이내의 미션에 적합.
-2. **VIO + 지형 매칭**: 사전 구축된 지형/건물 맵과 현재 카메라 관측을 매칭. Prior map이 필요.
-3. **VIO + UWB**: UWB 앵커를 환경에 설치하고 ranging 측정으로 드리프트 보정. 사전 인프라 필요.
-4. **VIO + barometer**: 고도 추정에 기압계를 보조 센서로 활용. VIO의 z축 드리프트 보정.
+1. **VIO 단독**: 단기적으로 안정적이지만 드리프트가 누적된다. 수 분 이내의 단거리 미션에 적합하다.
+2. **VIO + 지형 매칭**: 사전 구축된 지형·건물 맵과 현재 카메라 관측을 매칭해 드리프트를 억제한다. prior map이 필요하다.
+3. **VIO + UWB**: 환경에 UWB 앵커를 설치하고 ranging 측정으로 드리프트를 보정한다. 인프라 사전 구축이 전제다.
+4. **VIO + barometer**: 기압계를 보조 센서로 추가해 z축 드리프트를 잡는다. 별도 인프라 없이 적용 가능하다.
 
 ### 12.2.3 실시간 제약
 
-드론은 고속 비행(5~15 m/s)과 급격한 자세 변화(flip, 급선회)를 수행한다. 이에 따른 센서 퓨전 요구사항:
+드론은 고속 비행(5~15 m/s)과 급격한 자세 변화(flip, 급선회)를 수행한다. IMU rate는 200~1000 Hz가 필요하며, 고속 모션의 pose 변화를 충분히 캡처해야 한다. 카메라는 모션 블러를 줄이기 위해 짧은 노출 시간이 필요하지만, 이는 저조도에서의 노이즈 증가와 트레이드오프다. state estimation 결과는 30 ms 이내에 제어기에 전달되어야 하며, 지연이 길면 제어 불안정으로 이어진다.
 
-- **IMU rate**: 200~1000 Hz. 고속 모션의 pose 변화를 충분히 캡처해야 한다.
-- **카메라 exposure**: 모션 블러를 줄이기 위해 짧은 노출 시간 필요. 이는 저조도에서 노이즈 증가와 트레이드오프.
-- **Processing latency**: state estimation 결과가 30 ms 이내에 제어기에 전달되어야 한다. 지연이 길면 제어 불안정.
-- **Point-LIO**: 포인트 단위로 처리하여 스캔 완료를 기다리지 않는 초저지연 LIO. 드론의 고속 기동에 특히 유리.
+**Point-LIO**는 포인트 단위로 처리하여 스캔 완료를 기다리지 않는 초저지연 LIO다. 드론의 고속 기동에 특히 유리하다.
 
 ```python
 class DroneVIOConfig:
@@ -268,21 +261,19 @@ Post-processing (클라우드 정리, mesh 생성)
 
 각 데이터셋의 특성과 용도:
 
-**KITTI** — 2012년 공개로 역사가 깊지만 여전히 자율주행 SLAM 벤치마크의 표준이다. Velodyne 64채널 LiDAR, 스테레오 카메라, GPS/IMU를 제공한다. 한계: 센서가 오래되었고, 시퀀스가 비교적 짧으며, ground truth가 GPS/INS 기반이므로 cm 수준 정확도가 아닐 수 있다.
+**KITTI** — 2012년 공개로 역사가 깊지만 여전히 자율주행 SLAM 벤치마크의 표준이다. Velodyne 64채널 LiDAR, 스테레오 카메라, GPS/IMU를 제공한다. 한계도 뚜렷하다. 센서가 오래되었고 시퀀스가 짧다. ground truth는 GPS/INS 기반이라 cm 수준 정확도를 보장하지 않는다.
 
 **EuRoC** — 드론(MAV)에 장착된 스테레오 카메라 + IMU 데이터로, VIO 시스템의 사실상 표준 벤치마크다. Ground truth는 Vicon 모션 캡처(sub-mm 정확도) 또는 Leica 레이저 트래커(mm 정확도)로 제공된다. 11개 시퀀스가 easy → medium → difficult로 분류되어 있다.
 
-**Hilti** — 건설 현장이라는 도전적 환경(먼지, 진동, 반복적 구조)에서의 SLAM을 평가한다. 2021년부터 매년 SLAM 대회를 개최하여 최신 시스템의 한계를 드러내고 있다.
+**Hilti** — 건설 현장이라는 도전적 환경(먼지, 진동, 반복 구조물)에서의 SLAM을 평가한다. 2021년부터 매년 SLAM 대회를 개최하여 최신 시스템의 한계를 드러내고 있다.
 
 **HeLiPR** — 2023년 공개된 최신 데이터셋으로, 서로 다른 종류의 LiDAR(spinning, solid-state, FMCW)를 동시에 탑재한 것이 핵심 특징이다. 이종 LiDAR 퓨전이라는 새로운 연구 방향을 지원한다.
 
 **Newer College** — 옥스퍼드 대학 캠퍼스를 여러 번 방문하며 수집한 데이터로, multi-session SLAM과 long-term mapping 연구에 적합하다. 핸드헬드 LiDAR로 수집되어 도전적인 모션 패턴을 포함한다.
 
-**최근 벤치마크 동향 (2024~2025)**:
+2022년 이후 새로운 벤치마크가 빠르게 추가되고 있다.
 
-- **[Hilti-Oxford](https://arxiv.org/abs/2208.09825)** (2022): mm 수준 정확도의 ground truth를 제공하는 건설 환경 SLAM 벤치마크로, 2022년부터 매년 SLAM challenge를 개최하고 있다.
-- **[Boreas](https://arxiv.org/abs/2203.10168)** (Burnett et al. 2023): 1년간 동일 경로를 반복 주행하여 수집한 자율주행 데이터셋으로, LiDAR·radar·카메라를 포함하며 사계절과 악천후 조건을 반영한다.
-- **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (Huai et al., IJRR 2025): 4D radar SLAM 평가를 위한 대규모 벤치마크로, 다양한 환경과 플랫폼에서 4D radar odometry/SLAM을 체계적으로 비교한다.
+[Hilti-Oxford](https://arxiv.org/abs/2208.09825) (2022)는 mm 수준 ground truth를 제공하는 건설 환경 SLAM 벤치마크로, 매년 SLAM challenge를 개최하며 최신 시스템의 한계를 드러낸다. [Boreas](https://arxiv.org/abs/2203.10168) (Burnett et al. 2023)는 동일 경로를 1년간 반복 주행하여 수집한 자율주행 데이터셋이다. LiDAR·radar·카메라를 포함하며 사계절 조건을 모두 담는다. [Snail-Radar](https://arxiv.org/abs/2407.11705) (Huai et al., IJRR 2025)는 4D radar SLAM 평가를 위한 대규모 벤치마크로, 다양한 환경과 플랫폼에서 4D radar odometry/SLAM을 체계적으로 비교한다.
 
 ### 12.4.2 평가 메트릭
 
@@ -302,10 +293,7 @@ $$\text{RPE}(\Delta) = \sqrt{\frac{1}{M} \sum_{i=1}^{M} \| \text{trans}((\mathbf
 
 $\Delta$는 평가 구간 (프레임 수 또는 거리). 짧은 $\Delta$에서의 RPE는 odometry 정확도를, 긴 $\Delta$에서의 RPE는 드리프트를 반영한다.
 
-**Place Recognition 메트릭**:
-- **Recall@N**: 상위 N개 후보 중 올바른 장소가 포함된 비율. Recall@1이 가장 엄격.
-- **Precision-Recall curve**: threshold에 따른 precision과 recall의 트레이드오프.
-- **AUC**: PR 커브 아래 면적.
+Place recognition에는 별도의 메트릭이 사용된다. **Recall@N**은 상위 N개 후보 중 올바른 장소가 포함된 비율이며, Recall@1이 가장 엄격한 기준이다. **Precision-Recall curve**는 threshold에 따른 precision·recall 트레이드오프를 보여주고, **AUC**는 그 커브 아래 면적으로 전체 성능을 단일 수치로 요약한다.
 
 ```python
 import numpy as np
@@ -451,7 +439,7 @@ def umeyama_alignment(source, target, with_scale=True):
 
 ## 12.5 오픈소스 도구 가이드
 
-센서 퓨전 연구와 실무에서 자주 사용하는 오픈소스 도구들을 정리한다.
+센서 퓨전 연구와 실무에서 자주 쓰는 오픈소스 도구들을 묶었다.
 
 ### 12.5.1 최적화 라이브러리
 
@@ -672,7 +660,7 @@ def compare_systems(gt_file, system_files, system_names):
 **ROS 2** (Robot Operating System):
 - 센서 퓨전 시스템의 통합 프레임워크
 - 센서 드라이버, 시간 동기화, 메시지 전달 인프라 제공
-- 대부분의 오픈소스 SLAM 시스템이 ROS 패키지로 제공됨
+- 대부분의 오픈소스 SLAM 시스템이 ROS 패키지로 나옴
 
 **Open3D**:
 - 3D 데이터 처리 Python 라이브러리
@@ -687,9 +675,9 @@ def compare_systems(gt_file, system_files, system_names):
 
 **COLMAP**:
 - Structure from Motion (SfM) + Multi-View Stereo (MVS) 파이프라인
-- 이미지 집합으로부터 3D 재구성
-- 센서 퓨전에서 camera intrinsic 추정이나 ground truth 맵 구축에 활용
+- 이미지 집합으로 3D 재구성
+- 센서 퓨전에서 camera intrinsic 추정이나 ground truth 맵 구축에 쓴다
 
 ---
 
-이 챕터에서 살펴본 실전 시스템과 벤치마크는 Ch.2-11의 이론이 실제 제품과 연구에서 어떻게 적용되는지를 보여준다. 마지막 챕터에서는 아직 성숙하지 않았지만 분야의 미래를 바꿀 수 있는 **연구 프런티어** — Foundation model, event camera, 4D radar, end-to-end SLAM — 를 다룬다.
+이 챕터에서 살펴본 실전 시스템과 벤치마크는 Ch.2-11의 이론이 실제 제품과 연구에서 어떻게 작동하는지를 보여준다. 마지막 챕터에서는 아직 성숙하지 않았지만 분야의 방향을 바꿀 수 있는 **연구 프런티어** — Foundation model, event camera, 4D radar, end-to-end SLAM — 를 본다.
