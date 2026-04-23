@@ -1,6 +1,6 @@
 # Ch.1 — Why Sensor Fusion?
 
-이 가이드는 센서 퓨전(Sensor Fusion)의 이론과 실전을 체계적으로 다루는 심화 레퍼런스이다. 로보틱스 입문자이면서 선형대수와 확률론의 기초는 갖춘 독자를 대상으로 한다. 첫 챕터에서는 센서 퓨전이라는 분야의 전체 지도를 그린다 — 왜 단일 센서로는 부족한지, 어떤 방식으로 센서를 결합할 수 있는지, 그리고 고전적 방법과 딥러닝 기반 방법이 각각 어떤 역할을 맡고 있는지를 조망한다.
+이 가이드는 센서 퓨전(Sensor Fusion)의 이론과 실전을 깊이 있게 다루는 심화 레퍼런스이다. 로보틱스 입문자이면서 선형대수와 확률론의 기초는 갖춘 독자를 대상으로 한다. 첫 챕터에서는 센서 퓨전이라는 분야의 전체 지도를 그린다 — 왜 단일 센서로는 부족한지, 어떤 방식으로 센서를 결합할 수 있는지, 고전적 방법과 딥러닝 기반 방법이 각각 어떤 역할을 맡고 있는지.
 
 ---
 
@@ -14,7 +14,7 @@
 
 **조명 의존성.** 카메라는 피사체로부터 반사된 빛을 감지하는 수동(passive) 센서이다. 따라서 야간, 터널, 역광 등 조명 조건이 열악한 환경에서 성능이 급격히 저하된다. 자동 노출(auto-exposure)로 일부 완화할 수 있으나, 센서 자체의 다이내믹 레인지(dynamic range)를 넘어서는 장면에서는 포화(saturation) 또는 언더익스포저(underexposure)가 불가피하다.
 
-**스케일 모호성.** 단안(monocular) 카메라는 3D 세계를 2D 이미지로 투영하면서 깊이 정보를 잃는다. 2m 거리의 1m 물체와 20m 거리의 10m 물체는 이미지에서 동일한 크기로 나타날 수 있다. 이 스케일 모호성(scale ambiguity)은 단안 비주얼 오도메트리(monocular visual odometry)에서 절대 스케일을 복원할 수 없는 근본적 원인이 된다. 스테레오 카메라나 다른 센서와의 융합 없이는 미터 단위의 정확한 거리 추정이 원천적으로 불가능하다.
+**스케일 모호성.** 단안(monocular) 카메라는 3D 세계를 2D 이미지로 투영하면서 깊이 정보를 잃는다. 2m 거리의 1m 물체와 20m 거리의 10m 물체는 이미지에서 동일한 크기로 나타날 수 있다. 단안 비주얼 오도메트리(monocular visual odometry)가 절대 스케일을 복원할 수 없는 것도 이 스케일 모호성(scale ambiguity) 때문이다. 스테레오 카메라나 다른 센서와의 융합 없이는 미터 단위의 정확한 거리 추정이 원천적으로 불가능하다.
 
 **텍스처리스(textureless) 환경.** 흰 벽, 긴 복도, 넓은 포장도로처럼 시각적 특징이 부족한 환경에서는 특징점(feature point) 추출과 추적이 실패한다. Direct 방식의 비주얼 오도메트리도 포토메트릭 그래디언트(photometric gradient)가 부족하면 동일한 문제에 직면한다.
 
@@ -32,7 +32,7 @@ LiDAR(Light Detection And Ranging)는 레이저 펄스를 발사하고 반사파
 
 ### IMU의 한계
 
-관성 측정 장치(Inertial Measurement Unit, IMU)는 가속도와 각속도를 측정하는 센서로, 고주파(보통 100Hz–1kHz)의 자기수용적(proprioceptive) 데이터를 제공한다. 외부 환경에 의존하지 않는다는 것이 최대 장점이나, 치명적인 한계가 있다.
+관성 측정 장치(Inertial Measurement Unit, IMU)는 가속도와 각속도를 측정하는 센서로, 고주파(100Hz–1kHz)의 자기수용적(proprioceptive) 데이터를 제공한다. 외부 환경에 의존하지 않는다는 것이 최대 장점이나, 치명적인 한계가 있다.
 
 **드리프트(drift).** IMU 측정을 적분하여 속도와 위치를 계산하면, 센서 바이어스(bias)와 노이즈가 시간에 따라 적분되어 오차가 누적된다. 가속도의 이중 적분으로 위치를 구하면 오차는 $t^2$에 비례하여 발산한다. 항법 등급(navigation-grade)의 고급 IMU조차 수 분 내에 상당한 위치 오차를 보이며, 로보틱스에 흔히 사용되는 MEMS급 IMU는 수 초 만에 미터 단위의 오차가 발생한다.
 
@@ -46,9 +46,9 @@ $$\delta \mathbf{p}(t) \approx \frac{1}{2} \mathbf{b}_a \, t^2 + \frac{1}{\sqrt{
 
 위성 항법 시스템(Global Navigation Satellite System, GNSS)은 전지구적 절대 위치를 제공하지만, 다음과 같은 한계가 있다.
 
-**차폐 환경.** 실내, 터널, 도심의 고층 빌딩 사이(urban canyon)에서는 위성 신호가 차단되거나 다중경로(multipath) 반사에 의해 수십 미터의 오차가 발생한다.
+**차폐 환경.** 실내, 터널, 도심의 고층 빌딩 사이(urban canyon)에서는 위성 신호가 차단되거나 다중경로(multipath) 반사로 수십 미터의 오차가 생긴다.
 
-**업데이트 주기.** 일반적으로 1–10Hz의 낮은 업데이트 주기를 가져 빠른 동적 운동을 추적하기 어렵다.
+**업데이트 주기.** 수신기 출력 주기는 1–10Hz로, 빠른 동적 운동을 추적하기 어렵다.
 
 **정밀도 한계.** 표준 단독 측위의 정밀도는 수 미터 수준이다. RTK(Real-Time Kinematic)를 사용하면 센티미터 급으로 향상되지만, 기준국(base station)이 필요하고, 초기 수렴(convergence)에 시간이 걸린다.
 
@@ -69,7 +69,7 @@ $$\delta \mathbf{p}(t) \approx \frac{1}{2} \mathbf{b}_a \, t^2 + \frac{1}{\sqrt{
 | 실내 동작 | ✓ | ✓ | ✓ | ✗ |
 | 비용 | 저 | 고 | 중~저 | 중 |
 
-이 표가 보여주는 메시지는 명확하다: **어떤 단일 센서도 모든 상황에서 충분하지 않다.** 센서 퓨전(Sensor Fusion)은 이 문제에 대한 체계적인 해답이다.
+결론은 명확하다: **어떤 단일 센서도 모든 상황에서 충분하지 않다.** 센서 퓨전(Sensor Fusion)은 이 문제를 체계적으로 푸는 방법이다.
 
 ---
 
@@ -81,7 +81,7 @@ $$\delta \mathbf{p}(t) \approx \frac{1}{2} \mathbf{b}_a \, t^2 + \frac{1}{\sqrt{
 
 서로 다른 물리량을 측정하는 센서들이 각자의 부족한 부분을 보완하는 형태이다. 각 센서는 전체 상태(state)의 서로 다른 부분집합을 관측하며, 이들을 결합하면 단일 센서로는 관측할 수 없는 완전한 상태를 추정할 수 있다.
 
-**대표 예시: 카메라 + IMU (Visual-Inertial Odometry)**
+**대표 예시: 카메라 + IMU (Visual-Inertial Odometry, VIO)**
 
 - 카메라는 6-DoF 포즈의 상대 변화를 제공하지만 스케일이 모호하고 고속 모션에서 실패한다.
 - IMU는 고주파의 가속도/각속도를 제공하여 카메라 프레임 사이의 빠른 모션을 보간하고, 중력 방향으로부터 스케일을 복원시킨다.
@@ -93,7 +93,7 @@ $$\delta \mathbf{p}(t) \approx \frac{1}{2} \mathbf{b}_a \, t^2 + \frac{1}{\sqrt{
 - IMU는 고주파(수백 Hz)의 상대 이동을 제공한다.
 - GNSS가 끊기는 터널 내부에서는 IMU가 단기 항법을 이어가고, GNSS가 복귀하면 누적된 IMU 드리프트를 교정한다.
 
-이 유형의 핵심은 **관측 가능성(observability)**의 확장이다. 단일 센서로는 관측 불가능한(unobservable) 상태 변수가 다른 센서의 관측에 의해 관측 가능해진다.
+이 유형의 핵심은 **관측 가능성(observability)**의 확장이다. 단일 센서로는 관측 불가능한(unobservable) 상태 변수를, 다른 센서의 관측이 관측 가능하게 만든다.
 
 ### Competitive Fusion (경쟁적 융합)
 
@@ -243,11 +243,11 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 
 ### 딥러닝이 바꾼 것
 
-**특징점 추출과 매칭.** 전통적으로 SIFT, ORB 같은 수작업 설계(handcrafted) 특징 기술자가 사용되었다. [SuperPoint (DeTone et al., 2018)](https://arxiv.org/abs/1712.07629)는 자기 지도 학습(self-supervised learning)으로 키포인트 검출과 기술을 동시에 수행하며, 조명과 시점 변화에 대한 강건성을 크게 높였다. [SuperGlue (Sarlin et al., 2020)](https://arxiv.org/abs/1911.11763)는 그래프 뉴럴 네트워크(GNN)와 어텐션 메커니즘으로 특징점 매칭을 혁신했다. 가장 최근에는 [LoFTR (Sun et al., 2021)](https://arxiv.org/abs/2104.00680), [RoMa (Edstedt et al., 2024)](https://arxiv.org/abs/2305.15404) 같은 **detector-free** 방법이 키포인트 없이 직접 밀집 대응(dense correspondence)을 찾아, 텍스처가 부족한 환경에서도 매칭에 성공하고 있다.
+**특징점 추출과 매칭.** 전통적으로는 SIFT, ORB 같은 수작업 설계(handcrafted) 특징 기술자를 썼다. [SuperPoint (DeTone et al., 2018)](https://arxiv.org/abs/1712.07629)는 자기 지도 학습(self-supervised learning)으로 키포인트 검출과 기술을 동시에 수행하며, 조명과 시점 변화에 대한 강건성을 크게 높였다. [SuperGlue (Sarlin et al., 2020)](https://arxiv.org/abs/1911.11763)는 그래프 뉴럴 네트워크(GNN)와 어텐션 메커니즘으로 특징점 매칭에 적용하여, 수작업 기술자 기반의 최근접 이웃 매칭보다 낮은 오매칭률을 기록했다. 가장 최근에는 [LoFTR (Sun et al., 2021)](https://arxiv.org/abs/2104.00680), [RoMa (Edstedt et al., 2024)](https://arxiv.org/abs/2305.15404) 같은 **detector-free** 방법이 키포인트 없이 직접 밀집 대응(dense correspondence)을 찾아, 텍스처가 부족한 환경에서도 매칭에 성공하고 있다.
 
-이 영역에서 학습 기반 방법은 전통 방법을 명확히 능가하며, **패러다임 전환**이 일어나고 있다고 할 수 있다.
+이 영역에서 학습 기반 방법은 전통 방법을 명확히 능가한다. **패러다임 전환**이 진행 중이다.
 
-**장소 인식(Place Recognition).** Bag of Words (DBoW2)에서 [NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247)로의 전환은 극적이었다. CNN 기반의 전역 기술자(global descriptor)는 조명, 계절, 시점 변화에 훨씬 강건한 장소 인식을 가능하게 했다. 최근 [AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688)은 DINOv2 같은 Foundation Model의 특징을 활용하여 별도의 학습 없이도 다양한 환경에서 범용적으로 동작하는 장소 인식을 보여주었다.
+**장소 인식(Place Recognition).** Bag of Words (DBoW2)에서 [NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247)로의 전환은 성능 격차가 컸다. CNN 기반의 전역 기술자(global descriptor)는 조명, 계절 변화가 있는 환경에서 DBoW2보다 재인식률이 크게 높았다. 최근 [AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688)은 DINOv2 같은 Foundation Model의 특징을 활용하여 별도의 학습 없이도 다양한 환경에서 범용적으로 동작하는 장소 인식을 보여주었다.
 
 **단안 깊이 추정.** 단일 이미지로부터 깊이를 추정하는 것은 고전적 방법으로는 불가능한 작업이다(기하학적 단서가 부족). [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) 같은 모델은 대규모 데이터에서 학습하여 놀라운 수준의 단안 깊이 추정을 달성했다. 후속작인 [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414)는 합성 데이터 학습과 대규모 pseudo-labeling을 통해 정밀도를 더욱 끌어올렸으며, [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506)는 zero-shot으로 절대 스케일의 깊이 추정까지 가능하게 하여, LiDAR 없이도 메트릭 깊이 정보를 센서 퓨전에 활용할 수 있는 가능성을 열고 있다. 이 기술은 센서 퓨전에서 LiDAR를 대체하거나 보완하는 역할로 활용될 잠재력이 있다.
 
@@ -257,7 +257,7 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 
 ### 딥러닝이 바꾸지 못한 것
 
-**상태 추정(State Estimation) 백엔드.** 칼만 필터, 팩터 그래프 최적화 등 확률론적 추정 프레임워크는 딥러닝으로 대체되지 않았다. 그 이유는 명확하다:
+**상태 추정(State Estimation) 백엔드.** 칼만 필터, 팩터 그래프 최적화 등 확률론적 추정 프레임워크는 딥러닝이 대체하지 못했다. 이유는 명확하다:
 
 1. **불확실성의 엄밀한 전파**: 칼만 필터와 팩터 그래프는 관측의 불확실성을 수학적으로 엄밀하게 추적하고 전파한다. 딥러닝 모델이 유사한 수준의 calibrated uncertainty를 제공하기 어렵다.
 2. **물리 법칙의 보장**: 상태 전이 모델(동역학, 기구학)에 물리 법칙을 직접 인코딩하여 물리적으로 불가능한 추정을 방지한다. 학습 기반 방법은 이러한 하드 제약(hard constraint)을 보장하지 못한다.
@@ -300,9 +300,9 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 | Map representation | Occupancy/TSDF | NeRF / 3DGS | 공존 |
 | State estimation backend | KF / Factor Graph | End-to-end 시도 | 전통 압도적 우세 |
 
-이 표에서 주목할 패턴은 **지각(perception)에 가까울수록 학습이 강하고, 추론(inference/estimation)에 가까울수록 전통이 강하다**는 것이다. 이 패턴은 센서 퓨전 시스템을 설계할 때 어디에 딥러닝을 투입하고 어디에 전통 방법을 유지할지를 판단하는 중요한 기준이 된다.
+표에서 눈에 띄는 패턴이 있다: **지각(perception)에 가까울수록 학습이 강하고, 추론(inference/estimation)에 가까울수록 전통이 강하다.** 센서 퓨전 시스템을 설계할 때 어디에 딥러닝을 투입하고 어디에 전통 방법을 유지할지, 이 패턴이 기준이 된다.
 
-지금까지 센서 퓨전의 분류 체계와 고전-학습 방법의 역할 분담을 개관했다. 이제 이 가이드가 이 넓은 분야를 어떻게 다루는지, 그리고 독자가 어떤 순서로 읽으면 좋은지를 소개한다.
+지금까지 센서 퓨전의 분류 체계와 고전-학습 방법의 역할 분담을 훑었다. 다음 절에서는 이 가이드의 구성과 읽는 순서를 정리한다.
 
 ---
 
