@@ -181,7 +181,7 @@ Schur complement로 pose만 먼저 풀 수 있다:
 
 $$(\mathbf{H}_{pp} - \mathbf{H}_{pd} \mathbf{H}_{dd}^{-1} \mathbf{H}_{dp}) \Delta \boldsymbol{\xi} = \mathbf{b}_p - \mathbf{H}_{pd} \mathbf{H}_{dd}^{-1} \mathbf{b}_d$$
 
-$\mathbf{H}_{dd}$는 대각 행렬이므로(각 depth는 독립) 역행렬이 $O(1)$이다. 이것이 전통 BA와 동일한 구조적 효율성을 학습 시스템 안에서 구현한 것이다.
+$\mathbf{H}_{dd}$는 대각 행렬이므로(각 depth는 독립) 역행렬이 $O(1)$이다. 이 구조가 전통 BA와 동일한 효율성을 학습 시스템 안에서 달성하는 방식이다.
 
 3. **프레임 그래프 기반 루프 클로저**: co-visibility 기반으로 프레임 그래프를 동적 구축. 재방문 시 장거리 에지를 추가하여 implicit loop closure 수행.
 
@@ -748,7 +748,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 
 ## 마무리
 
-이 가이드는 센서 모델링(Ch.2)에서 출발하여 캘리브레이션(Ch.3), 상태 추정 이론(Ch.4), 특징점 매칭(Ch.5), VO/VIO(Ch.6), LiDAR odometry(Ch.7), 멀티센서 퓨전(Ch.8), Place Recognition(Ch.9), Loop Closure(Ch.10), 공간 표현(Ch.11), 실전 시스템(Ch.12), 그리고 연구 프런티어(Ch.13)까지 — 센서 퓨전의 전체 파이프라인을 추적해왔다.
+이 가이드는 센서 모델링(Ch.2)에서 출발하여 캘리브레이션(Ch.3), 상태 추정 이론(Ch.4), 특징점 매칭(Ch.5), VO/VIO(Ch.6), LiDAR odometry(Ch.7), 멀티센서 퓨전(Ch.8), Place Recognition(Ch.9), Loop Closure(Ch.10), 공간 표현(Ch.11), 실전 시스템(Ch.12), 그리고 연구 프런티어(Ch.13)까지 — 센서 퓨전의 전체 파이프라인을 단계별로 다루었다.
 
 이 분야의 핵심 서사를 다시 한번 정리하면:
 

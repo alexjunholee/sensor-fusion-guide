@@ -95,7 +95,7 @@ $$R = \det(\mathbf{M}) - k \cdot \text{tr}(\mathbf{M})^2 = \lambda_1 \lambda_2 -
 
 여기서 $k$는 보통 0.04~0.06. $R > \text{threshold}$인 점을 코너로 선택하고, non-maximum suppression을 적용한다.
 
-**Harris의 한계**: 회전 불변(rotation invariant)이지만 **스케일 불변이 아니다**. 카메라가 가까이 다가가면 코너가 엣지로 보일 수 있다. 이 한계가 SIFT의 scale-space 접근법을 동기부여했다.
+**Harris의 한계**: 회전 불변(rotation invariant)이지만 **스케일 불변이 아니다**. 카메라가 가까이 다가가면 코너가 엣지로 보일 수 있다. 이 한계가 SIFT의 scale-space 접근법의 동기가 되었다.
 
 ```python
 import cv2
@@ -363,7 +363,7 @@ inlier_matches = [m for m, flag in zip(good_matches, mask.ravel()) if flag]
 
 #### PROSAC (Progressive Sample Consensus, 2005)
 
-Chum & Matas가 제안. RANSAC이 균등 무작위 샘플링을 하는 반면, PROSAC은 **매칭 품질(예: 디스크립터 거리)** 순으로 정렬한 뒤 상위 매칭부터 점진적으로 샘플링한다.
+Chum & Matas가 제안했다. RANSAC이 균등 무작위 샘플링을 하는 반면, PROSAC은 **매칭 품질(예: 디스크립터 거리)** 순으로 정렬한 뒤 상위 매칭부터 점진적으로 샘플링한다.
 
 직관: 좋은 매칭일수록 인라이어일 확률이 높으므로, 상위 매칭에서 먼저 모델을 시도하면 더 빨리 좋은 모델을 찾는다. RANSAC 대비 수~수십 배 빠른 수렴.
 
@@ -968,7 +968,7 @@ RoMa는 두 가지 핵심 전환을 체현한다:
 1. **Foundation Model 활용**: 처음부터 학습 → 대규모 사전학습 모델의 특징을 기반으로 매칭 로직만 학습
 2. **확률적 매칭**: 결정론적 점 예측 → 확률 분포 예측, 불확실한 매칭을 명시적으로 다룸
 
-RAFT의 iterative refinement 아이디어와 LoFTR의 detector-free 사고방식을 결합하면서, DINOv2의 사전학습 특징을 도입한 종합적 발전이다.
+RoMa는 RAFT의 iterative refinement 아이디어와 LoFTR의 detector-free 사고방식을 결합하면서, DINOv2의 사전학습 특징을 도입한 종합적 발전이다.
 
 ### 5.7.6 최신 동향: 3D-Aware Dense Matching (2024-2025)
 

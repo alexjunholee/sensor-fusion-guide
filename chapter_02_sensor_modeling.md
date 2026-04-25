@@ -174,7 +174,7 @@ def project_fisheye(P_c, K, fisheye_coeffs):
 
 재투영 오차(reprojection error)는 센서 퓨전에서 카메라 관측을 활용하는 거의 모든 알고리즘의 핵심 비용 함수이다.
 
-재투영 오차는, 카메라 포즈 $\mathbf{T}_{cw} = [\mathbf{R}|\mathbf{t}]$로 3D 랜드마크 $\mathbf{P}_w$를 이미지에 투영한 예측 좌표 $\hat{\mathbf{p}}$와 실제 관측된 특징점 좌표 $\mathbf{p}_{\text{obs}}$ 사이의 차이이다:
+재투영 오차는 카메라 포즈 $\mathbf{T}_{cw} = [\mathbf{R}|\mathbf{t}]$로 3D 랜드마크 $\mathbf{P}_w$를 이미지에 투영한 예측 좌표 $\hat{\mathbf{p}}$와 실제 관측된 특징점 좌표 $\mathbf{p}_{\text{obs}}$ 사이의 차이이다:
 
 $$\mathbf{e}_{\text{reproj}} = \mathbf{p}_{\text{obs}} - \pi(\mathbf{T}_{cw} \cdot \mathbf{P}_w)$$
 
@@ -407,7 +407,7 @@ $$\tilde{\mathbf{a}} = \mathbf{R}_{bw}(\mathbf{a}_w - \mathbf{g}_w) + \mathbf{b}
 - $\mathbf{b}_a$: 가속도계 바이어스
 - $\mathbf{n}_a \sim \mathcal{N}(\mathbf{0}, \sigma_a^2 \mathbf{I})$: 측정 노이즈
 
-**중력의 역할.** 가속도계가 중력을 "느끼는" 것은 IMU 기반 퓨전에서 매우 중요하다. 정지 상태에서도 가속도계는 $[0, 0, g]^\top$ (위 방향을 z로 놓은 경우)을 측정한다. 이 중력 관측으로부터 롤(roll)과 피치(pitch)를 추정할 수 있다. 그러나 요(yaw)는 중력 벡터에 대한 회전이므로 관측 불가능(unobservable)하다 — VIO/LIO 초기화에서 요 각도를 추정하려면 시각적 특징점의 이동 등 추가 관측이 필요한 것은 이 때문이다.
+**중력의 역할.** 가속도계가 중력을 "느끼는" 것은 IMU 기반 퓨전에서 매우 중요하다. 정지 상태에서도 가속도계는 $[0, 0, g]^\top$ (위 방향을 z로 놓은 경우)을 측정한다. 이 중력 관측으로부터 롤(roll)과 피치(pitch)를 추정할 수 있다. 그러나 요(yaw)는 중력 벡터에 대한 회전이므로 관측 불가능(unobservable)하다. 이 때문에 VIO/LIO 초기화에서 요 각도를 추정하려면 시각적 특징점의 이동 등 추가 관측이 필요하다.
 
 **바이어스 동역학.** 자이로스코프와 동일하게 랜덤 워크로 모델링한다:
 
@@ -898,7 +898,7 @@ def estimate_ego_velocity(bearings, doppler_velocities):
     return v_ego
 ```
 
-레이더는 직접적인 속도 측정이라는, 다른 센서가 쉽게 줄 수 없는 정보를 제공한다. Ch.8의 멀티 센서 퓨전 아키텍처에서 레이더가 점점 핵심 센서로 자리잡고 있는 것은 이 때문이다.
+레이더는 직접적인 속도 측정이라는 다른 센서가 쉽게 줄 수 없는 정보를 제공한다. Ch.8의 멀티 센서 퓨전 아키텍처에서 레이더가 점점 핵심 센서로 자리잡고 있는 것은 이 때문이다.
 
 ---
 

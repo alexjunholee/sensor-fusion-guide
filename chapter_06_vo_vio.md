@@ -649,7 +649,7 @@ VIO 시스템을 설계할 때 몇 가지 핵심적인 설계 선택이 있다. 
 
 ### 6.4.1 Filter vs Optimization
 
-이것은 VIO 분야에서 가장 오래된 논쟁 중 하나다.
+Filter vs Optimization 논쟁은 VIO 분야에서 가장 오래된 것 중 하나다.
 
 **Filter 기반 (MSCKF, OpenVINS)**
 
@@ -734,7 +734,7 @@ $$\mathbf{P} = \mathbf{T}_{\text{anchor}} \cdot \frac{1}{\rho} [\bar{u}, \bar{v}
 
 ### 6.5.3 Hybrid: DROID-SLAM
 
-[DROID-SLAM (Teed & Deng, 2021)](https://arxiv.org/abs/2108.10869)은 전통적 BA의 기하학적 엄밀성과 딥러닝의 강건한 매칭 능력을 하나의 미분 가능 파이프라인으로 통합한 시스템이다. 학습 기반 SLAM이 전통적 시스템을 모든 지표에서 능가할 수 있음을 최초로 입증했다.
+[DROID-SLAM (Teed & Deng, 2021)](https://arxiv.org/abs/2108.10869)은 전통적 BA의 기하학적 엄밀성과 딥러닝의 강건한 매칭 능력을 하나의 미분 가능 파이프라인으로 통합한 시스템이다. DROID-SLAM은 학습 기반 SLAM이 전통적 시스템을 모든 지표에서 능가할 수 있음을 최초로 입증했다.
 
 **아키텍처**
 

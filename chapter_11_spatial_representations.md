@@ -241,7 +241,7 @@ Surfel(surface element)은 포인트에 법선 벡터와 반경 정보를 추가
 2. Map deformation: loop closure 시 embedded deformation graph로 surfel map 전체를 비강체적으로 변형한다.
 3. Surfel fusion: 기존 surfel과 새 관측이 겹치면 가중 평균으로 병합한다.
 
-Surfel의 장점은 명시적 mesh 없이도 연속적 표면을 표현할 수 있다는 것이다. 포인트 클라우드보다 표면 정보가 풍부하면서도, mesh보다 갱신이 간단하다.
+Surfel은 명시적 mesh 없이도 연속적 표면을 표현할 수 있다. 포인트 클라우드보다 표면 정보가 풍부하면서도, mesh보다 갱신이 간단하다.
 
 ```python
 class Surfel:
@@ -528,7 +528,7 @@ $$\hat{C}(\mathbf{r}) = \int_{t_n}^{t_f} T(t) \sigma(\mathbf{r}(t)) c(\mathbf{r}
 
 한계는 두 가지다. MLP 학습 속도(training speed)가 느려 실시간 mapping에 제약이 있고, 새 영역을 학습하면 이전 영역의 표현이 퇴화하는 catastrophic forgetting이 발생한다. 대규모 환경에서는 단일 MLP의 용량 한계도 드러난다.
 
-개선 방향으로는 Instant-NGP가 주목된다. hash grid 기반 feature encoding으로 학습 속도를 수십 배 향상시켰고, 이를 활용한 NeRF-SLAM 변형이 등장했다. 공간을 여러 해상도의 해시 테이블로 나누는 multi-resolution hash grid가 핵심 아이디어다.
+개선 방향으로는 Instant-NGP가 주목된다. hash grid 기반 feature encoding으로 학습 속도를 수십 배 향상시켰고, 이를 활용한 NeRF-SLAM 변형이 등장했다. Instant-NGP의 핵심은 공간을 여러 해상도의 해시 테이블로 나누는 multi-resolution hash grid다.
 
 **[NICE-SLAM](https://arxiv.org/abs/2112.12130)** (Zhu et al. 2022): iMAP의 확장성 문제를 해결하기 위해 계층적 feature grid와 사전학습된 기하 디코더를 도입한 dense SLAM 시스템. 대규모 실내 환경에서도 안정적으로 동작하며, CVPR 2022에서 발표되었다.
 
@@ -817,7 +817,7 @@ Object-level map은 개별 객체만 인식한다. 하지만 인간은 환경을
 2. 문(doorway) 같은 좁은 통로에서 가중치가 높아진다 (통과하기 어렵다는 의미).
 3. 커뮤니티 검출 알고리즘(예: dilation 기반)으로 place들을 방 단위로 그룹핑한다.
 
-**계층적 loop closure**: Hydra는 scene graph의 계층 구조를 활용하여 loop closure의 품질을 높인다. 먼저 상위 계층(room, place)에서 후보를 좁히고, 하위 계층(visual feature, object)에서 TEASER++ 기반으로 기하학적 검증을 수행한다. 이 top-down/bottom-up 구조가 단순 BoW 방식보다 더 많고 정확한 loop closure를 가능하게 한다.
+**계층적 loop closure**: Hydra는 scene graph의 계층 구조를 활용하여 loop closure의 품질을 높인다. 먼저 상위 계층(room, place)에서 후보를 좁히고, 하위 계층(visual feature, object)에서 TEASER++ 기반으로 기하학적 검증을 수행한다. 이 top-down/bottom-up 구조 덕분에 단순 BoW 방식보다 더 많은 loop closure를 더 정확하게 확보할 수 있다.
 
 **S-Graphs** (Situational Graphs): Hydra와 유사한 계층적 scene graph이지만, factor graph 최적화에 계층 정보를 직접 포함시킨다. Room, wall, floor 같은 구조적 요소를 factor graph의 변수로 추가하여 SLAM 정확도를 향상시킨다.
 

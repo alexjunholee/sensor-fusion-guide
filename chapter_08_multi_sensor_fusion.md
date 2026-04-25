@@ -639,7 +639,7 @@ def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_off
 
 ### 8.6.3 Failure Mode와 Degradation Handling
 
-실제 시스템에서 센서는 반드시 실패한다. 강건한 시스템은 **graceful degradation** — 즉, 한 센서가 실패해도 나머지 센서로 성능이 저하되더라도 계속 동작하는 것 — 을 달성해야 한다.
+실제 시스템에서 센서는 반드시 실패한다. 강건한 시스템은 **graceful degradation** — 즉, 한 센서가 실패해도 성능이 다소 저하되면서 나머지 센서로 계속 동작하는 것 — 을 달성해야 한다.
 
 **주요 실패 모드와 대응**:
 

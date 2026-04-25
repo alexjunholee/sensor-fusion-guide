@@ -60,7 +60,7 @@ $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i \left((\mathbf{T} \cdot 
 
 단점: closed-form 해가 없어 반복 최적화(Gauss-Newton 등)가 필요하다. 법선 추정의 정확도에 의존한다.
 
-법선 추정은 각 점의 이웃점들에 대해 PCA(주성분 분석)를 수행하여 가장 작은 고유값에 대응하는 고유벡터를 법선으로 취한다. 이웃의 공분산 행렬:
+법선은 각 점의 이웃점들에 대해 PCA(주성분 분석)를 수행하여 가장 작은 고유값에 대응하는 고유벡터로 추정한다. 이웃의 공분산 행렬:
 
 $$\mathbf{C} = \frac{1}{k}\sum_{j \in \mathcal{N}(i)} (\mathbf{q}_j - \bar{\mathbf{q}})(\mathbf{q}_j - \bar{\mathbf{q}})^T$$
 
@@ -616,11 +616,11 @@ Point-LIO ([He et al., 2023](https://doi.org/10.1002/aisy.202200459))는 FAST-LI
 
 Point-LIO는 각 점이 도착하는 즉시 ($\sim$μs 단위) EKF 업데이트를 수행한다. IMU의 고주파(~1kHz) 측정과 LiDAR 점의 타임스탬프를 이용해, 각 점에 대응하는 정확한 IMU 상태를 사용한다.
 
-Point-LIO의 상태 전파 모델은 IMU 측정 사이의 짧은 시간 간격에서:
+Point-LIO의 상태 전파는 IMU 측정 사이의 짧은 시간 간격에서 다음 연속 모델을 이산화한다:
 
 $$\frac{d}{dt}\mathbf{R} = \mathbf{R}[\boldsymbol{\omega}]_\times, \quad \frac{d}{dt}\mathbf{v} = \mathbf{R}\mathbf{a} + \mathbf{g}, \quad \frac{d}{dt}\mathbf{p} = \mathbf{v}$$
 
-를 이산화한다. 점 하나가 올 때마다 state propagation → single-point update를 수행하므로, 사실상 연속 시간(continuous-time) 필터에 근접한다.
+점 하나가 올 때마다 state propagation → single-point update를 수행하므로, 사실상 연속 시간(continuous-time) 필터에 근접한다.
 
 장점: 극단적으로 빠른 모션(초당 수백 도 회전)에서도 정확한 오도메트리. 모션 왜곡 보정이 암묵적으로 이루어진다(각 점이 이미 올바른 시점의 상태로 처리되므로).
 
