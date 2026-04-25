@@ -73,7 +73,7 @@ $$
 
 ### 3.1.3 Zhang's Method: 호모그래피 기반 캘리브레이션
 
-[Zhang (2000)](https://ieeexplore.ieee.org/document/888718)이 제안한 방법은 평면 패턴(체커보드)을 다양한 자세로 촬영한 이미지들로부터 카메라 파라미터를 추정한다. 3D 캘리브레이션 장비 없이 프린터로 출력한 체커보드만 있으면 되므로, 현재 가장 널리 사용되는 캘리브레이션 방법이다.
+[Zhang (2000)](https://ieeexplore.ieee.org/document/888718)이 제안한 방법은 평면 패턴(체커보드)을 다양한 자세로 촬영한 이미지들로부터 카메라 파라미터를 추정한다. 3D 캘리브레이션 장비 없이 프린터로 출력한 체커보드만 있으면 되므로, 이 방법은 현재 가장 널리 사용되는 캘리브레이션 방법이다.
 
 **핵심 아이디어**: 패턴이 $Z = 0$ 평면에 놓이면, 3D-2D 투영이 호모그래피로 단순화된다.
 
@@ -693,7 +693,7 @@ Koide et al. (2023)은 초기 target-based 캘리브레이션 후 targetless NID
 
 ## 3.4 Camera-IMU Extrinsic + Temporal Calibration
 
-카메라와 IMU 사이의 공간적 변위(extrinsic)뿐 아니라 시간적 오프셋(temporal offset)을 동시에 추정하는 것이 핵심이다. VINS-Mono, OpenVINS, Kalibr 등 대표적인 VIO(Visual-Inertial Odometry) 시스템은 모두 이 두 파라미터를 캘리브레이션 입력으로 요구한다.
+카메라와 IMU 사이의 공간적 변위(extrinsic)뿐 아니라 시간적 오프셋(temporal offset)도 동시에 추정해야 한다. VINS-Mono, OpenVINS, Kalibr 등 대표적인 VIO(Visual-Inertial Odometry) 시스템은 모두 이 두 파라미터를 캘리브레이션 입력으로 요구한다.
 
 ### 3.4.1 왜 시간 오프셋이 중요한가
 
@@ -1087,7 +1087,7 @@ FAST-LIO2 같은 최신 LIO 시스템에는 LiDAR-IMU 외부 파라미터를 온
 
 **GRIL-Calib**: 지상 로봇처럼 운동이 평면에 제한되는 경우, 기존 방법은 일부 축의 관측 가능성이 떨어져 정밀도가 저하된다. [GRIL-Calib (Kim et al., 2024)](https://arxiv.org/abs/2312.14035)은 지면 평면 잔차(ground plane residual)를 LiDAR odometry에 활용하고, 지면 평면 운동(GPM) 제약을 최적화에 넣어 평면 운동만으로도 6-DoF 캘리브레이션 파라미터를 추정한다.
 
-여기서는 단일 LiDAR와 단일 IMU 사이를 보았다. 자율주행 차량처럼 여러 대의 LiDAR를 쓰는 시스템에서는 LiDAR 간의 상대 포즈도 결정해야 한다.
+여기서는 단일 LiDAR와 단일 IMU 사이의 캘리브레이션을 다루었다. 자율주행 차량처럼 여러 대의 LiDAR를 쓰는 시스템에서는 LiDAR 간의 상대 포즈도 결정해야 한다.
 
 ---
 
@@ -1197,7 +1197,7 @@ $$
 = \begin{bmatrix} \mathbf{q}, \mathbf{p}, \mathbf{v}, \mathbf{b}_g, \mathbf{b}_a \\ \mathbf{q}_{CI}, \mathbf{p}_{CI}, t_d, f_x, f_y, c_x, c_y, k_1, \ldots \end{bmatrix}
 $$
 
-캘리브레이션 파라미터의 프로세스 모델은 일반적으로 random walk:
+캘리브레이션 파라미터의 프로세스 모델은 일반적으로 random walk로 가정한다:
 
 $$
 \dot{\mathbf{x}}_{\text{calib}} = \mathbf{w}_{\text{calib}}, \quad \mathbf{w}_{\text{calib}} \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_{\text{calib}})

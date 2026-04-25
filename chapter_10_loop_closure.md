@@ -84,7 +84,7 @@ def detect_loop_candidates(query_descriptor, database_descriptors,
 
 Detection 단계는 appearance similarity만으로 후보를 걸러내므로, false positive(실제로는 다른 장소인데 비슷하게 보이는 경우)가 섞인다. Perceptual aliasing — 시각적으로 유사하지만 실제로 다른 장소 — 은 특히 실내 환경(비슷한 복도, 반복적 구조)에서 빈번하다.
 
-잘못된 loop closure 하나가 전체 맵을 뒤틀어버릴 수 있다. verification은 보수적으로 수행해야 한다. recall을 희생하더라도 precision을 극대화한다.
+잘못된 loop closure 하나가 전체 맵을 뒤틀어버릴 수 있다. verification을 보수적으로 수행해야 한다. recall을 희생하더라도 precision을 극대화한다.
 
 기하학적 검증은 다음 방법을 쓴다.
 
@@ -201,7 +201,7 @@ False positive loop closure가 왜 그토록 위험한지 구체적으로 보자
 
 1. **다단계 검증**: appearance similarity → geometric consistency → temporal consistency 순으로 통과해야 한다.
 
-2. **Robust kernel 사용** (§10.2에서 상세): optimizer 자체가 이상치 제약에 덜 민감하게 만든다.
+2. **Robust kernel 사용** (§10.2에서 상세): optimizer 자체를 이상치 제약에 덜 민감하게 만든다.
 
 3. **[Switchable constraints (Sünderhauf & Protzel, 2012)](https://doi.org/10.1109/IROS.2012.6385590)**: 각 loop closure factor에 on/off 스위치 변수를 추가하여, optimizer가 일관성이 떨어지는 loop closure를 자동으로 비활성화한다.
 
@@ -853,7 +853,7 @@ class MultiMapAtlas:
 
 ### 10.4.4 Multi-Robot Map Merging
 
-여러 로봇이 동시에 탐사하는 경우, 각 로봇의 맵을 실시간으로 통합해야 한다. 이때 추가 제약은:
+여러 로봇이 동시에 탐사하는 경우, 각 로봇의 맵을 실시간으로 통합해야 한다. 이때 추가 제약이 붙는다:
 
 - **통신 대역폭**: 전체 포인트 클라우드를 전송할 수 없으므로, 압축된 디스크립터(Scan Context, compact visual descriptor)만 교환한다.
 - **분산 최적화**: 중앙 서버 없이 로봇들이 자율적으로 맵을 병합할 수 있어야 한다. Kimera-Multi와 Swarm-SLAM이 이 문제를 본다.
