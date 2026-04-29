@@ -1,24 +1,24 @@
 # Ch.6 — Visual Odometry & Visual-Inertial Odometry
 
-Ch.4에서 상태 추정 프레임워크를, Ch.5에서 특징점 매칭 기술을 다루었다. 이제 이 두 가지가 실제로 결합되는 첫 번째 시스템 — Visual Odometry(VO)와 Visual-Inertial Odometry(VIO)를 살펴본다.
+Ch.4에서 상태 추정 프레임워크를, Ch.5에서 특징점 매칭 기술을 다루었다. 이제 이 둘이 실제로 결합되는 첫 시스템, Visual Odometry(VO)와 Visual-Inertial Odometry(VIO)를 살펴본다.
 
-Visual Odometry(VO)는 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하는 기술이고, Visual-Inertial Odometry(VIO)는 여기에 IMU를 결합하여 스케일 관측 가능성과 강건성을 확보한 기술이다. 이 챕터에서는 VO/VIO의 내부 구조와 설계 선택을 깊이 있게 다룬다.
+VO는 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하고, VIO는 여기에 IMU를 결합해 스케일 관측 가능성과 강건성을 확보한다. 이 챕터에서는 VO·VIO의 내부 구조와 설계 선택을 파고든다.
 
-VO의 기원은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)로 거슬러 올라간다. 이 논문은 "Visual Odometry"라는 용어를 최초로 정의하고, 스테레오/단안 카메라로 실시간 자기 운동 추정 시스템을 제시했다. 스테레오 접근에서는 좌우 카메라에서 3D 점을 삼각측량한 뒤 3-point 알고리즘으로 프레임 간 강체 변환을 추정했고, 단안 접근에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 이 기본 파이프라인 — 특징점 검출 → 매칭 → RANSAC → 모션 추정 — 은 20년이 지난 지금도 feature-based VO의 뼈대를 이루고 있다.
+VO의 기원은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)로 거슬러 올라간다. 이 논문은 "Visual Odometry"라는 용어를 처음 정의하고, 스테레오·단안 카메라로 실시간 자기 운동 추정 시스템을 제시했다. 스테레오 접근에서는 좌우 카메라에서 삼각측량한 3D 점을 3-point 알고리즘으로 프레임 간 강체 변환을 추정했고, 단안 접근에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 특징점 검출, 매칭, RANSAC, 모션 추정으로 이어지는 이 파이프라인은 20년이 지난 지금도 feature-based VO의 뼈대다.
 
-VO/VIO 시스템의 분류는 크게 세 축으로 나눌 수 있다:
+VO·VIO 시스템은 세 축으로 분류된다.
 
 1. **Feature-based vs Direct**: 기하학적 특징점(corner, edge)을 추출하여 매칭하는가, 아니면 픽셀 밝기 자체를 직접 사용하는가
 2. **Filter vs Optimization**: 상태 추정에 칼만 필터 계열을 쓰는가, 비선형 최적화를 쓰는가
 3. **Loosely coupled vs Tightly coupled**: IMU와 카메라를 독립적으로 처리한 뒤 결과를 합치는가, raw measurement를 하나의 최적화 문제에 넣는가
 
-이 세 축의 조합이 다양한 시스템을 낳았다. 이 챕터는 대표적인 시스템들을 하나씩 해부하면서, 각 설계 선택의 이유와 결과를 분석한다.
+이 축들의 조합이 다양한 시스템을 낳았다. 챕터는 대표 시스템을 하나씩 해부하면서 각 설계 선택의 이유와 결과를 분석한다.
 
 ---
 
 ## 6.1 Feature-based Visual Odometry
 
-Feature-based VO는 영상에서 기하학적 특징점을 추출하고, 프레임 간 대응 관계를 찾아 카메라 모션을 추정하는 접근이다. 가장 오래되고 가장 잘 이해된 VO 패러다임이며, 현재까지도 ORB-SLAM3를 통해 가장 널리 사용된다.
+Feature-based VO는 영상에서 기하학적 특징점을 추출하고, 프레임 간 대응 관계로 카메라 모션을 추정한다. 가장 오래된 VO 패러다임이며, ORB-SLAM3를 통해 지금도 현역으로 가동된다.
 
 ### 6.1.1 Frontend: Detection, Tracking, Outlier Rejection
 
@@ -292,7 +292,7 @@ $$\boldsymbol{\theta} = \{\mathbf{T}_1, \ldots, \mathbf{T}_n, d_1^{-1}, \ldots, 
 
 **DSO의 한계와 확장**
 
-DSO의 본래 설계에는 루프 클로저가 없다. 이는 direct 방법의 근본적 한계가 아니라 설계 선택이다. LDSO (Loop-closing DSO)는 DBoW + direct 정합을 결합하여 이 한계를 해결했다. 또한 VI-DSO, BASALT 등은 DSO에 IMU를 결합한 VIO 변종이다.
+DSO의 본래 설계에는 루프 클로저가 없다. direct 방법의 한계가 아니라 설계 선택이다. LDSO (Loop-closing DSO)는 DBoW와 direct 정합을 결합해 이 한계를 풀었고, VI-DSO·BASALT 등은 DSO에 IMU를 결합한 VIO 변종이다.
 
 ```python
 # DSO 핵심 흐름 수도코드
@@ -771,7 +771,7 @@ $$(\mathbf{B} - \mathbf{E}\mathbf{C}^{-1}\mathbf{E}^T)\boldsymbol{\xi} = \mathbf
 
 $\mathbf{C}$는 대각이므로 $\mathbf{C}^{-1}$은 trivial하다. 축소된 시스템은 카메라 수에만 의존하므로 효율적이다.
 
-핵심 혁신은: 이 전체 Gauss-Newton 솔버가 **미분 가능**하다는 것이다. 역전파를 통해 GRU의 파라미터가 "좋은 correspondence"를 출력하도록 학습된다.
+전체 Gauss-Newton 솔버가 **미분 가능**하다는 것이 핵심이다. 역전파를 통해 GRU의 파라미터가 "좋은 correspondence"를 출력하도록 학습된다.
 
 **프레임 그래프와 루프 클로저**
 
