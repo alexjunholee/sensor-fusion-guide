@@ -47,12 +47,6 @@ OVERVIEW_CSS = """\
   color: var(--text-heading);
   margin: 0 0 10px 0;
 }
-.guide-overview .overview-subtitle {
-  font-size: 17px;
-  color: var(--text-muted);
-  letter-spacing: -0.014em;
-  margin: 0;
-}
 .overview-group { margin-top: 36px; }
 .overview-group:first-child { margin-top: 0; }
 .overview-group-label {
@@ -144,10 +138,6 @@ OVERVIEW_JS = r"""
     oTitle.className = 'overview-title';
     oTitle.textContent = strs.overviewTitle;
     header.appendChild(oTitle);
-    var oSub = document.createElement('p');
-    oSub.className = 'overview-subtitle';
-    oSub.textContent = strs.overviewSubtitle(total);
-    header.appendChild(oSub);
     overview.appendChild(header);
 
     chapterGroups.forEach(function(group) {
@@ -322,7 +312,7 @@ body {{
 }}
 
 #topbar .back-link {{
-  margin-left: auto;
+  margin-left: 16px;
   color: var(--link);
   text-decoration: none;
   font-size: 13.5px;
@@ -810,6 +800,7 @@ mark.search-highlight {{
     <span class="sep">/</span>
     <a data-lang="en" tabindex="0" role="button">English</a>
   </div>
+  <a href="../" class="back-link">← repos</a>
 </div>
 
 <div id="sidebar-overlay"></div>
@@ -925,7 +916,6 @@ mark.search-highlight {{
       docTitle: '센서 퓨전 심화 가이드',
       topbarTitle: '센서 퓨전 심화 가이드',
       overviewTitle: '센서 퓨전 심화 가이드',
-      overviewSubtitle: function(n) {{ return '로컬라이제이션 · 매핑 · 멀티센서 융합 심화 레퍼런스 · 전 ' + n + '장'; }},
       groups: [
         {{ label: '기초 (Foundations)', chapters: [1, 2, 3] }},
         {{ label: '방법론 기초 (Methods)', chapters: [4, 5] }},
@@ -948,7 +938,6 @@ mark.search-highlight {{
       docTitle: 'Sensor Fusion — Advanced Guide',
       topbarTitle: 'Sensor Fusion — Advanced Guide',
       overviewTitle: 'Sensor Fusion — Advanced Guide',
-      overviewSubtitle: function(n) {{ return 'Localization · Mapping · Multi-sensor Fusion reference · ' + n + ' chapters'; }},
       groups: [
         {{ label: 'Foundations', chapters: [1, 2, 3] }},
         {{ label: 'Methods', chapters: [4, 5] }},
