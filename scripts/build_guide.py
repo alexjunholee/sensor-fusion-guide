@@ -424,8 +424,8 @@ body {{
   cursor: pointer;
 }}
 
-/* Subsection (h3) */
-.toc-item.toc-h3 {{
+/* Section (h2) */
+.toc-item.toc-h2 {{
   padding: 5px 16px 5px 36px;
   font-size: 13px;
   font-weight: 400;
@@ -433,14 +433,14 @@ body {{
   letter-spacing: -0.012em;
 }}
 
-.toc-item.toc-h3 + .toc-item:not(.toc-h3) {{ margin-top: 6px; }}
+.toc-item.toc-h2 + .toc-item:not(.toc-h2) {{ margin-top: 6px; }}
 
 .toc-item:hover {{
   color: var(--text);
   background: rgba(0, 0, 0, 0.04);
 }}
 
-.toc-item.toc-h3:hover {{ color: var(--text); }}
+.toc-item.toc-h2:hover {{ color: var(--text); }}
 
 .toc-item.active {{
   color: var(--accent);
@@ -449,7 +449,7 @@ body {{
   font-weight: 600;
 }}
 
-.toc-item.toc-h3.active {{
+.toc-item.toc-h2.active {{
   font-weight: 500;
   color: var(--accent);
 }}
@@ -923,13 +923,6 @@ mark.search-highlight {{
         {{ label: 'Place Recognition & Loop Closure', chapters: [9, 10] }},
         {{ label: '표현 · 실전 · 미래', chapters: [11, 12, 13] }}
       ],
-      tocGroupFirst: {{
-        '1.1': '기초 (Foundations)',
-        '4.1': '방법론 기초 (Methods)',
-        '6.1': 'Odometry & Fusion',
-        '9.1': 'Place Recognition & Loop Closure',
-        '11.1': '표현 · 실전 · 미래'
-      }},
       searchPlaceholder: '섹션 검색... (Ctrl+K)',
       noResults: '검색 결과 없음',
       loading: '가이드 렌더링 중...'
@@ -945,13 +938,6 @@ mark.search-highlight {{
         {{ label: 'Place Recognition & Loop Closure', chapters: [9, 10] }},
         {{ label: 'Representations · Systems · Frontiers', chapters: [11, 12, 13] }}
       ],
-      tocGroupFirst: {{
-        '1.1': 'Foundations',
-        '4.1': 'Methods',
-        '6.1': 'Odometry & Fusion',
-        '9.1': 'Place Recognition & Loop Closure',
-        '11.1': 'Representations · Systems · Frontiers'
-      }},
       searchPlaceholder: 'Search sections... (Ctrl+K)',
       noResults: 'No matching sections',
       loading: 'Rendering guide...'
@@ -1081,20 +1067,16 @@ mark.search-highlight {{
 
   // ---- Build Table of Contents ----
   function buildTOC() {{
-    var headings = contentEl.querySelectorAll('h2, h3');
+    var headings = contentEl.querySelectorAll('h1, h2');
     var fragment = document.createDocumentFragment();
-    var groupFirstChapter = Object.assign({{}}, I18N[state.lang].tocGroupFirst);
+    var groupFirstChapter = {{}};
+    I18N[state.lang].groups.forEach(function(group) {{
+      if (group.chapters.length) groupFirstChapter[group.chapters[0]] = group.label;
+    }});
 
-    function getGroupLabel(text) {{
-      var trimmed = text.trim();
-      for (var prefix in groupFirstChapter) {{
-        if (trimmed.indexOf(prefix) === 0) {{
-          var label = groupFirstChapter[prefix];
-          delete groupFirstChapter[prefix];
-          return label;
-        }}
-      }}
-      return null;
+    function getChapterNumber(text) {{
+      var m = text.trim().match(/(?:Chapter|Ch\\.?)\\s*(\\d+)/);
+      return m ? parseInt(m[1], 10) : null;
     }}
 
     headings.forEach(function(heading) {{
@@ -1108,12 +1090,12 @@ mark.search-highlight {{
         heading.id = id;
       }}
 
-      if (heading.tagName === 'H2') {{
-        var groupLabel = getGroupLabel(heading.textContent);
-        if (groupLabel) {{
+      if (heading.tagName === 'H1') {{
+        var chNum = getChapterNumber(heading.textContent);
+        if (chNum !== null && groupFirstChapter[chNum]) {{
           var label = document.createElement('div');
           label.className = 'toc-group-label';
-          label.textContent = groupLabel;
+          label.textContent = groupFirstChapter[chNum];
           fragment.appendChild(label);
         }}
       }}
@@ -1132,7 +1114,7 @@ mark.search-highlight {{
 
   // ---- Scroll tracking ----
   function setupScrollTracking() {{
-    var headings = contentEl.querySelectorAll('h2, h3');
+    var headings = contentEl.querySelectorAll('h1, h2');
     var tocItems = tocContainer.querySelectorAll('.toc-item');
     if (headings.length === 0) return;
 
@@ -1183,7 +1165,7 @@ mark.search-highlight {{
       state.scrollHandler = function() {{
         if (!ticking) {{
           requestAnimationFrame(function() {{
-            var curHeadings = contentEl.querySelectorAll('h2, h3');
+            var curHeadings = contentEl.querySelectorAll('h1, h2');
             var curTocItems = tocContainer.querySelectorAll('.toc-item');
             var curMap = {{}};
             curTocItems.forEach(function(item) {{ curMap[item.dataset.headingId] = item; }});
