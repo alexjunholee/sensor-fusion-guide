@@ -381,7 +381,7 @@ $$\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_
 - $\mathbf{b}_g$: **바이어스(bias)** — 시간에 따라 천천히 변하는 상수적 오프셋
 - $\mathbf{n}_g$: **측정 노이즈** — 백색 가우시안 노이즈(Additive White Gaussian Noise, AWGN)
 
-**바이어스의 동역학.** 바이어스는 상수가 아니라 시간에 따라 천천히 변한다. 이를 **랜덤 워크(random walk)**로 모델링한다:
+**바이어스의 동역학.** 바이어스의 느린 시간 변화는 **랜덤 워크(random walk)**로 모델링한다:
 
 $$\dot{\mathbf{b}}_g = \mathbf{n}_{bg}$$
 
