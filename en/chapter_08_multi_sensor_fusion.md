@@ -395,7 +395,7 @@ In real robot operation, GNSS signals are repeatedly lost and recovered (tunnels
 
 ### 8.4.1 Radar Revisited
 
-Traditionally, automotive radar was considered unsuitable for SLAM/odometry because of its low resolution. However, the emergence of **4D imaging radar** is rapidly changing the situation.
+Traditionally, automotive radar was considered unsuitable for SLAM/odometry because of its low resolution. However, the emergence of **4D imaging radar** is changing the situation.
 
 **What is 4D radar**: Whereas conventional automotive radars measured three quantities — range, Doppler velocity, and azimuth — 4D imaging radar adds **elevation** to produce a 3D point cloud. The resolution is nowhere near that of LiDAR (hundreds to thousands of points vs. hundreds of thousands), but it has unique strengths.
 
@@ -409,7 +409,7 @@ Traditionally, automotive radar was considered unsuitable for SLAM/odometry beca
 
 ### 8.4.2 Radar Odometry
 
-Odometry using 4D radar is a rapidly emerging field. The key idea is to exploit radar Doppler measurements directly for ego-motion estimation.
+Odometry using 4D radar is an emerging field. The key idea is to exploit radar Doppler measurements directly for ego-motion estimation.
 
 Each measurement point of an FMCW radar provides $(r, \theta, \phi, v_d)$ — range, azimuth, elevation, Doppler velocity. Given the robot's linear velocity $\mathbf{v}$ and angular velocity $\boldsymbol{\omega}$, the Doppler velocity observed at a point in direction $\mathbf{d}_i = [\cos\phi_i \cos\theta_i, \cos\phi_i \sin\theta_i, \sin\phi_i]^T$ is:
 
@@ -773,8 +773,8 @@ Items that must always be checked when designing a real multi-sensor fusion syst
 
 Multi-sensor fusion architectures are broadly classified as loosely/tightly/ultra-tightly coupled, and in modern robotics **tightly coupled** is the mainstream choice. Triple Camera+LiDAR+IMU fusion has reached a mature stage through systems such as R3LIVE, LVI-SAM, and FAST-LIVO2, each representing a distinct design philosophy — dual subsystem, factor graph, and sequential update, respectively.
 
-GNSS integration provides a global coordinate anchor that resolves long-term drift, and 4D radar is rapidly rising thanks to its unique advantages of adverse-weather robustness and direct velocity measurement. Multi-robot fusion faces the core challenges of distributed optimization and cross-robot place recognition under communication constraints, with Kimera-Multi and Swarm-SLAM leading this area.
+GNSS integration provides a global coordinate anchor that resolves long-term drift, and 4D radar is gaining attention thanks to its unique advantages of adverse-weather robustness and direct velocity measurement. Multi-robot fusion faces the core challenges of distributed optimization and cross-robot place recognition under communication constraints, with Kimera-Multi and Swarm-SLAM leading this area.
 
 Finally, in practical system design, sensor selection, time synchronization, and failure-mode handling are as important as the algorithms themselves, and the engineering capability to address these systematically determines successful deployment.
 
-The odometry/fusion systems covered in Ch.6-8 are highly accurate locally, but drift accumulates over long-duration operation. To correct this drift, the ability to "recognize places previously visited" is required. The next chapter addresses this key component, **Place Recognition**.
+The odometry/fusion systems covered in Ch.6-8 are highly accurate locally, but drift accumulates over long-duration operation. Correcting that drift requires the ability to recognize previously visited places: **Place Recognition**.

@@ -801,7 +801,7 @@ def geodetic_to_enu(lat, lon, alt, lat0, lon0, alt0):
 
 ## 2.5 Radar Model
 
-Radar is an active sensor that uses radio waves. Its key advantage is reliable operation in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade. It also has the unique property of measuring relative **velocity directly** via the Doppler effect. Radar is rapidly gaining importance in autonomous driving.
+Radar is an active sensor that uses radio waves. Its key advantage is reliable operation in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade. It also has the unique property of measuring relative **velocity directly** via the Doppler effect. Radar has become more important in autonomous driving.
 
 ### 2.5.1 FMCW Radar Principles
 
@@ -1063,4 +1063,4 @@ We summarize the observation models and key characteristics of the sensors cover
 | Magnetometer | Magnetic field $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | Hard/soft iron | $1\text{–}5°$ (after calibration) |
 | UWB | Range $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | $5\text{–}30\,\text{cm}$ (LOS) |
 
-Accurately understanding each sensor's observation model is the first step of sensor fusion. In the next chapter we cover the prerequisite for actually using these sensors together — **calibration**, the process of precisely determining the geometric and temporal relationships between sensors. No matter how accurate the observation models, fusion performance degrades substantially if the relative sensor positions and time synchronization are inaccurate.
+Accurately understanding each sensor's observation model is the first step of sensor fusion. Using sensors together requires **calibration**, the process of determining the geometric and temporal relationships between them. No matter how accurate the observation models, fusion performance degrades substantially if the relative sensor positions and time synchronization are inaccurate.

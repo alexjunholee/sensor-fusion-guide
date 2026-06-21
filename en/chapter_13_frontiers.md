@@ -2,13 +2,13 @@
 
 Ch.2-12 systematically covered the established theory and practical systems of sensor fusion. In this final chapter, we turn our gaze to the future.
 
-The field of sensor fusion is evolving rapidly. This chapter surveys research frontiers that are not yet fully mature but could reshape the field's direction over the next several years. The topics include the extension of foundation models to spatial AI, end-to-end learned SLAM, scene-graph-based environmental understanding, cross-modal representation, and the fusion of new sensor modalities such as event cameras and 4D radar.
+The field of sensor fusion still has directions that are not yet fully mature but could reshape the next several years. The topics include the extension of foundation models to spatial AI, end-to-end learned SLAM, scene-graph-based environmental understanding, cross-modal representation, and the fusion of new sensor modalities such as event cameras and 4D radar.
 
 ---
 
 ## 13.1 Foundation Models for Spatial AI
 
-Foundation models — general-purpose models pretrained on large-scale data (DINOv2, CLIP, SAM, GPT-4V, etc.) — are rapidly permeating sensor fusion and SLAM pipelines. Although these models were not trained for any specific task, they provide rich visual and semantic representations that replace or augment multiple modules of traditional pipelines.
+Foundation models — general-purpose models pretrained on large-scale data (DINOv2, CLIP, SAM, GPT-4V, etc.) — are entering sensor fusion and SLAM pipelines. Although these models were not trained for any specific task, they provide rich visual and semantic representations that replace or augment multiple modules of traditional pipelines.
 
 ### 13.1.1 Leveraging DINOv2/CLIP Features in SLAM
 
@@ -22,7 +22,7 @@ Foundation models — general-purpose models pretrained on large-scale data (DIN
 
 - works in **every environment** — urban, indoor, aerial, underwater, subterranean — without any VPR-specific training.
 - outperforms existing learning-based VPR methods (NetVLAD, CosPlace, etc.) across diverse domains.
-- Key insight: dense features from the value facet of DINOv2's 31st layer perform 23% better than the CLS token.
+- Dense features from the value facet of DINOv2's 31st layer perform 23% better than the CLS token.
 
 ```python
 import numpy as np
@@ -133,7 +133,7 @@ Extending CLIP's vision-language alignment to 3D maps allows a robot to understa
 
 **ConceptFusion, LERF, OpenScene**: representative systems of this approach. The core value is that 3D space can be queried by arbitrary text without a predefined class set.
 
-**Current limitations**:
+Limits remain:
 - CLIP features have low spatial resolution (patch-level). Precise localization of small objects is difficult.
 - 3D consistency is hard to guarantee — the same object can have different features from different viewpoints.
 - Computational cost: extracting FM features from every image is expensive.
@@ -629,7 +629,7 @@ Here $v_r$ is the measured radial velocity, $\mathbf{v}_{\text{obj}}$ is the obj
 
 ### 13.6.3 Recent Developments in Radar Odometry
 
-Radar odometry has advanced rapidly since 2020:
+Radar odometry has advanced since 2020:
 
 **FMCW radar odometry**: odometry on scanning FMCW radar (Navtech, etc.). Feature points are extracted and matched in range-azimuth images to estimate ego-motion.
 
@@ -742,7 +742,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 - **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (2024): The first large-scale, diverse benchmark for evaluating 4D radar-based SLAM, providing 44 sequences collected across three platforms (handheld, bicycle, SUV) under diverse weather and lighting conditions.
 - **[4D Radar-Inertial Odometry](https://arxiv.org/abs/2412.13639)** (2024): Proposes a 3D Gaussian radar scene representation and multi-hypothesis scan matching, achieving more precise radar odometry than voxel-based methods.
 
-4D radar fusion is still in its early stages, but it is developing rapidly as a key technology for all-weather operation in autonomous driving. In particular, ego-motion estimation and dynamic object classification that exploit Doppler information are unique capabilities that cameras and LiDAR cannot provide.
+4D radar fusion is still in its early stages, but it is becoming a key technology for all-weather operation in autonomous driving. In particular, ego-motion estimation and dynamic object classification that exploit Doppler information are unique capabilities that cameras and LiDAR cannot provide.
 
 ---
 

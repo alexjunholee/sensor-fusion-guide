@@ -238,7 +238,7 @@ The final VLAD descriptor is the concatenation of all $\mathbf{V}_k$: $\mathbf{V
 
 ### 9.2.3 NetVLAD: The Baseline for Learning-Based VPR
 
-**[NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247)** is a seminal work that reformulated VLAD as a **differentiable CNN layer**, enabling end-to-end training.
+**[NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247)** reformulated VLAD as a **differentiable CNN layer**, enabling end-to-end training.
 
 **Core problem**: In classical VLAD, hard-assigning each descriptor to its nearest cluster is non-differentiable. Backpropagation requires this process to be differentiable.
 
@@ -824,7 +824,7 @@ With the advent of 4D imaging radar, radar-based PR is beginning to be studied:
 
 **Advantages**: PR systems that operate in adverse weather. When LiDAR PR and visual PR fail in rain, snow, or fog, radar PR can serve as a backup.
 
-**Current status**: Still in early stages, and discriminability falls short of LiDAR and Visual PR due to radar's low resolution. However, 4D radar resolution is improving rapidly, making this a promising area for the future.
+Radar PR is still early, and discriminability falls short of LiDAR and Visual PR because radar resolution is low. 4D radar resolution is improving, so the area remains open.
 
 ### 9.7.4 Recent Research (2024-2025)
 
@@ -875,4 +875,4 @@ Geometric verification is the final verification stage for PR candidates, preven
 
 Recent trends include the lightweighting of Foundation-Model-based PR, semantic PR, and 4D radar PR, all of which are active areas of research.
 
-Place Recognition answers the question "Have I seen this place before?", but the process of converting that answer into global consistency for a SLAM system remains. The next chapter covers **Loop Closure and global optimization**, which integrate PR results into the pose graph to correct drift.
+Place Recognition answers the question "Have I seen this place before?", but a SLAM system still has to convert that answer into global consistency. **Loop Closure and global optimization** integrate PR results into the pose graph and correct drift.

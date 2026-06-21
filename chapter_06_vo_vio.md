@@ -2,7 +2,7 @@
 
 Ch.4에서 상태 추정 프레임워크를, Ch.5에서 특징점 매칭 기술을 다루었다. 이제 이 둘이 실제로 결합되는 첫 시스템, Visual Odometry(VO)와 Visual-Inertial Odometry(VIO)를 살펴본다.
 
-VO는 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하고, VIO는 여기에 IMU를 결합해 스케일 관측 가능성과 강건성을 확보한다. 이 챕터에서는 VO·VIO의 내부 구조와 설계 선택을 파고든다.
+VO는 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하고, VIO는 여기에 IMU를 결합해 스케일 관측 가능성과 강건성을 확보한다. VO·VIO에서 중요한 것은 내부 구조와 설계 선택이다.
 
 VO의 기원은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)로 거슬러 올라간다. 이 논문은 "Visual Odometry"라는 용어를 처음 정의하고, 스테레오·단안 카메라로 실시간 자기 운동 추정 시스템을 제시했다. 스테레오 접근에서는 좌우 카메라에서 삼각측량한 3D 점을 3-point 알고리즘으로 프레임 간 강체 변환을 추정했고, 단안 접근에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 특징점 검출, 매칭, RANSAC, 모션 추정으로 이어지는 이 파이프라인은 20년이 지난 지금도 feature-based VO의 뼈대다.
 
@@ -824,4 +824,4 @@ DROID-SLAM은 기하학적 엄밀성(BA)과 데이터 기반 강건성(learned c
 | DPVO | Learned (sparse) | Differentiable BA | Mono | DROID 대비 3배 빠르고 메모리 1/3 |
 | MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper |
 
-다음 챕터에서는 LiDAR 기반 오도메트리와 LiDAR-Inertial 결합 시스템을 다루며, 카메라 기반 시스템과의 상보적 관계를 분석한다.
+LiDAR 기반 오도메트리와 LiDAR-Inertial 결합 시스템은 같은 자기 운동 추정 문제를 다른 센서 조건에서 푼다. 카메라 기반 시스템과의 상보 관계도 거기서 나온다.

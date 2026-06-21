@@ -688,7 +688,7 @@ mark.search-highlight {
 <textarea id="md-source-ko" style="display:none;">
 # Ch.1 — Why Sensor Fusion?
 
-자율주행 차량, 드론, 서비스 로봇은 모두 같은 한 가지 질문에서 출발한다. 어떤 센서로 세상을 인지할 것인가. 어떤 단일 센서도 답이 되지 못한다는 사실에서 센서 퓨전(Sensor Fusion)이라는 분야가 시작했다. 이 가이드는 그 분야의 이론과 실전을 다루며, 첫 챕터는 왜 단일 센서가 부족한지, 어떤 결합 방식이 있는지, 고전 방법과 딥러닝이 어디에서 서로를 보완하는지 살핀다.
+자율주행 차량, 드론, 서비스 로봇은 모두 같은 한 가지 질문에서 출발한다. 어떤 센서로 세상을 인지할 것인가. 어떤 단일 센서도 답이 되지 못한다는 사실에서 센서 퓨전(Sensor Fusion)이 시작했다. 출발점은 단일 센서가 왜 부족한지, 센서 결합 방식이 어떻게 나뉘는지, 고전 방법과 딥러닝이 어디에서 서로를 보완하는지다.
 
 ---
 
@@ -975,7 +975,7 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 
 ### 기술 계보 요약
 
-이 가이드는 각 주제에서 **전통 방법 → 딥러닝이 가능하게 한 것 → 아직 전통이 필요한 부분**의 흐름을 일관되게 보여줄 것이다. 아래 표는 이 가이드 전체를 관통하는 기술 계보를 요약한다.
+각 주제는 **전통 방법 → 딥러닝이 가능하게 한 것 → 아직 전통이 필요한 부분**의 흐름으로 이어진다. 아래 표는 전체 기술 계보를 요약한다.
 
 | 영역 | Classical | Learning-based | 현재 주류 |
 |------|-----------|---------------|----------|
@@ -992,19 +992,19 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 
 ---
 
-## 1.5 이 가이드의 범위와 구성
+## 1.5 범위와 구성
 
 ### robotics-practice와의 관계
 
-이 가이드는 robotics-practice 가이드의 심화 편이다. robotics-practice가 Spatial AI 전반을 넓게 조망하는 입문서라면, 이 가이드는 **센서 퓨전, 로컬라이제이션, 리트리벌**에 집중한 심화 레퍼런스이다.
+robotics-practice가 Spatial AI 전반을 넓게 조망하는 입문서라면, 여기서는 **센서 퓨전, 로컬라이제이션, 리트리벌**에 집중한다.
 
-- robotics-practice에서 EKF/PF를 1–2페이지로 소개했다면, 이 가이드에서는 칼만 필터의 유도 과정부터 ESKF, IMU 사전적분, 팩터 그래프 최적화까지 챕터 단위로 깊이 있게 다룬다.
-- robotics-practice에서 센서 소개를 개략적으로 했다면, 이 가이드에서는 각 센서의 **노이즈 모델과 관측 방정식**을 수식으로 유도한다.
-- 겹치는 기초 내용은 robotics-practice 참조로 대체하고, 이 가이드에서는 추가적인 깊이만 다룬다.
+- robotics-practice에서 EKF/PF를 1–2페이지로 소개했다면, 여기서는 칼만 필터의 유도 과정부터 ESKF, IMU 사전적분, 팩터 그래프 최적화까지 챕터 단위로 깊이 있게 다룬다.
+- robotics-practice에서 센서 소개를 개략적으로 했다면, 여기서는 각 센서의 **노이즈 모델과 관측 방정식**을 수식으로 유도한다.
+- 겹치는 기초 내용은 robotics-practice 참조로 넘기고, 추가적인 깊이만 다룬다.
 
 ### 가이드 구성
 
-이 가이드는 다음과 같은 구성을 따른다:
+구성은 다음과 같다:
 
 1. **Ch.1 — Introduction** (이 챕터): 센서 퓨전의 동기와 분류
 2. **Ch.2 — Sensor Modeling**: 각 센서의 관측 모델과 노이즈 특성 (수식 중심)
@@ -1022,29 +1022,29 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 
 ### 대상 독자
 
-이 가이드의 대상 독자는 다음과 같은 배경을 가진 로보틱스 입문자이다:
+대상 독자는 다음과 같은 배경을 가진 로보틱스 입문자이다:
 
 - **선형대수**: 행렬 연산, 고유값 분해, SVD에 대한 이해
 - **확률론**: 확률 분포, 조건부 확률, 베이즈 정리, 가우시안 분포에 대한 이해
 - **기초 최적화**: 최소자승법, 그래디언트 디센트의 개념
 - **Python**: numpy, scipy 기반 코드를 읽고 실행할 수 있는 수준
 
-이 가이드의 각 챕터는 **직관 → 수식 → 코드/예제**의 흐름을 따른다. 먼저 개념의 직관적 이해를 제공하고, 수학적으로 엄밀하게 유도한 뒤, Python 코드로 구현하여 확인한다.
+각 챕터는 **직관 → 수식 → 코드/예제**의 흐름을 따른다. 먼저 개념의 직관을 잡고, 수학적으로 유도한 뒤, Python 코드로 구현해 확인한다.
 
 ---
 
-## 1.6 이 가이드의 관통 테마
+## 1.6 관통 테마
 
-이 가이드 전체를 읽으면서 독자가 반복적으로 만나게 될 핵심 질문들이 있다:
+읽는 동안 반복해서 만나는 질문들이 있다:
 
 1. **"왜 이 전통 방법이 중요했는가?"** — 각 전통 방법이 해결한 근본적 문제와 그 해법의 우아함을 이해한다.
 2. **"딥러닝이 뭘 바꿨는가?"** — 학습 기반 방법이 전통 방법의 어떤 한계를 극복했는지 구체적으로 본다.
 3. **"아직 전통이 필요한 부분은 어디인가?"** — 딥러닝이 대체하지 못한 영역과 그 이유를 분석한다.
 4. **"이론과 실전의 간극은 어디에 있는가?"** — 논문과 실제 시스템 사이의 차이, 실전에서 마주치는 엔지니어링 문제를 다룬다.
 
-이 질문들을 염두에 두고 각 챕터를 읽으면, 개별 알고리즘의 이해를 넘어서 센서 퓨전이라는 분야의 전체 그림을 조망할 수 있을 것이다.
+이 질문들을 염두에 두면, 개별 알고리즘을 넘어 센서 퓨전이라는 분야의 전체 그림이 보인다.
 
-다음 챕터에서는 각 센서의 관측 모델을 수식으로 유도한다. 센서가 세상을 어떻게 "보는지"가 모든 퓨전 알고리즘의 출발점이다.
+이제 각 센서의 관측 모델을 수식으로 유도한다. 센서가 세상을 어떻게 "보는지"가 모든 퓨전 알고리즘의 출발점이다.
 
 
 ---
@@ -1053,7 +1053,7 @@ $$\min_{\mathcal{X}} \left\{ \sum_{(i,j) \in \mathcal{B}} \| \mathbf{r}_{\text{I
 
 Ch.1에서 센서 퓨전의 분류와 설계 원칙을 살펴보았다. 이제 본격적으로 각 센서가 세상을 어떻게 "보는지"를 수학적으로 정의한다. 센서의 관측 모델은 Ch.4에서 다룰 칼만 필터와 팩터 그래프의 관측 함수 $h(\mathbf{x})$에 직접 대입되므로, 이 챕터의 수식들은 이후 모든 알고리즘의 기초가 된다.
 
-> robotics-practice Ch.2에서 센서를 소개 수준으로 다루었다면, 이 챕터에서는 **노이즈 모델과 수학적 관측 모델**에 집중한다. 퓨전 알고리즘은 측정값이 실제 물리량과 어떤 수학적 관계에 있고 오차가 어떻게 분포하는가를 정확히 모르면 설계할 수 없다.
+> robotics-practice Ch.2는 센서를 소개 수준에서 다뤘다. 여기서는 **노이즈 모델과 수학적 관측 모델**에 집중한다. 퓨전 알고리즘은 측정값이 실제 물리량과 어떤 수학적 관계에 있고 오차가 어떻게 분포하는가를 정확히 모르면 설계할 수 없다.
 
 ---
 
@@ -5150,7 +5150,7 @@ $$\min_{\mathbf{R}, \mathbf{t}} \sum_{i} \| \mathbf{q}_i - (\mathbf{R} \mathbf{p
 
 ## 5.2 전통적 Feature Detection & Description
 
-전통적 correspondence 파이프라인은 **detect → describe → match**의 3단계로 구성된다. 이 절에서는 처음 두 단계 — 어디에서 특징점을 찾고(detection), 그 특징점을 어떻게 표현하는가(description) — 를 본다.
+전통적 correspondence 파이프라인은 **detect → describe → match**의 3단계로 구성된다. 처음 두 단계는 어디에서 특징점을 찾고(detection), 그 특징점을 어떻게 표현하는가(description)다.
 
 ### 5.2.1 Corner Detection: Harris → FAST → ORB
 
@@ -6259,7 +6259,7 @@ P2-Net (Yu et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패
 
 ## 5.10 Dense Matching & Optical Flow
 
-지금까지 다룬 방법들은 **sparse correspondence** (희소 대응점)에 집중했다. 이 절에서는 이미지의 **모든 픽셀에 대해 대응을 찾는 dense matching**을 다룬다.
+지금까지 다룬 방법들은 **sparse correspondence** (희소 대응점)에 집중했다. Dense matching은 이미지의 **모든 픽셀에 대해 대응을 찾는 문제**다.
 
 ### 5.10.1 Classical Optical Flow: Lucas-Kanade, Horn-Schunck
 
@@ -6558,7 +6558,7 @@ Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB
 
 Ch.4에서 상태 추정 프레임워크를, Ch.5에서 특징점 매칭 기술을 다루었다. 이제 이 둘이 실제로 결합되는 첫 시스템, Visual Odometry(VO)와 Visual-Inertial Odometry(VIO)를 살펴본다.
 
-VO는 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하고, VIO는 여기에 IMU를 결합해 스케일 관측 가능성과 강건성을 확보한다. 이 챕터에서는 VO·VIO의 내부 구조와 설계 선택을 파고든다.
+VO는 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하고, VIO는 여기에 IMU를 결합해 스케일 관측 가능성과 강건성을 확보한다. VO·VIO에서 중요한 것은 내부 구조와 설계 선택이다.
 
 VO의 기원은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)로 거슬러 올라간다. 이 논문은 "Visual Odometry"라는 용어를 처음 정의하고, 스테레오·단안 카메라로 실시간 자기 운동 추정 시스템을 제시했다. 스테레오 접근에서는 좌우 카메라에서 삼각측량한 3D 점을 3-point 알고리즘으로 프레임 간 강체 변환을 추정했고, 단안 접근에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 특징점 검출, 매칭, RANSAC, 모션 추정으로 이어지는 이 파이프라인은 20년이 지난 지금도 feature-based VO의 뼈대다.
 
@@ -7380,16 +7380,16 @@ DROID-SLAM은 기하학적 엄밀성(BA)과 데이터 기반 강건성(learned c
 | DPVO | Learned (sparse) | Differentiable BA | Mono | DROID 대비 3배 빠르고 메모리 1/3 |
 | MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper |
 
-다음 챕터에서는 LiDAR 기반 오도메트리와 LiDAR-Inertial 결합 시스템을 다루며, 카메라 기반 시스템과의 상보적 관계를 분석한다.
+LiDAR 기반 오도메트리와 LiDAR-Inertial 결합 시스템은 같은 자기 운동 추정 문제를 다른 센서 조건에서 푼다. 카메라 기반 시스템과의 상보 관계도 거기서 나온다.
 
 
 ---
 
 # Ch.7 — LiDAR Odometry & LiDAR-Inertial Odometry
 
-Ch.6에서 카메라(+IMU) 기반의 Visual Odometry를 다루었다. 이 챕터에서는 LiDAR 기반으로 동일한 자기 운동 추정 문제에 접근한다.
+Ch.6에서 카메라(+IMU) 기반의 Visual Odometry를 다루었다. 같은 자기 운동 추정 문제를 LiDAR 기반으로 풀면 조건이 바뀐다.
 
-LiDAR는 카메라와 상보적인 센서다. 카메라가 풍부한 텍스처 정보를 제공하지만 조명에 민감하고 절대 거리를 알 수 없는 반면, LiDAR는 조명 불변의 정밀한 3D 거리 측정을 제공한다. 이 챕터에서는 LiDAR로부터 자기 운동을 추정하는 LiDAR Odometry(LO)와, IMU를 결합한 LiDAR-Inertial Odometry(LIO)의 내부 구조를 심도 있게 다룬다.
+LiDAR는 카메라와 상보적인 센서다. 카메라가 풍부한 텍스처 정보를 제공하지만 조명에 민감하고 절대 거리를 알 수 없는 반면, LiDAR는 조명 불변의 정밀한 3D 거리 측정을 제공한다. LiDAR Odometry(LO)는 LiDAR로부터 자기 운동을 추정하고, LiDAR-Inertial Odometry(LIO)는 여기에 IMU를 결합한다. 두 시스템의 내부 구조가 이 장의 중심이다.
 
 LiDAR 오도메트리의 핵심 문제는 **포인트 클라우드 정합(registration)**이다 — 연속된 두 스캔 사이의 강체 변환 $\mathbf{T} \in SE(3)$를 찾는 것이다. 이 단순해 보이는 문제가 실제로는 데이터 연관(correspondence), 노이즈 모델, 계산 효율, 모션 왜곡 보정 등 다양한 도전을 포함한다.
 
@@ -7567,7 +7567,7 @@ NDT의 장점:
 
 LOAM ([Zhang & Singh, 2014](https://doi.org/10.15607/RSS.2014.X.007))은 LiDAR 오도메트리의 기준점이다. KITTI 오도메트리 벤치마크에서 오랫동안 상위권을 유지했으며, 이후 LeGO-LOAM, LIO-SAM, A-LOAM 등 수많은 후속 시스템의 기반이 되었다.
 
-LOAM의 핵심 통찰은 두 가지다:
+LOAM의 핵심은 두 가지였다:
 1. LiDAR 스캔에서 기하학적 특징(edge, planar)을 추출하면, 전체 점군 대비 훨씬 적은 점으로 정확한 정합이 가능하다.
 2. 빠른 odometry와 느린 mapping을 분리하면, 실시간성과 정확도를 동시에 달성할 수 있다.
 
@@ -8142,7 +8142,7 @@ Livox 시리즈는 가격 대비 성능이 뛰어나 드론과 핸드헬드 플�
 
 LOAM(2014) → LeGO-LOAM(2018) → LIO-SAM(2020) 계보는 **feature-based + factor graph** 방향으로 진화했다. FAST-LIO(2021) → FAST-LIO2(2022) → Point-LIO(2023) 계보는 **direct + Kalman filter** 방향으로 진화했다. 두 계보는 서로 다른 설계 철학을 대표하지만, 실전 성능은 비슷한 수준에 수렴하고 있다.
 
-Feature-based 접근은 구조화된 환경(건물, 도시)에서 강하고, direct 접근은 비구조화된 환경(숲, 동굴)과 solid-state LiDAR에서 강하다. 다음 챕터에서는 이 두 센서 모달리티(카메라 + LiDAR)를 IMU와 함께 통합하는 multi-sensor fusion 아키텍처를 다룬다.
+Feature-based 접근은 구조화된 환경(건물, 도시)에서 강하고, direct 접근은 비구조화된 환경(숲, 동굴)과 solid-state LiDAR에서 강하다. 카메라와 LiDAR를 IMU와 함께 묶으면 multi-sensor fusion 아키텍처 문제가 된다.
 
 
 ---
@@ -8150,7 +8150,7 @@ Feature-based 접근은 구조화된 환경(건물, 도시)에서 강하고, dir
 # Ch.8 — Multi-Sensor Fusion 아키텍처
 
 > 개별 odometry를 넘어 **여러 센서를 어떻게 통합하는가**의 설계론.
-> 앞 챕터에서 Visual Odometry, LiDAR Odometry를 각각 다뤘다면, 이 챕터에서는 이들을 하나의 시스템으로 엮는 아키텍처를 분석한다.
+> 앞 챕터에서 Visual Odometry, LiDAR Odometry를 각각 다뤘다. 이제 이들을 하나의 시스템으로 엮는 아키텍처가 문제다.
 
 ---
 
@@ -9740,18 +9740,18 @@ Geometric verification은 PR 후보의 최종 검증 단계로, false positive�
 
 최신 동향으로는 Foundation Model 기반 PR의 경량화, semantic PR, 4D radar PR이 활발히 연구되고 있다.
 
-Place Recognition은 "이 장소를 본 적 있는가?"라는 질문에 답하지만, 그 답을 SLAM 시스템의 전역 일관성으로 전환하는 과정이 남아 있다. 다음 챕터에서는 PR 결과를 포즈 그래프에 통합하여 드리프트를 교정하는 **Loop Closure와 전역 최적화**를 다룬다.
+Place Recognition은 "이 장소를 본 적 있는가?"라는 질문에 답하지만, 그 답을 SLAM 시스템의 전역 일관성으로 전환하는 과정이 남아 있다. PR 결과를 포즈 그래프에 통합하면 **Loop Closure와 전역 최적화** 문제가 된다.
 
 
 ---
 
 # Ch.10 — Loop Closure & Global Optimization
 
-Ch.9에서 Place Recognition — 과거 방문 장소의 인식 — 을 보았다. 이 챕터는 그 인식 결과를 SLAM 시스템에 통합하여 누적 드리프트를 실제로 교정하는 과정을 이야기한다.
+Ch.9에서 Place Recognition — 과거 방문 장소의 인식 — 을 보았다. 그 인식 결과를 SLAM 시스템에 넣어야 누적 드리프트가 실제로 줄어든다.
 
 SLAM 시스템에서 odometry는 필연적으로 드리프트(drift)를 누적한다. 아무리 정밀한 센서를 쓰더라도, 상대 pose 추정의 작은 오차들이 시간에 따라 쌓여 전역 일관성을 무너뜨린다. Loop closure는 "과거에 방문했던 장소를 재방문했음"을 인식하고, 그 정보를 활용하여 누적된 드리프트를 보정하는 메커니즘이다.
 
-이 챕터에서는 loop closure 파이프라인(detection → verification → correction)을 살펴보고, 보정의 핵심인 pose graph optimization의 수학적 기초, global relocalization, multi-session SLAM까지 확장한다.
+Loop closure 파이프라인은 detection → verification → correction으로 이어지고, 보정의 중심에는 pose graph optimization이 있다. 같은 틀은 global relocalization과 multi-session SLAM까지 확장된다.
 
 ---
 
@@ -10624,18 +10624,18 @@ $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} 
 
 ---
 
-Loop closure와 전역 최적화로 SLAM 시스템은 전역적으로 일관된 궤적과 맵을 만든다. 그런데 이 "맵"은 어떤 형태인가? 점군일 수도, 신경망 가중치일 수도 있다. 다음 챕터에서는 센서 퓨전의 최종 결과물인 공간 표현(spatial representation)의 다양한 형태와 그 장단점을 본다.
+Loop closure와 전역 최적화로 SLAM 시스템은 전역적으로 일관된 궤적과 맵을 만든다. 그런데 이 "맵"은 어떤 형태인가? 점군일 수도, 신경망 가중치일 수도 있다. 여기서 센서 퓨전의 최종 결과물인 공간 표현(spatial representation) 문제가 열린다.
 
 
 ---
 
 # Ch.11 — Spatial Representations
 
-Ch.6-10에서 센서 데이터로부터 로봇의 궤적을 추정하고, loop closure로 전역 일관성을 확보하는 과정을 다루었다. 이 챕터에서는 그 과정의 부산물이자 궁극적 목적인 맵 — 로봇이 세상을 기억하고 활용하는 형태 — 을 다룬다.
+Ch.6-10에서 센서 데이터로부터 로봇의 궤적을 추정하고, loop closure로 전역 일관성을 확보하는 과정을 다루었다. 그 다음 남는 것은 맵이다. 맵은 그 과정의 부산물이자, 로봇이 세상을 기억하고 활용하는 형태다.
 
 센서 퓨전의 궁극적 결과물은 **맵(map)** — 환경의 공간적 표현 — 이다. SLAM 시스템이 추정하는 것은 로봇의 궤적뿐 아니라, 그 궤적을 통해 관측한 환경의 구조이다. 어떤 형태로 환경을 표현하느냐에 따라 로봇이 할 수 있는 일이 달라진다. 경로 계획은 free/occupied 정보를 요구하고, 시각적 렌더링은 텍스처를 요구하며, 인간과의 상호작용은 의미론적 레이블을 요구한다.
 
-이 챕터에서는 metric map(정량적 기하 맵)에서 출발하여, mesh, neural representation, semantic map, 그리고 장기 유지(long-term maintenance)까지 공간 표현의 전체 스펙트럼을 다룬다.
+출발점은 metric map(정량적 기하 맵)이고, 그 뒤에 mesh, neural representation, semantic map, 장기 유지(long-term maintenance)가 이어진다.
 
 ---
 
@@ -11699,14 +11699,14 @@ class DynamicMapManager:
 
 ---
 
-각 표현은 서로 다른 downstream task에 맞는다. 현대 시스템은 이들을 계층적으로 조합한다 — OctoMap으로 경로를 계획하고, surfel로 렌더링하고, scene graph로 의미 질의를 처리한다. 다음 챕터에서는 이 알고리즘과 표현들이 자율주행·드론·핸드헬드 플랫폼에서 실제로 어떻게 통합되는지, 그리고 성능을 어떻게 평가하는지를 본다.
+각 표현은 서로 다른 downstream task에 맞는다. 현대 시스템은 이들을 계층적으로 조합한다 — OctoMap으로 경로를 계획하고, surfel로 렌더링하고, scene graph로 의미 질의를 처리한다. 실제 플랫폼에서는 이 알고리즘과 표현을 자율주행·드론·핸드헬드 시스템 안에서 통합하고 평가해야 한다.
 
 
 ---
 
 # Ch.12 — 실전 시스템 & 벤치마크
 
-Ch.2-11에서 센서 모델링부터 상태 추정, odometry, place recognition, 공간 표현까지 개별 알고리즘을 다루었다. 이 챕터에서는 시선을 알고리즘에서 시스템으로 넓혀, 이 기술들이 실제 플랫폼에서 어떻게 조합되는지를 살펴본다.
+Ch.2-11에서 센서 모델링부터 상태 추정, odometry, place recognition, 공간 표현까지 개별 알고리즘을 다루었다. 실제 플랫폼에서는 이 기술들이 하나의 시스템으로 조합된다.
 
 자율주행, 드론, 핸드헬드 매핑이라는 세 대표 플랫폼에서 센서 퓨전 아키텍처를 분석하고, 시스템을 평가하기 위한 벤치마크와 도구를 소개한다.
 
@@ -12393,9 +12393,9 @@ def compare_systems(gt_file, system_files, system_names):
 
 # Ch.13 — Frontiers & Emerging Directions
 
-Ch.2-12에서 센서 퓨전의 확립된 이론과 실전 시스템을 체계적으로 다루었다. 이 마지막 챕터에서는 시선을 미래로 돌린다.
+Ch.2-12에서 센서 퓨전의 확립된 이론과 실전 시스템을 체계적으로 다루었다. 마지막에는 아직 안정되지 않은 방향들이 남는다.
 
-센서 퓨전 분야는 빠르게 진화하고 있다. 이 챕터에서는 아직 완전히 성숙하지 않았지만, 향후 몇 년간 분야의 방향을 바꿀 수 있는 연구 프런티어를 다룬다. Foundation model의 공간 지능(spatial AI)으로의 확장, end-to-end 학습 SLAM, scene graph 기반의 환경 이해, cross-modal representation, 그리고 event camera와 4D radar라는 새로운 센서 모달리티의 퓨전이 그 주제다.
+센서 퓨전 분야에는 아직 완전히 성숙하지 않았지만, 향후 몇 년간 방향을 바꿀 수 있는 연구 프런티어가 남아 있다. Foundation model의 공간 지능(spatial AI)으로의 확장, end-to-end 학습 SLAM, scene graph 기반의 환경 이해, cross-modal representation, 그리고 event camera와 4D radar라는 새로운 센서 모달리티의 퓨전이 그 주제다.
 
 ---
 
@@ -13141,22 +13141,22 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 
 ## 마무리
 
-이 가이드는 센서 모델링(Ch.2)에서 출발하여 캘리브레이션(Ch.3), 상태 추정 이론(Ch.4), 특징점 매칭(Ch.5), VO/VIO(Ch.6), LiDAR odometry(Ch.7), 멀티센서 퓨전(Ch.8), Place Recognition(Ch.9), Loop Closure(Ch.10), 공간 표현(Ch.11), 실전 시스템(Ch.12), 그리고 연구 프런티어(Ch.13)까지 — 센서 퓨전의 전체 파이프라인을 단계별로 다루었다.
+센서 모델링(Ch.2)에서 출발한 흐름은 캘리브레이션(Ch.3), 상태 추정 이론(Ch.4), 특징점 매칭(Ch.5), VO/VIO(Ch.6), LiDAR odometry(Ch.7), 멀티센서 퓨전(Ch.8), Place Recognition(Ch.9), Loop Closure(Ch.10), 공간 표현(Ch.11), 실전 시스템(Ch.12), 연구 프런티어(Ch.13)까지 이어졌다.
 
-이 분야의 핵심 서사를 다시 한번 정리하면:
+핵심 흐름은 네 가지다.
 
 1. **전통 방법은 여전히 기반이다.** 칼만 필터, ICP, RANSAC, 팩터 그래프 — 수십 년 전에 제안된 이 방법들이 현대 시스템의 뼈대를 이루고 있다.
 2. **딥러닝은 지각(perception)에서 전통 방법을 밀어냈다.** 특징점 매칭, 깊이 추정, Place Recognition 등 "무엇을 보는가"의 영역에서 학습 기반 방법이 전통을 압도한다.
 3. **추론(inference)에서는 전통과 학습이 공존한다.** 상태 추정 backend는 여전히 최적화 기반이 지배적이지만, DROID-SLAM처럼 미분 가능 최적화로 경계를 허무는 시도가 진행 중이다.
 4. **Foundation model이 파이프라인을 바꾸고 있다.** DINOv2, SAM 등 범용 모델의 표현력이 센서 퓨전 파이프라인 곳곳에 유입되고 있다.
 
-센서 퓨전은 불완전한 관측으로부터 세상을 이해하는 기술이다. 이 가이드가 그 이해의 출발점이 되기를 바란다.
+센서 퓨전은 불완전한 관측으로부터 세상을 이해하는 기술이다. 출발점은 센서 모델과 추정기, 그리고 실패 모드를 같은 표 안에 놓는 일이다.
 
 </textarea>
 <textarea id="md-source-en" style="display:none;">
 # Ch.1 — Why Sensor Fusion?
 
-This guide is an in-depth reference that systematically covers the theory and practice of sensor fusion. It is aimed at readers who are newcomers to robotics but have a working foundation in linear algebra and probability. The first chapter draws a map of the sensor fusion landscape as a whole — why a single sensor is insufficient, in what ways sensors can be combined, and what roles classical methods and deep-learning-based methods each play.
+Autonomous vehicles, drones, and service robots start from the same question: which sensors should perceive the world? No single sensor answers it alone. Sensor fusion begins there, with the limits of individual sensors, the ways sensors can be combined, and the division of labor between classical methods and deep-learning-based methods.
 
 ---
 
@@ -13395,7 +13395,7 @@ In modern robotics, the **tightly coupled** approach is mainstream. Loosely coup
 
 ## 1.4 Classical vs Learning-based: What Deep Learning Changed and What It Did Not
 
-For decades, the field of sensor fusion was dominated by **classical** approaches grounded in probabilistic estimation theory (Kalman filter, factor graph) and geometric methods (epipolar geometry, ICP). Since the mid-2010s, as deep learning revolutionized almost every area of computer vision, learning-based methods have rapidly permeated sensor fusion as well. However, the extent of that penetration differs greatly by area.
+For decades, the field of sensor fusion was dominated by **classical** approaches grounded in probabilistic estimation theory (Kalman filter, factor graph) and geometric methods (epipolar geometry, ICP). Since the mid-2010s, as deep learning changed computer vision, learning-based methods have entered sensor fusion as well. However, the extent of that penetration differs greatly by area.
 
 ### What Deep Learning Changed
 
@@ -13405,11 +13405,11 @@ In this area, learning-based methods clearly surpass traditional methods — one
 
 **Place Recognition.** The transition from Bag of Words (DBoW2) to [NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247) was dramatic. CNN-based global descriptors enabled place recognition that is far more robust to illumination, seasonal, and viewpoint changes. More recently, [AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688) leverages features from foundation models such as DINOv2 to deliver place recognition that works universally across diverse environments without any additional training.
 
-**Monocular depth estimation.** Estimating depth from a single image is a task that is impossible with classical methods (geometric cues are insufficient). Models such as [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) have achieved remarkable levels of monocular depth estimation through training on large-scale data. Its successor, [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414), pushed precision further through synthetic-data training and large-scale pseudo-labeling, and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) enables zero-shot absolute-scale depth estimation, opening the possibility of using metric depth information in sensor fusion without LiDAR. This technology has the potential to replace or complement LiDAR in sensor fusion.
+**Monocular depth estimation.** Estimating depth from a single image is a task that is impossible with classical methods (geometric cues are insufficient). Models such as [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) have reached strong monocular depth results through training on large-scale data. Its successor, [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414), pushed precision further through synthetic-data training and large-scale pseudo-labeling, and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) enables zero-shot absolute-scale depth estimation, opening the possibility of using metric depth information in sensor fusion without LiDAR. This technology has the potential to replace or complement LiDAR in sensor fusion.
 
 **Map representations.** NeRF and 3D Gaussian Splatting opened a new paradigm for representing scenes with neural networks. NeRF-SLAM, Gaussian Splatting SLAM, and related systems provide photorealistic map representations that go beyond traditional point maps or voxel grids.
 
-**Event cameras.** Event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing extremely high temporal resolution (microsecond level) and wide dynamic range. As a recent [event camera survey (Huang et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM research is developing rapidly, and fusion with conventional frame-based cameras is opening new possibilities in high-speed motion and low-light environments.
+**Event cameras.** Event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing extremely high temporal resolution (microsecond level) and wide dynamic range. As a recent [event camera survey (Huang et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM research is active, and fusion with conventional frame-based cameras is opening new possibilities in high-speed motion and low-light environments.
 
 ### What Deep Learning Did Not Change
 
@@ -13443,7 +13443,7 @@ The most successful systems today adopt a **hybrid** structure that combines a l
 
 ### Technical Lineage Summary
 
-This guide consistently shows, for each topic, the flow of **traditional methods → what deep learning enabled → where tradition is still needed**. The table below summarizes the technical lineage that runs through the entire guide.
+Each topic follows the same arc: **traditional methods → what deep learning enabled → where tradition is still needed**. The table below summarizes the technical lineage.
 
 | Area | Classical | Learning-based | Current mainstream |
 |------|-----------|---------------|----------|
@@ -13458,23 +13458,23 @@ This guide consistently shows, for each topic, the flow of **traditional methods
 
 A noteworthy pattern in this table is that **the closer to perception, the stronger learning is; the closer to inference/estimation, the stronger tradition is**. This pattern provides an important criterion for deciding where to invest deep learning and where to retain traditional methods when designing a sensor fusion system.
 
-So far we have surveyed the classification of sensor fusion and the division of roles between classical and learning-based methods. We now introduce how this guide treats this broad field and in what order the reader might best proceed.
+The classification of sensor fusion and the division of roles between classical and learning-based methods now set the reading order.
 
 ---
 
-## 1.5 Scope and Organization of This Guide
+## 1.5 Scope and Organization
 
 ### Relation to robotics-practice
 
-This guide is the advanced companion to the robotics-practice guide. Whereas robotics-practice is an introductory survey covering Spatial AI broadly, this guide is an in-depth reference focused on **sensor fusion, localization, and retrieval**.
+robotics-practice surveys Spatial AI broadly. Here the focus narrows to **sensor fusion, localization, and retrieval**.
 
-- Where robotics-practice introduces EKF/PF in one or two pages, this guide treats each topic at chapter depth — from the derivation of the Kalman filter through ESKF, IMU preintegration, and factor graph optimization.
-- Where robotics-practice introduces sensors at a general level, this guide derives each sensor's **noise model and observation equations** in equation form.
-- Overlapping introductory content is replaced by references to robotics-practice; this guide covers only the additional depth.
+- Where robotics-practice introduces EKF/PF in one or two pages, this text treats each topic at chapter depth — from the derivation of the Kalman filter through ESKF, IMU preintegration, and factor graph optimization.
+- Where robotics-practice introduces sensors at a general level, this text derives each sensor's **noise model and observation equations** in equation form.
+- Overlapping introductory content is replaced by references to robotics-practice; only the additional depth remains here.
 
 ### Guide Organization
 
-This guide follows the organization below:
+The organization is:
 
 1. **Ch.1 — Introduction** (this chapter): motivation and classification of sensor fusion
 2. **Ch.2 — Sensor Modeling**: observation models and noise characteristics of each sensor (equation-focused)
@@ -13512,9 +13512,9 @@ Throughout this guide, the reader will repeatedly encounter several core questio
 3. **"Where is tradition still needed?"** — Analyze the areas that deep learning has not replaced and why.
 4. **"Where is the gap between theory and practice?"** — Examine the differences between papers and real systems, and the engineering issues encountered in practice.
 
-Keeping these questions in mind while reading each chapter will allow the reader to see not only individual algorithms but also the full landscape of sensor fusion as a field.
+With these questions in view, individual algorithms begin to form a field-level map of sensor fusion.
 
-In the next chapter, we treat the starting point of sensor fusion — **the observation model of each sensor** — mathematically. Precisely expressing in equations how a sensor "sees" the world is the foundation of every fusion algorithm.
+The next step is mathematical: the **observation model of each sensor**. Every fusion algorithm starts by expressing, in equations, how a sensor "sees" the world.
 
 
 ---
@@ -14322,7 +14322,7 @@ def geodetic_to_enu(lat, lon, alt, lat0, lon0, alt0):
 
 ## 2.5 Radar Model
 
-Radar is an active sensor that uses radio waves. Its key advantage is reliable operation in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade. It also has the unique property of measuring relative **velocity directly** via the Doppler effect. Radar is rapidly gaining importance in autonomous driving.
+Radar is an active sensor that uses radio waves. Its key advantage is reliable operation in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade. It also has the unique property of measuring relative **velocity directly** via the Doppler effect. Radar has become more important in autonomous driving.
 
 ### 2.5.1 FMCW Radar Principles
 
@@ -14584,7 +14584,7 @@ We summarize the observation models and key characteristics of the sensors cover
 | Magnetometer | Magnetic field $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | Hard/soft iron | $1\text{–}5°$ (after calibration) |
 | UWB | Range $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | $5\text{–}30\,\text{cm}$ (LOS) |
 
-Accurately understanding each sensor's observation model is the first step of sensor fusion. In the next chapter we cover the prerequisite for actually using these sensors together — **calibration**, the process of precisely determining the geometric and temporal relationships between sensors. No matter how accurate the observation models, fusion performance degrades substantially if the relative sensor positions and time synchronization are inaccurate.
+Accurately understanding each sensor's observation model is the first step of sensor fusion. Using sensors together requires **calibration**, the process of determining the geometric and temporal relationships between them. No matter how accurate the observation models, fusion performance degrades substantially if the relative sensor positions and time synchronization are inaccurate.
 
 
 ---
@@ -14593,9 +14593,9 @@ Accurately understanding each sensor's observation model is the first step of se
 
 Ch.2 defined the observation model of each sensor mathematically. However, applying these models to real sensor data requires one prerequisite — the parameters of the model must be known precisely. The camera's focal length, the relative position between LiDAR and IMU, the time offset between sensors — the process that determines these values precisely is calibration.
 
-> **Key message**: The accuracy of sensor fusion cannot exceed the accuracy of calibration. This chapter covers every aspect of calibration, from camera intrinsics to multi-sensor extrinsics and time synchronization.
+> Sensor fusion accuracy cannot exceed calibration accuracy. Calibration spans camera intrinsics, multi-sensor extrinsics, and time synchronization.
 
-Calibration is the first problem that must be solved in a sensor fusion pipeline. No matter how sophisticated the state estimation algorithm, if the internal model of a sensor is inaccurate or if the relative position/orientation between sensors is wrong, the fusion result diverges. In LiDAR-camera fusion in particular, an error of even 1 degree in the extrinsic parameters produces roughly 87 cm of registration error for an object 50 m away. In this chapter, we derive the mathematical foundation of each calibration problem and provide code and tools that can be used directly in practice.
+Calibration is the first problem that must be solved in a sensor fusion pipeline. No matter how sophisticated the state estimation algorithm, if the internal model of a sensor is inaccurate or if the relative position/orientation between sensors is wrong, the fusion result diverges. In LiDAR-camera fusion in particular, an error of even 1 degree in the extrinsic parameters produces roughly 87 cm of registration error for an object 50 m away. Calibration work therefore has two parts: the mathematical foundation of each problem, and code and tools that can be used directly in practice.
 
 ---
 
@@ -15290,7 +15290,7 @@ The key is to simultaneously estimate not only the spatial displacement (extrins
 
 The camera and the IMU generate data on different clocks. When a time offset $t_d$ exists between the two sensors, the IMU data corresponding to a camera timestamp $t_c$ is actually from time $t_c + t_d$.
 
-A typical camera-IMU time offset is on the order of several to tens of milliseconds. Ignoring this offset dramatically increases the reprojection error under fast rotation. For example, if the time offset is 10 ms and the camera is rotating at 100 deg/s, a 1-degree rotation error results.
+A typical camera-IMU time offset is on the order of several to tens of milliseconds. Ignoring this offset greatly increases the reprojection error under fast rotation. For example, if the time offset is 10 ms and the camera is rotating at 100 deg/s, a 1-degree rotation error results.
 
 ### 3.4.2 Kalibr: Continuous-Time B-Spline-Based Calibration
 
@@ -16732,7 +16732,7 @@ $$\text{Var}[\hat{\mathbf{x}}_{\text{RBPF}}] \leq \text{Var}[\hat{\mathbf{x}}_{\
 - $\mathbf{x}_1 = \mathbf{x}_{0:k}^{\text{robot}}$ (robot trajectory) → particle filter
 - $\mathbf{x}_2 = \{\mathbf{m}_1, \ldots, \mathbf{m}_M\}$ (landmarks) → $M$ independent 2D EKFs per particle
 
-Given the robot trajectory, observations of each landmark become mutually independent (conditional independence), so $M$ small EKFs can be run independently instead of one giant EKF. This is the key insight that reduces the $O(M^2)$ complexity of EKF-SLAM to the $O(M \log M)$ of FastSLAM.
+Given the robot trajectory, observations of each landmark become mutually independent (conditional independence), so $M$ small EKFs can be run independently instead of one giant EKF. That conditional independence reduces the $O(M^2)$ complexity of EKF-SLAM to the $O(M \log M)$ of FastSLAM.
 
 ### 4.3.5 Limitations of the Particle Filter and Its Current Role
 
@@ -17533,7 +17533,7 @@ Mitigations:
 
 ## Chapter 4 Summary
 
-In this chapter we covered state estimation theory, the mathematical foundation of sensor fusion. The key messages:
+State estimation theory is the mathematical foundation of sensor fusion. The key messages:
 
 1. The **Bayesian Filtering Framework** is a prediction-update recursion that forms the common skeleton of every state estimation method. The Chapman-Kolmogorov equation and Bayes' rule are the theoretical underpinnings, but in nonlinear systems approximation is essential.
 
@@ -17549,7 +17549,7 @@ In this chapter we covered state estimation theory, the mathematical foundation 
 
 7. **Marginalization** is the information-preservation mechanism of the sliding window. The Schur complement is the core operation, and FEJ is the key to maintaining consistency.
 
-This chapter's theory is an indispensable foundation for understanding the design and implementation of real systems in the subsequent VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8) chapters.
+This theory is the foundation for understanding the design and implementation of real systems in the VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8) chapters.
 
 > **2024-2025 research directions**: state estimation is evolving along three major axes. (1) **Symmetry-based filters**: the Equivariant Filter (EqF) and the Invariant EKF exploit the symmetry structure of Lie groups to structurally guarantee consistency and convergence. (2) **Continuous-time optimization**: continuous-time factor graphs with Gaussian Process motion priors are becoming a new paradigm for asynchronous multi-sensor fusion. (3) **Learning-based hybrids**: approaches such as [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289) that learn the Kalman gain or process model with RNNs/Transformers are active, though providing safety guarantees remains a challenge.
 
@@ -17558,9 +17558,9 @@ This chapter's theory is an indispensable foundation for understanding the desig
 
 # Ch.5 — Feature Matching & Correspondence: Technical Lineage
 
-Ch.4 established the mathematical framework of state estimation. But whether we use a Kalman filter or a factor graph, the **data association** problem — "which observation corresponds to which landmark?" — must be solved first. This chapter covers the technical lineage of its core: feature matching and correspondence search.
+Ch.4 established the mathematical framework of state estimation. But whether we use a Kalman filter or a factor graph, the **data association** problem — "which observation corresponds to which landmark?" — must be solved first. Its core is feature matching and correspondence search.
 
-> **Purpose of this chapter**: Almost every component of sensor fusion — Visual Odometry, calibration, loop closure, point cloud registration — depends on **correspondence**. This chapter traces the technical flow starting from mutual information and continuing through to RoMa, clearly showing which limitation of the previous generation each method addressed.
+> Almost every component of sensor fusion — Visual Odometry, calibration, loop closure, point cloud registration — depends on **correspondence**. The technical flow runs from mutual information to RoMa, and each step addresses a limitation of the previous generation.
 
 ---
 
@@ -18814,7 +18814,7 @@ $$C_{ijkl} = \sum_d g_1(i, j, d) \cdot g_2(k, l, d)$$
 
 Generates a 4D correlation volume $\mathbf{C} \in \mathbb{R}^{H \times W \times H \times W}$. This is average-pooled over the last two dimensions to build a 4-level **correlation pyramid** (scales 1, 2, 4, 8).
 
-Key insight: **rather than coarse-to-fine, multi-scale lookup is performed at a single resolution**.
+The important twist is that **multi-scale lookup is performed at a single resolution**, rather than coarse-to-fine.
 
 **3. Iterative Update (GRU)**: a ConvGRU iteratively refines the current flow estimate:
 
@@ -19030,9 +19030,9 @@ The matching techniques covered in this chapter are used in earnest from the nex
 
 # Ch.6 — Visual Odometry & Visual-Inertial Odometry
 
-Ch.4 covered the state estimation framework and Ch.5 covered feature matching techniques. We now examine the first system in which these two are actually combined: Visual Odometry (VO) and Visual-Inertial Odometry (VIO).
+Ch.4 covered the state estimation framework and Ch.5 covered feature matching techniques. The first system where these two actually meet is Visual Odometry (VO) and Visual-Inertial Odometry (VIO).
 
-Visual Odometry (VO) estimates the ego-motion of a camera from image data alone, while Visual-Inertial Odometry (VIO) couples it with an IMU to gain scale observability and robustness. This chapter examines the internal structure of VO/VIO and the design choices involved in depth.
+Visual Odometry (VO) estimates the ego-motion of a camera from image data alone, while Visual-Inertial Odometry (VIO) couples it with an IMU to gain scale observability and robustness. The important questions are VO/VIO internal structure and design choices.
 
 The origin of VO traces back to [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094). That paper first defined the term "Visual Odometry" and presented a real-time ego-motion estimation system for stereo and monocular cameras. The stereo approach triangulated 3D points from the left/right cameras and then estimated the rigid-body transform between frames with a 3-point algorithm; the monocular approach estimated the Essential Matrix with a 5-point algorithm. This basic pipeline — feature detection → matching → RANSAC → motion estimation — still forms the skeleton of feature-based VO two decades later.
 
@@ -19042,7 +19042,7 @@ VO/VIO systems can be classified along three main axes:
 2. **Filter vs Optimization**: whether state estimation relies on Kalman-filter-family methods or nonlinear optimization.
 3. **Loosely coupled vs Tightly coupled**: whether IMU and camera are processed independently and their results fused, or their raw measurements are placed in a single optimization problem.
 
-The combinations of these three axes have produced a wide variety of systems. This chapter dissects representative systems one by one, analyzing the rationale and consequences of each design choice.
+The combinations of these three axes have produced a wide variety of systems. Representative systems show the rationale and consequences of each design choice.
 
 ---
 
@@ -19829,7 +19829,7 @@ It has limitations, however:
 - **No IMU**: it is a vision-only system; coupling an IMU remains an open research problem.
 - **Memory**: feature maps and correlation volumes for every frame must be retained, so memory usage is high.
 
-Follow-up research is addressing these limitations one by one, and learning-based VO/VIO is rapidly catching up with traditional methods.
+Follow-up research is addressing these limitations one by one, and learning-based VO/VIO is closing the gap with traditional methods.
 
 ### 6.5.4 Recent Trends (2023-2025)
 
@@ -19854,16 +19854,16 @@ Follow-up research is addressing these limitations one by one, and learning-base
 | DPVO | Learned (sparse) | Differentiable BA | Mono | 3x faster than DROID with 1/3 memory |
 | MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper |
 
-The next chapter covers LiDAR-based odometry and LiDAR-Inertial fusion systems, analyzing their complementary relationship with camera-based systems.
+LiDAR-based odometry and LiDAR-Inertial fusion form the complementary line to camera-based systems.
 
 
 ---
 
 # Ch.7 — LiDAR Odometry & LiDAR-Inertial Odometry
 
-In Ch.6 we covered camera(+IMU)-based Visual Odometry. In this chapter we approach the same ego-motion estimation problem from the LiDAR side.
+In Ch.6 we covered camera(+IMU)-based Visual Odometry. The same ego-motion estimation problem changes shape when solved from the LiDAR side.
 
-LiDAR is a sensor that complements the camera. While the camera provides rich texture information but is sensitive to illumination and cannot recover absolute range, LiDAR delivers illumination-invariant, precise 3D range measurements. This chapter examines in depth the internal structure of LiDAR Odometry (LO), which estimates ego-motion from LiDAR alone, and of LiDAR-Inertial Odometry (LIO), which couples LiDAR with an IMU.
+LiDAR is a sensor that complements the camera. While the camera provides rich texture information but is sensitive to illumination and cannot recover absolute range, LiDAR delivers illumination-invariant, precise 3D range measurements. LiDAR Odometry (LO) estimates ego-motion from LiDAR alone, and LiDAR-Inertial Odometry (LIO) couples LiDAR with an IMU. Their internal structure is the focus here.
 
 The central problem in LiDAR odometry is **point cloud registration** — finding the rigid-body transformation $\mathbf{T} \in SE(3)$ between two consecutive scans. Despite its seeming simplicity, this problem in practice involves a variety of challenges: data association (correspondence), noise modeling, computational efficiency, and motion distortion compensation.
 
@@ -20571,7 +20571,7 @@ FAST-LIO/FAST-LIO2 work well on solid-state LiDARs for three reasons:
 2. **Leverages the non-repetitive scan**: A solid-state LiDAR gradually fills the FoV more densely over time. FAST-LIO2's ikd-Tree map naturally accommodates this progressive densification, so map quality improves over time.
 3. **Compensates for the narrow FoV**: A narrow FoV means less information per scan, but tight coupling with the IMU compensates for this.
 
-The Livox series is rapidly spreading in drones, handheld devices, and small robots thanks to its strong price/performance, and the FAST-LIO2 + Livox combination is currently one of the most popular LIO configurations.
+The Livox series has spread in drones, handheld devices, and small robots thanks to its strong price/performance, and the FAST-LIO2 + Livox combination is currently one of the most popular LIO configurations.
 
 ---
 
@@ -20637,7 +20637,7 @@ Beyond the systems discussed above, several recent studies in LiDAR odometry are
 
 The LOAM (2014) → LeGO-LOAM (2018) → LIO-SAM (2020) lineage evolved in the direction of **feature-based + factor graph**. The FAST-LIO (2021) → FAST-LIO2 (2022) → Point-LIO (2023) lineage evolved in the direction of **direct + Kalman filter**. The two lineages represent different design philosophies, yet their practical performance is converging to similar levels.
 
-The feature-based approach is strong in structured environments (buildings, cities), and the direct approach is strong in unstructured environments (forests, caves) and on solid-state LiDARs. In the next chapter we take up multi-sensor fusion architectures that integrate these two sensor modalities (camera + LiDAR) together with an IMU.
+The feature-based approach is strong in structured environments (buildings, cities), and the direct approach is strong in unstructured environments (forests, caves) and on solid-state LiDARs. Multi-sensor fusion architectures integrate these two sensor modalities (camera + LiDAR) together with an IMU.
 
 
 ---
@@ -21039,7 +21039,7 @@ In real robot operation, GNSS signals are repeatedly lost and recovered (tunnels
 
 ### 8.4.1 Radar Revisited
 
-Traditionally, automotive radar was considered unsuitable for SLAM/odometry because of its low resolution. However, the emergence of **4D imaging radar** is rapidly changing the situation.
+Traditionally, automotive radar was considered unsuitable for SLAM/odometry because of its low resolution. However, the emergence of **4D imaging radar** is changing the situation.
 
 **What is 4D radar**: Whereas conventional automotive radars measured three quantities — range, Doppler velocity, and azimuth — 4D imaging radar adds **elevation** to produce a 3D point cloud. The resolution is nowhere near that of LiDAR (hundreds to thousands of points vs. hundreds of thousands), but it has unique strengths.
 
@@ -21053,7 +21053,7 @@ Traditionally, automotive radar was considered unsuitable for SLAM/odometry beca
 
 ### 8.4.2 Radar Odometry
 
-Odometry using 4D radar is a rapidly emerging field. The key idea is to exploit radar Doppler measurements directly for ego-motion estimation.
+Odometry using 4D radar is an emerging field. The key idea is to exploit radar Doppler measurements directly for ego-motion estimation.
 
 Each measurement point of an FMCW radar provides $(r, \theta, \phi, v_d)$ — range, azimuth, elevation, Doppler velocity. Given the robot's linear velocity $\mathbf{v}$ and angular velocity $\boldsymbol{\omega}$, the Doppler velocity observed at a point in direction $\mathbf{d}_i = [\cos\phi_i \cos\theta_i, \cos\phi_i \sin\theta_i, \sin\phi_i]^T$ is:
 
@@ -21417,11 +21417,11 @@ Items that must always be checked when designing a real multi-sensor fusion syst
 
 Multi-sensor fusion architectures are broadly classified as loosely/tightly/ultra-tightly coupled, and in modern robotics **tightly coupled** is the mainstream choice. Triple Camera+LiDAR+IMU fusion has reached a mature stage through systems such as R3LIVE, LVI-SAM, and FAST-LIVO2, each representing a distinct design philosophy — dual subsystem, factor graph, and sequential update, respectively.
 
-GNSS integration provides a global coordinate anchor that resolves long-term drift, and 4D radar is rapidly rising thanks to its unique advantages of adverse-weather robustness and direct velocity measurement. Multi-robot fusion faces the core challenges of distributed optimization and cross-robot place recognition under communication constraints, with Kimera-Multi and Swarm-SLAM leading this area.
+GNSS integration provides a global coordinate anchor that resolves long-term drift, and 4D radar is gaining attention thanks to its unique advantages of adverse-weather robustness and direct velocity measurement. Multi-robot fusion faces the core challenges of distributed optimization and cross-robot place recognition under communication constraints, with Kimera-Multi and Swarm-SLAM leading this area.
 
 Finally, in practical system design, sensor selection, time synchronization, and failure-mode handling are as important as the algorithms themselves, and the engineering capability to address these systematically determines successful deployment.
 
-The odometry/fusion systems covered in Ch.6-8 are highly accurate locally, but drift accumulates over long-duration operation. To correct this drift, the ability to "recognize places previously visited" is required. The next chapter addresses this key component, **Place Recognition**.
+The odometry/fusion systems covered in Ch.6-8 are highly accurate locally, but drift accumulates over long-duration operation. Correcting that drift requires the ability to recognize previously visited places: **Place Recognition**.
 
 
 ---
@@ -21666,7 +21666,7 @@ The final VLAD descriptor is the concatenation of all $\mathbf{V}_k$: $\mathbf{V
 
 ### 9.2.3 NetVLAD: The Baseline for Learning-Based VPR
 
-**[NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247)** is a seminal work that reformulated VLAD as a **differentiable CNN layer**, enabling end-to-end training.
+**[NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247)** reformulated VLAD as a **differentiable CNN layer**, enabling end-to-end training.
 
 **Core problem**: In classical VLAD, hard-assigning each descriptor to its nearest cluster is non-differentiable. Backpropagation requires this process to be differentiable.
 
@@ -22252,7 +22252,7 @@ With the advent of 4D imaging radar, radar-based PR is beginning to be studied:
 
 **Advantages**: PR systems that operate in adverse weather. When LiDAR PR and visual PR fail in rain, snow, or fog, radar PR can serve as a backup.
 
-**Current status**: Still in early stages, and discriminability falls short of LiDAR and Visual PR due to radar's low resolution. However, 4D radar resolution is improving rapidly, making this a promising area for the future.
+Radar PR is still early, and discriminability falls short of LiDAR and Visual PR because radar resolution is low. 4D radar resolution is improving, so the area remains open.
 
 ### 9.7.4 Recent Research (2024-2025)
 
@@ -22303,18 +22303,18 @@ Geometric verification is the final verification stage for PR candidates, preven
 
 Recent trends include the lightweighting of Foundation-Model-based PR, semantic PR, and 4D radar PR, all of which are active areas of research.
 
-Place Recognition answers the question "Have I seen this place before?", but the process of converting that answer into global consistency for a SLAM system remains. The next chapter covers **Loop Closure and global optimization**, which integrate PR results into the pose graph to correct drift.
+Place Recognition answers the question "Have I seen this place before?", but a SLAM system still has to convert that answer into global consistency. **Loop Closure and global optimization** integrate PR results into the pose graph and correct drift.
 
 
 ---
 
 # Ch.10 — Loop Closure & Global Optimization
 
-In Ch.9 we covered place recognition — recognizing previously visited locations. This chapter addresses how those recognition results are integrated into a SLAM system to actually correct the accumulated drift.
+In Ch.9 we covered place recognition — recognizing previously visited locations. Those recognition results must enter the SLAM system before they can correct accumulated drift.
 
 In a SLAM system, odometry inevitably accumulates drift. No matter how precise the sensors are, small errors in relative pose estimation build up over time and break global consistency. Loop closure is the mechanism that recognizes "we have revisited a previously visited place" and uses that information to correct the accumulated drift all at once.
 
-In this chapter we walk through the full loop closure pipeline (detection → verification → correction), the mathematical foundations of pose graph optimization at the heart of the correction step, and we extend the discussion to global relocalization and multi-session SLAM.
+The loop closure pipeline runs detection → verification → correction, and pose graph optimization sits at the center of the correction step. The same structure extends to global relocalization and multi-session SLAM.
 
 ---
 
@@ -22503,7 +22503,7 @@ def sampson_error(E, pts1, pts2):
 
 ### 10.1.3 The Danger of False Positives and How to Prevent Them
 
-Let us examine concretely why a false positive loop closure is so dangerous.
+A false positive loop closure is dangerous for a concrete reason.
 
 **Scenario**: Suppose the robot traverses two similar-looking corridors. If an incorrect loop closure is formed between keyframe $i$ in corridor A and keyframe $j$ in corridor B, the pose graph optimizer pulls these two poses close together. As a result, all poses between the two corridors are distorted, and the entire map folds or twists.
 
@@ -23200,18 +23200,18 @@ Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally,
 
 ---
 
-Through loop closure and global optimization, a SLAM system produces a globally consistent trajectory and map. But what form does this "map" take? Is it a point cloud, a grid, or a neural network? In the next chapter, we examine the various forms of **spatial representation** — the final output of sensor fusion — along with their strengths and weaknesses.
+Through loop closure and global optimization, a SLAM system produces a globally consistent trajectory and map. But what form does this "map" take? Is it a point cloud, a grid, or a neural network? That question leads to **spatial representation**, the final output of sensor fusion.
 
 
 ---
 
 # Ch.11 — Spatial Representations
 
-In Ch.6-10 we covered the process of estimating the robot's trajectory from sensor data and securing global consistency through loop closure. This chapter treats the byproduct and ultimate goal of that process: the **map** — the form in which the robot remembers and uses the world.
+In Ch.6-10 we covered the process of estimating the robot's trajectory from sensor data and securing global consistency through loop closure. What remains is the **map** — the byproduct and final goal of that process, and the form in which the robot remembers and uses the world.
 
 The ultimate output of sensor fusion is a **map** — a spatial representation of the environment. What a SLAM system estimates is not only the robot's trajectory but also the structure of the environment observed along that trajectory. The way in which the environment is represented determines what the robot can do: path planning requires free/occupied information, visual rendering requires texture information, and human interaction requires semantic information.
 
-In this chapter, starting from metric maps (quantitative geometric maps), we cover the full spectrum of spatial representations — mesh, neural representation, semantic map, and long-term maintenance.
+The starting point is metric maps (quantitative geometric maps), followed by mesh, neural representation, semantic map, and long-term maintenance.
 
 ---
 
@@ -23772,7 +23772,7 @@ Rendering is performed by splatting — projecting 3D Gaussians onto the image p
 | Memory | Fixed (model size) | Variable (proportional to number of Gaussians) |
 | Loop closure handling | Hard (weight deformation) | Relatively easy (Gaussian transformation) |
 
-**Current limitations**: neither method yet surpasses traditional map representations (TSDF, surfel) in accuracy and real-time performance across all situations. Especially in large-scale environments, dynamic scenes, and long-term SLAM, traditional methods remain more stable. However, in rendering quality neural representations are overwhelmingly superior, and this gap is closing rapidly.
+Limits remain. Neither method yet surpasses traditional map representations (TSDF, surfel) in accuracy and real-time performance across all situations. In large-scale environments, dynamic scenes, and long-term SLAM, traditional methods remain more stable. In rendering quality, neural representations are much stronger, and this gap is narrowing.
 
 **Recent major advances (2024-2025)**:
 
@@ -24291,16 +24291,16 @@ class DynamicMapManager:
 
 ---
 
-In this chapter we surveyed the full spectrum of spatial representations, from point-based representations (OctoMap) through continuous surfaces (TSDF/Mesh), neural representations (NeRF/3DGS), and semantic hierarchies (Scene Graph). Each representation is suited to different downstream tasks, and modern systems trend toward combining them hierarchically. In the next chapter we examine how the algorithms and representations covered so far are integrated in **real platforms** (autonomous driving, drones, handheld) and how performance is evaluated.
+Spatial representations span point-based representations (OctoMap), continuous surfaces (TSDF/Mesh), neural representations (NeRF/3DGS), and semantic hierarchies (Scene Graph). Each representation is suited to different downstream tasks, and modern systems trend toward combining them hierarchically. Real platforms then have to integrate these algorithms and representations in autonomous driving, drones, and handheld systems, and evaluate their performance.
 
 
 ---
 
 # Ch.12 — Practical Systems & Benchmarks
 
-In Ch.2-11 we covered individual algorithms ranging from sensor modeling and state estimation to odometry, place recognition, and spatial representation. In this chapter we broaden our view from algorithms to **systems** and examine how these techniques are combined on real platforms.
+Ch.2-11 built the pieces: sensor modeling, state estimation, odometry, place recognition, and spatial representation. Real platforms combine these techniques into **systems**.
 
-Having covered the theory and algorithms of sensor fusion, we now examine how they are integrated in real systems. We analyze sensor fusion architectures on three representative platforms — autonomous driving, drones, and handheld mapping — and introduce benchmarks and tools for evaluating these systems.
+Sensor fusion architectures appear here on three representative platforms — autonomous driving, drones, and handheld mapping — along with benchmarks and tools for evaluating these systems.
 
 ---
 
@@ -24743,7 +24743,7 @@ Caveats when interpreting benchmark results:
 
 4. **Initialization differences**: Different initialization methods and times in VIO systems can yield different results on the same sequence.
 
-5. **Whether loop closure is included**: VO (no loop closure) vs SLAM (with loop closure) must be distinguished. Loop closure can dramatically improve ATE.
+5. **Whether loop closure is included**: VO (no loop closure) vs SLAM (with loop closure) must be distinguished. Loop closure can substantially improve ATE.
 
 ---
 
@@ -24999,13 +24999,13 @@ The practical systems and benchmarks covered in this chapter show how the theory
 
 Ch.2-12 systematically covered the established theory and practical systems of sensor fusion. In this final chapter, we turn our gaze to the future.
 
-The field of sensor fusion is evolving rapidly. This chapter surveys research frontiers that are not yet fully mature but could reshape the field's direction over the next several years. The topics include the extension of foundation models to spatial AI, end-to-end learned SLAM, scene-graph-based environmental understanding, cross-modal representation, and the fusion of new sensor modalities such as event cameras and 4D radar.
+The field of sensor fusion still has directions that are not yet fully mature but could reshape the next several years. The topics include the extension of foundation models to spatial AI, end-to-end learned SLAM, scene-graph-based environmental understanding, cross-modal representation, and the fusion of new sensor modalities such as event cameras and 4D radar.
 
 ---
 
 ## 13.1 Foundation Models for Spatial AI
 
-Foundation models — general-purpose models pretrained on large-scale data (DINOv2, CLIP, SAM, GPT-4V, etc.) — are rapidly permeating sensor fusion and SLAM pipelines. Although these models were not trained for any specific task, they provide rich visual and semantic representations that replace or augment multiple modules of traditional pipelines.
+Foundation models — general-purpose models pretrained on large-scale data (DINOv2, CLIP, SAM, GPT-4V, etc.) — are entering sensor fusion and SLAM pipelines. Although these models were not trained for any specific task, they provide rich visual and semantic representations that replace or augment multiple modules of traditional pipelines.
 
 ### 13.1.1 Leveraging DINOv2/CLIP Features in SLAM
 
@@ -25019,7 +25019,7 @@ Foundation models — general-purpose models pretrained on large-scale data (DIN
 
 - works in **every environment** — urban, indoor, aerial, underwater, subterranean — without any VPR-specific training.
 - outperforms existing learning-based VPR methods (NetVLAD, CosPlace, etc.) across diverse domains.
-- Key insight: dense features from the value facet of DINOv2's 31st layer perform 23% better than the CLS token.
+- Dense features from the value facet of DINOv2's 31st layer perform 23% better than the CLS token.
 
 ```python
 import numpy as np
@@ -25130,7 +25130,7 @@ Extending CLIP's vision-language alignment to 3D maps allows a robot to understa
 
 **ConceptFusion, LERF, OpenScene**: representative systems of this approach. The core value is that 3D space can be queried by arbitrary text without a predefined class set.
 
-**Current limitations**:
+Limits remain:
 - CLIP features have low spatial resolution (patch-level). Precise localization of small objects is difficult.
 - 3D consistency is hard to guarantee — the same object can have different features from different viewpoints.
 - Computational cost: extracting FM features from every image is expensive.
@@ -25626,7 +25626,7 @@ Here $v_r$ is the measured radial velocity, $\mathbf{v}_{\text{obj}}$ is the obj
 
 ### 13.6.3 Recent Developments in Radar Odometry
 
-Radar odometry has advanced rapidly since 2020:
+Radar odometry has advanced since 2020:
 
 **FMCW radar odometry**: odometry on scanning FMCW radar (Navtech, etc.). Feature points are extracted and matched in range-azimuth images to estimate ego-motion.
 
@@ -25739,7 +25739,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 - **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (2024): The first large-scale, diverse benchmark for evaluating 4D radar-based SLAM, providing 44 sequences collected across three platforms (handheld, bicycle, SUV) under diverse weather and lighting conditions.
 - **[4D Radar-Inertial Odometry](https://arxiv.org/abs/2412.13639)** (2024): Proposes a 3D Gaussian radar scene representation and multi-hypothesis scan matching, achieving more precise radar odometry than voxel-based methods.
 
-4D radar fusion is still in its early stages, but it is developing rapidly as a key technology for all-weather operation in autonomous driving. In particular, ego-motion estimation and dynamic object classification that exploit Doppler information are unique capabilities that cameras and LiDAR cannot provide.
+4D radar fusion is still in its early stages, but it is becoming a key technology for all-weather operation in autonomous driving. In particular, ego-motion estimation and dynamic object classification that exploit Doppler information are unique capabilities that cameras and LiDAR cannot provide.
 
 ---
 

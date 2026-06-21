@@ -2,9 +2,9 @@
 
 Ch.2 defined the observation model of each sensor mathematically. However, applying these models to real sensor data requires one prerequisite — the parameters of the model must be known precisely. The camera's focal length, the relative position between LiDAR and IMU, the time offset between sensors — the process that determines these values precisely is calibration.
 
-> **Key message**: The accuracy of sensor fusion cannot exceed the accuracy of calibration. This chapter covers every aspect of calibration, from camera intrinsics to multi-sensor extrinsics and time synchronization.
+> Sensor fusion accuracy cannot exceed calibration accuracy. Calibration spans camera intrinsics, multi-sensor extrinsics, and time synchronization.
 
-Calibration is the first problem that must be solved in a sensor fusion pipeline. No matter how sophisticated the state estimation algorithm, if the internal model of a sensor is inaccurate or if the relative position/orientation between sensors is wrong, the fusion result diverges. In LiDAR-camera fusion in particular, an error of even 1 degree in the extrinsic parameters produces roughly 87 cm of registration error for an object 50 m away. In this chapter, we derive the mathematical foundation of each calibration problem and provide code and tools that can be used directly in practice.
+Calibration is the first problem that must be solved in a sensor fusion pipeline. No matter how sophisticated the state estimation algorithm, if the internal model of a sensor is inaccurate or if the relative position/orientation between sensors is wrong, the fusion result diverges. In LiDAR-camera fusion in particular, an error of even 1 degree in the extrinsic parameters produces roughly 87 cm of registration error for an object 50 m away. Calibration work therefore has two parts: the mathematical foundation of each problem, and code and tools that can be used directly in practice.
 
 ---
 
@@ -699,7 +699,7 @@ The key is to simultaneously estimate not only the spatial displacement (extrins
 
 The camera and the IMU generate data on different clocks. When a time offset $t_d$ exists between the two sensors, the IMU data corresponding to a camera timestamp $t_c$ is actually from time $t_c + t_d$.
 
-A typical camera-IMU time offset is on the order of several to tens of milliseconds. Ignoring this offset dramatically increases the reprojection error under fast rotation. For example, if the time offset is 10 ms and the camera is rotating at 100 deg/s, a 1-degree rotation error results.
+A typical camera-IMU time offset is on the order of several to tens of milliseconds. Ignoring this offset greatly increases the reprojection error under fast rotation. For example, if the time offset is 10 ms and the camera is rotating at 100 deg/s, a 1-degree rotation error results.
 
 ### 3.4.2 Kalibr: Continuous-Time B-Spline-Based Calibration
 

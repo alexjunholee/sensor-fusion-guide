@@ -1,7 +1,7 @@
 # Ch.8 — Multi-Sensor Fusion 아키텍처
 
 > 개별 odometry를 넘어 **여러 센서를 어떻게 통합하는가**의 설계론.
-> 앞 챕터에서 Visual Odometry, LiDAR Odometry를 각각 다뤘다면, 이 챕터에서는 이들을 하나의 시스템으로 엮는 아키텍처를 분석한다.
+> 앞 챕터에서 Visual Odometry, LiDAR Odometry를 각각 다뤘다. 이제 이들을 하나의 시스템으로 엮는 아키텍처가 문제다.
 
 ---
 

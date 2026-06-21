@@ -1,8 +1,8 @@
 # Ch.6 — Visual Odometry & Visual-Inertial Odometry
 
-Ch.4 covered the state estimation framework and Ch.5 covered feature matching techniques. We now examine the first system in which these two are actually combined: Visual Odometry (VO) and Visual-Inertial Odometry (VIO).
+Ch.4 covered the state estimation framework and Ch.5 covered feature matching techniques. The first system where these two actually meet is Visual Odometry (VO) and Visual-Inertial Odometry (VIO).
 
-Visual Odometry (VO) estimates the ego-motion of a camera from image data alone, while Visual-Inertial Odometry (VIO) couples it with an IMU to gain scale observability and robustness. This chapter examines the internal structure of VO/VIO and the design choices involved in depth.
+Visual Odometry (VO) estimates the ego-motion of a camera from image data alone, while Visual-Inertial Odometry (VIO) couples it with an IMU to gain scale observability and robustness. The important questions are VO/VIO internal structure and design choices.
 
 The origin of VO traces back to [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094). That paper first defined the term "Visual Odometry" and presented a real-time ego-motion estimation system for stereo and monocular cameras. The stereo approach triangulated 3D points from the left/right cameras and then estimated the rigid-body transform between frames with a 3-point algorithm; the monocular approach estimated the Essential Matrix with a 5-point algorithm. This basic pipeline — feature detection → matching → RANSAC → motion estimation — still forms the skeleton of feature-based VO two decades later.
 
@@ -12,7 +12,7 @@ VO/VIO systems can be classified along three main axes:
 2. **Filter vs Optimization**: whether state estimation relies on Kalman-filter-family methods or nonlinear optimization.
 3. **Loosely coupled vs Tightly coupled**: whether IMU and camera are processed independently and their results fused, or their raw measurements are placed in a single optimization problem.
 
-The combinations of these three axes have produced a wide variety of systems. This chapter dissects representative systems one by one, analyzing the rationale and consequences of each design choice.
+The combinations of these three axes have produced a wide variety of systems. Representative systems show the rationale and consequences of each design choice.
 
 ---
 
@@ -799,7 +799,7 @@ It has limitations, however:
 - **No IMU**: it is a vision-only system; coupling an IMU remains an open research problem.
 - **Memory**: feature maps and correlation volumes for every frame must be retained, so memory usage is high.
 
-Follow-up research is addressing these limitations one by one, and learning-based VO/VIO is rapidly catching up with traditional methods.
+Follow-up research is addressing these limitations one by one, and learning-based VO/VIO is closing the gap with traditional methods.
 
 ### 6.5.4 Recent Trends (2023-2025)
 
@@ -824,4 +824,4 @@ Follow-up research is addressing these limitations one by one, and learning-base
 | DPVO | Learned (sparse) | Differentiable BA | Mono | 3x faster than DROID with 1/3 memory |
 | MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper |
 
-The next chapter covers LiDAR-based odometry and LiDAR-Inertial fusion systems, analyzing their complementary relationship with camera-based systems.
+LiDAR-based odometry and LiDAR-Inertial fusion form the complementary line to camera-based systems.

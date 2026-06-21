@@ -1,8 +1,8 @@
 # Ch.7 — LiDAR Odometry & LiDAR-Inertial Odometry
 
-In Ch.6 we covered camera(+IMU)-based Visual Odometry. In this chapter we approach the same ego-motion estimation problem from the LiDAR side.
+In Ch.6 we covered camera(+IMU)-based Visual Odometry. The same ego-motion estimation problem changes shape when solved from the LiDAR side.
 
-LiDAR is a sensor that complements the camera. While the camera provides rich texture information but is sensitive to illumination and cannot recover absolute range, LiDAR delivers illumination-invariant, precise 3D range measurements. This chapter examines in depth the internal structure of LiDAR Odometry (LO), which estimates ego-motion from LiDAR alone, and of LiDAR-Inertial Odometry (LIO), which couples LiDAR with an IMU.
+LiDAR is a sensor that complements the camera. While the camera provides rich texture information but is sensitive to illumination and cannot recover absolute range, LiDAR delivers illumination-invariant, precise 3D range measurements. LiDAR Odometry (LO) estimates ego-motion from LiDAR alone, and LiDAR-Inertial Odometry (LIO) couples LiDAR with an IMU. Their internal structure is the focus here.
 
 The central problem in LiDAR odometry is **point cloud registration** — finding the rigid-body transformation $\mathbf{T} \in SE(3)$ between two consecutive scans. Despite its seeming simplicity, this problem in practice involves a variety of challenges: data association (correspondence), noise modeling, computational efficiency, and motion distortion compensation.
 
@@ -710,7 +710,7 @@ FAST-LIO/FAST-LIO2 work well on solid-state LiDARs for three reasons:
 2. **Leverages the non-repetitive scan**: A solid-state LiDAR gradually fills the FoV more densely over time. FAST-LIO2's ikd-Tree map naturally accommodates this progressive densification, so map quality improves over time.
 3. **Compensates for the narrow FoV**: A narrow FoV means less information per scan, but tight coupling with the IMU compensates for this.
 
-The Livox series is rapidly spreading in drones, handheld devices, and small robots thanks to its strong price/performance, and the FAST-LIO2 + Livox combination is currently one of the most popular LIO configurations.
+The Livox series has spread in drones, handheld devices, and small robots thanks to its strong price/performance, and the FAST-LIO2 + Livox combination is currently one of the most popular LIO configurations.
 
 ---
 
@@ -776,4 +776,4 @@ Beyond the systems discussed above, several recent studies in LiDAR odometry are
 
 The LOAM (2014) → LeGO-LOAM (2018) → LIO-SAM (2020) lineage evolved in the direction of **feature-based + factor graph**. The FAST-LIO (2021) → FAST-LIO2 (2022) → Point-LIO (2023) lineage evolved in the direction of **direct + Kalman filter**. The two lineages represent different design philosophies, yet their practical performance is converging to similar levels.
 
-The feature-based approach is strong in structured environments (buildings, cities), and the direct approach is strong in unstructured environments (forests, caves) and on solid-state LiDARs. In the next chapter we take up multi-sensor fusion architectures that integrate these two sensor modalities (camera + LiDAR) together with an IMU.
+The feature-based approach is strong in structured environments (buildings, cities), and the direct approach is strong in unstructured environments (forests, caves) and on solid-state LiDARs. Multi-sensor fusion architectures integrate these two sensor modalities (camera + LiDAR) together with an IMU.

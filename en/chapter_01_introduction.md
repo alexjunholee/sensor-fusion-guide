@@ -1,6 +1,6 @@
 # Ch.1 — Why Sensor Fusion?
 
-This guide is an in-depth reference that systematically covers the theory and practice of sensor fusion. It is aimed at readers who are newcomers to robotics but have a working foundation in linear algebra and probability. The first chapter draws a map of the sensor fusion landscape as a whole — why a single sensor is insufficient, in what ways sensors can be combined, and what roles classical methods and deep-learning-based methods each play.
+Autonomous vehicles, drones, and service robots start from the same question: which sensors should perceive the world? No single sensor answers it alone. Sensor fusion begins there, with the limits of individual sensors, the ways sensors can be combined, and the division of labor between classical methods and deep-learning-based methods.
 
 ---
 
@@ -239,7 +239,7 @@ In modern robotics, the **tightly coupled** approach is mainstream. Loosely coup
 
 ## 1.4 Classical vs Learning-based: What Deep Learning Changed and What It Did Not
 
-For decades, the field of sensor fusion was dominated by **classical** approaches grounded in probabilistic estimation theory (Kalman filter, factor graph) and geometric methods (epipolar geometry, ICP). Since the mid-2010s, as deep learning revolutionized almost every area of computer vision, learning-based methods have rapidly permeated sensor fusion as well. However, the extent of that penetration differs greatly by area.
+For decades, the field of sensor fusion was dominated by **classical** approaches grounded in probabilistic estimation theory (Kalman filter, factor graph) and geometric methods (epipolar geometry, ICP). Since the mid-2010s, as deep learning changed computer vision, learning-based methods have entered sensor fusion as well. However, the extent of that penetration differs greatly by area.
 
 ### What Deep Learning Changed
 
@@ -249,11 +249,11 @@ In this area, learning-based methods clearly surpass traditional methods — one
 
 **Place Recognition.** The transition from Bag of Words (DBoW2) to [NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247) was dramatic. CNN-based global descriptors enabled place recognition that is far more robust to illumination, seasonal, and viewpoint changes. More recently, [AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688) leverages features from foundation models such as DINOv2 to deliver place recognition that works universally across diverse environments without any additional training.
 
-**Monocular depth estimation.** Estimating depth from a single image is a task that is impossible with classical methods (geometric cues are insufficient). Models such as [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) have achieved remarkable levels of monocular depth estimation through training on large-scale data. Its successor, [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414), pushed precision further through synthetic-data training and large-scale pseudo-labeling, and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) enables zero-shot absolute-scale depth estimation, opening the possibility of using metric depth information in sensor fusion without LiDAR. This technology has the potential to replace or complement LiDAR in sensor fusion.
+**Monocular depth estimation.** Estimating depth from a single image is a task that is impossible with classical methods (geometric cues are insufficient). Models such as [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) have reached strong monocular depth results through training on large-scale data. Its successor, [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414), pushed precision further through synthetic-data training and large-scale pseudo-labeling, and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) enables zero-shot absolute-scale depth estimation, opening the possibility of using metric depth information in sensor fusion without LiDAR. This technology has the potential to replace or complement LiDAR in sensor fusion.
 
 **Map representations.** NeRF and 3D Gaussian Splatting opened a new paradigm for representing scenes with neural networks. NeRF-SLAM, Gaussian Splatting SLAM, and related systems provide photorealistic map representations that go beyond traditional point maps or voxel grids.
 
-**Event cameras.** Event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing extremely high temporal resolution (microsecond level) and wide dynamic range. As a recent [event camera survey (Huang et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM research is developing rapidly, and fusion with conventional frame-based cameras is opening new possibilities in high-speed motion and low-light environments.
+**Event cameras.** Event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing extremely high temporal resolution (microsecond level) and wide dynamic range. As a recent [event camera survey (Huang et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM research is active, and fusion with conventional frame-based cameras is opening new possibilities in high-speed motion and low-light environments.
 
 ### What Deep Learning Did Not Change
 
@@ -287,7 +287,7 @@ The most successful systems today adopt a **hybrid** structure that combines a l
 
 ### Technical Lineage Summary
 
-This guide consistently shows, for each topic, the flow of **traditional methods → what deep learning enabled → where tradition is still needed**. The table below summarizes the technical lineage that runs through the entire guide.
+Each topic follows the same arc: **traditional methods → what deep learning enabled → where tradition is still needed**. The table below summarizes the technical lineage.
 
 | Area | Classical | Learning-based | Current mainstream |
 |------|-----------|---------------|----------|
@@ -302,23 +302,23 @@ This guide consistently shows, for each topic, the flow of **traditional methods
 
 A noteworthy pattern in this table is that **the closer to perception, the stronger learning is; the closer to inference/estimation, the stronger tradition is**. This pattern provides an important criterion for deciding where to invest deep learning and where to retain traditional methods when designing a sensor fusion system.
 
-So far we have surveyed the classification of sensor fusion and the division of roles between classical and learning-based methods. We now introduce how this guide treats this broad field and in what order the reader might best proceed.
+The classification of sensor fusion and the division of roles between classical and learning-based methods now set the reading order.
 
 ---
 
-## 1.5 Scope and Organization of This Guide
+## 1.5 Scope and Organization
 
 ### Relation to robotics-practice
 
-This guide is the advanced companion to the robotics-practice guide. Whereas robotics-practice is an introductory survey covering Spatial AI broadly, this guide is an in-depth reference focused on **sensor fusion, localization, and retrieval**.
+robotics-practice surveys Spatial AI broadly. Here the focus narrows to **sensor fusion, localization, and retrieval**.
 
-- Where robotics-practice introduces EKF/PF in one or two pages, this guide treats each topic at chapter depth — from the derivation of the Kalman filter through ESKF, IMU preintegration, and factor graph optimization.
-- Where robotics-practice introduces sensors at a general level, this guide derives each sensor's **noise model and observation equations** in equation form.
-- Overlapping introductory content is replaced by references to robotics-practice; this guide covers only the additional depth.
+- Where robotics-practice introduces EKF/PF in one or two pages, this text treats each topic at chapter depth — from the derivation of the Kalman filter through ESKF, IMU preintegration, and factor graph optimization.
+- Where robotics-practice introduces sensors at a general level, this text derives each sensor's **noise model and observation equations** in equation form.
+- Overlapping introductory content is replaced by references to robotics-practice; only the additional depth remains here.
 
 ### Guide Organization
 
-This guide follows the organization below:
+The organization is:
 
 1. **Ch.1 — Introduction** (this chapter): motivation and classification of sensor fusion
 2. **Ch.2 — Sensor Modeling**: observation models and noise characteristics of each sensor (equation-focused)
@@ -356,6 +356,6 @@ Throughout this guide, the reader will repeatedly encounter several core questio
 3. **"Where is tradition still needed?"** — Analyze the areas that deep learning has not replaced and why.
 4. **"Where is the gap between theory and practice?"** — Examine the differences between papers and real systems, and the engineering issues encountered in practice.
 
-Keeping these questions in mind while reading each chapter will allow the reader to see not only individual algorithms but also the full landscape of sensor fusion as a field.
+With these questions in view, individual algorithms begin to form a field-level map of sensor fusion.
 
-In the next chapter, we treat the starting point of sensor fusion — **the observation model of each sensor** — mathematically. Precisely expressing in equations how a sensor "sees" the world is the foundation of every fusion algorithm.
+The next step is mathematical: the **observation model of each sensor**. Every fusion algorithm starts by expressing, in equations, how a sensor "sees" the world.

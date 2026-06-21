@@ -63,7 +63,7 @@ $$\min_{\mathbf{R}, \mathbf{t}} \sum_{i} \| \mathbf{q}_i - (\mathbf{R} \mathbf{p
 
 ## 5.2 전통적 Feature Detection & Description
 
-전통적 correspondence 파이프라인은 **detect → describe → match**의 3단계로 구성된다. 이 절에서는 처음 두 단계 — 어디에서 특징점을 찾고(detection), 그 특징점을 어떻게 표현하는가(description) — 를 본다.
+전통적 correspondence 파이프라인은 **detect → describe → match**의 3단계로 구성된다. 처음 두 단계는 어디에서 특징점을 찾고(detection), 그 특징점을 어떻게 표현하는가(description)다.
 
 ### 5.2.1 Corner Detection: Harris → FAST → ORB
 
@@ -1172,7 +1172,7 @@ P2-Net (Yu et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패
 
 ## 5.10 Dense Matching & Optical Flow
 
-지금까지 다룬 방법들은 **sparse correspondence** (희소 대응점)에 집중했다. 이 절에서는 이미지의 **모든 픽셀에 대해 대응을 찾는 dense matching**을 다룬다.
+지금까지 다룬 방법들은 **sparse correspondence** (희소 대응점)에 집중했다. Dense matching은 이미지의 **모든 픽셀에 대해 대응을 찾는 문제**다.
 
 ### 5.10.1 Classical Optical Flow: Lucas-Kanade, Horn-Schunck
 

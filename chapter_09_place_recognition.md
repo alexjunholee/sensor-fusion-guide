@@ -825,4 +825,4 @@ Geometric verification은 PR 후보의 최종 검증 단계로, false positive�
 
 최신 동향으로는 Foundation Model 기반 PR의 경량화, semantic PR, 4D radar PR이 활발히 연구되고 있다.
 
-Place Recognition은 "이 장소를 본 적 있는가?"라는 질문에 답하지만, 그 답을 SLAM 시스템의 전역 일관성으로 전환하는 과정이 남아 있다. 다음 챕터에서는 PR 결과를 포즈 그래프에 통합하여 드리프트를 교정하는 **Loop Closure와 전역 최적화**를 다룬다.
+Place Recognition은 "이 장소를 본 적 있는가?"라는 질문에 답하지만, 그 답을 SLAM 시스템의 전역 일관성으로 전환하는 과정이 남아 있다. PR 결과를 포즈 그래프에 통합하면 **Loop Closure와 전역 최적화** 문제가 된다.

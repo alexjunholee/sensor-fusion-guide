@@ -1,8 +1,8 @@
 # Ch.7 — LiDAR Odometry & LiDAR-Inertial Odometry
 
-Ch.6에서 카메라(+IMU) 기반의 Visual Odometry를 다루었다. 이 챕터에서는 LiDAR 기반으로 동일한 자기 운동 추정 문제에 접근한다.
+Ch.6에서 카메라(+IMU) 기반의 Visual Odometry를 다루었다. 같은 자기 운동 추정 문제를 LiDAR 기반으로 풀면 조건이 바뀐다.
 
-LiDAR는 카메라와 상보적인 센서다. 카메라가 풍부한 텍스처 정보를 제공하지만 조명에 민감하고 절대 거리를 알 수 없는 반면, LiDAR는 조명 불변의 정밀한 3D 거리 측정을 제공한다. 이 챕터에서는 LiDAR로부터 자기 운동을 추정하는 LiDAR Odometry(LO)와, IMU를 결합한 LiDAR-Inertial Odometry(LIO)의 내부 구조를 심도 있게 다룬다.
+LiDAR는 카메라와 상보적인 센서다. 카메라가 풍부한 텍스처 정보를 제공하지만 조명에 민감하고 절대 거리를 알 수 없는 반면, LiDAR는 조명 불변의 정밀한 3D 거리 측정을 제공한다. LiDAR Odometry(LO)는 LiDAR로부터 자기 운동을 추정하고, LiDAR-Inertial Odometry(LIO)는 여기에 IMU를 결합한다. 두 시스템의 내부 구조가 이 장의 중심이다.
 
 LiDAR 오도메트리의 핵심 문제는 **포인트 클라우드 정합(registration)**이다 — 연속된 두 스캔 사이의 강체 변환 $\mathbf{T} \in SE(3)$를 찾는 것이다. 이 단순해 보이는 문제가 실제로는 데이터 연관(correspondence), 노이즈 모델, 계산 효율, 모션 왜곡 보정 등 다양한 도전을 포함한다.
 
@@ -180,7 +180,7 @@ NDT의 장점:
 
 LOAM ([Zhang & Singh, 2014](https://doi.org/10.15607/RSS.2014.X.007))은 LiDAR 오도메트리의 기준점이다. KITTI 오도메트리 벤치마크에서 오랫동안 상위권을 유지했으며, 이후 LeGO-LOAM, LIO-SAM, A-LOAM 등 수많은 후속 시스템의 기반이 되었다.
 
-LOAM의 핵심 통찰은 두 가지다:
+LOAM의 핵심은 두 가지였다:
 1. LiDAR 스캔에서 기하학적 특징(edge, planar)을 추출하면, 전체 점군 대비 훨씬 적은 점으로 정확한 정합이 가능하다.
 2. 빠른 odometry와 느린 mapping을 분리하면, 실시간성과 정확도를 동시에 달성할 수 있다.
 
@@ -755,4 +755,4 @@ Livox 시리즈는 가격 대비 성능이 뛰어나 드론과 핸드헬드 플�
 
 LOAM(2014) → LeGO-LOAM(2018) → LIO-SAM(2020) 계보는 **feature-based + factor graph** 방향으로 진화했다. FAST-LIO(2021) → FAST-LIO2(2022) → Point-LIO(2023) 계보는 **direct + Kalman filter** 방향으로 진화했다. 두 계보는 서로 다른 설계 철학을 대표하지만, 실전 성능은 비슷한 수준에 수렴하고 있다.
 
-Feature-based 접근은 구조화된 환경(건물, 도시)에서 강하고, direct 접근은 비구조화된 환경(숲, 동굴)과 solid-state LiDAR에서 강하다. 다음 챕터에서는 이 두 센서 모달리티(카메라 + LiDAR)를 IMU와 함께 통합하는 multi-sensor fusion 아키텍처를 다룬다.
+Feature-based 접근은 구조화된 환경(건물, 도시)에서 강하고, direct 접근은 비구조화된 환경(숲, 동굴)과 solid-state LiDAR에서 강하다. 카메라와 LiDAR를 IMU와 함께 묶으면 multi-sensor fusion 아키텍처 문제가 된다.

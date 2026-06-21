@@ -1,10 +1,10 @@
 # Ch.10 — Loop Closure & Global Optimization
 
-Ch.9에서 Place Recognition — 과거 방문 장소의 인식 — 을 보았다. 이 챕터는 그 인식 결과를 SLAM 시스템에 통합하여 누적 드리프트를 실제로 교정하는 과정을 이야기한다.
+Ch.9에서 Place Recognition — 과거 방문 장소의 인식 — 을 보았다. 그 인식 결과를 SLAM 시스템에 넣어야 누적 드리프트가 실제로 줄어든다.
 
 SLAM 시스템에서 odometry는 필연적으로 드리프트(drift)를 누적한다. 아무리 정밀한 센서를 쓰더라도, 상대 pose 추정의 작은 오차들이 시간에 따라 쌓여 전역 일관성을 무너뜨린다. Loop closure는 "과거에 방문했던 장소를 재방문했음"을 인식하고, 그 정보를 활용하여 누적된 드리프트를 보정하는 메커니즘이다.
 
-이 챕터에서는 loop closure 파이프라인(detection → verification → correction)을 살펴보고, 보정의 핵심인 pose graph optimization의 수학적 기초, global relocalization, multi-session SLAM까지 확장한다.
+Loop closure 파이프라인은 detection → verification → correction으로 이어지고, 보정의 중심에는 pose graph optimization이 있다. 같은 틀은 global relocalization과 multi-session SLAM까지 확장된다.
 
 ---
 
@@ -877,4 +877,4 @@ $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} 
 
 ---
 
-Loop closure와 전역 최적화로 SLAM 시스템은 전역적으로 일관된 궤적과 맵을 만든다. 그런데 이 "맵"은 어떤 형태인가? 점군일 수도, 신경망 가중치일 수도 있다. 다음 챕터에서는 센서 퓨전의 최종 결과물인 공간 표현(spatial representation)의 다양한 형태와 그 장단점을 본다.
+Loop closure와 전역 최적화로 SLAM 시스템은 전역적으로 일관된 궤적과 맵을 만든다. 그런데 이 "맵"은 어떤 형태인가? 점군일 수도, 신경망 가중치일 수도 있다. 여기서 센서 퓨전의 최종 결과물인 공간 표현(spatial representation) 문제가 열린다.

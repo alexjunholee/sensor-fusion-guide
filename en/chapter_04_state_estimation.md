@@ -737,7 +737,7 @@ $$\text{Var}[\hat{\mathbf{x}}_{\text{RBPF}}] \leq \text{Var}[\hat{\mathbf{x}}_{\
 - $\mathbf{x}_1 = \mathbf{x}_{0:k}^{\text{robot}}$ (robot trajectory) → particle filter
 - $\mathbf{x}_2 = \{\mathbf{m}_1, \ldots, \mathbf{m}_M\}$ (landmarks) → $M$ independent 2D EKFs per particle
 
-Given the robot trajectory, observations of each landmark become mutually independent (conditional independence), so $M$ small EKFs can be run independently instead of one giant EKF. This is the key insight that reduces the $O(M^2)$ complexity of EKF-SLAM to the $O(M \log M)$ of FastSLAM.
+Given the robot trajectory, observations of each landmark become mutually independent (conditional independence), so $M$ small EKFs can be run independently instead of one giant EKF. That conditional independence reduces the $O(M^2)$ complexity of EKF-SLAM to the $O(M \log M)$ of FastSLAM.
 
 ### 4.3.5 Limitations of the Particle Filter and Its Current Role
 
@@ -1538,7 +1538,7 @@ Mitigations:
 
 ## Chapter 4 Summary
 
-In this chapter we covered state estimation theory, the mathematical foundation of sensor fusion. The key messages:
+State estimation theory is the mathematical foundation of sensor fusion. The key messages:
 
 1. The **Bayesian Filtering Framework** is a prediction-update recursion that forms the common skeleton of every state estimation method. The Chapman-Kolmogorov equation and Bayes' rule are the theoretical underpinnings, but in nonlinear systems approximation is essential.
 
@@ -1554,6 +1554,6 @@ In this chapter we covered state estimation theory, the mathematical foundation 
 
 7. **Marginalization** is the information-preservation mechanism of the sliding window. The Schur complement is the core operation, and FEJ is the key to maintaining consistency.
 
-This chapter's theory is an indispensable foundation for understanding the design and implementation of real systems in the subsequent VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8) chapters.
+This theory is the foundation for understanding the design and implementation of real systems in the VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8) chapters.
 
 > **2024-2025 research directions**: state estimation is evolving along three major axes. (1) **Symmetry-based filters**: the Equivariant Filter (EqF) and the Invariant EKF exploit the symmetry structure of Lie groups to structurally guarantee consistency and convergence. (2) **Continuous-time optimization**: continuous-time factor graphs with Gaussian Process motion priors are becoming a new paradigm for asynchronous multi-sensor fusion. (3) **Learning-based hybrids**: approaches such as [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289) that learn the Kalman gain or process model with RNNs/Transformers are active, though providing safety guarantees remains a challenge.

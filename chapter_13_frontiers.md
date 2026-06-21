@@ -1,8 +1,8 @@
 # Ch.13 — Frontiers & Emerging Directions
 
-Ch.2-12에서 센서 퓨전의 확립된 이론과 실전 시스템을 체계적으로 다루었다. 이 마지막 챕터에서는 시선을 미래로 돌린다.
+Ch.2-12에서 센서 퓨전의 확립된 이론과 실전 시스템을 체계적으로 다루었다. 마지막에는 아직 안정되지 않은 방향들이 남는다.
 
-센서 퓨전 분야는 빠르게 진화하고 있다. 이 챕터에서는 아직 완전히 성숙하지 않았지만, 향후 몇 년간 분야의 방향을 바꿀 수 있는 연구 프런티어를 다룬다. Foundation model의 공간 지능(spatial AI)으로의 확장, end-to-end 학습 SLAM, scene graph 기반의 환경 이해, cross-modal representation, 그리고 event camera와 4D radar라는 새로운 센서 모달리티의 퓨전이 그 주제다.
+센서 퓨전 분야에는 아직 완전히 성숙하지 않았지만, 향후 몇 년간 방향을 바꿀 수 있는 연구 프런티어가 남아 있다. Foundation model의 공간 지능(spatial AI)으로의 확장, end-to-end 학습 SLAM, scene graph 기반의 환경 이해, cross-modal representation, 그리고 event camera와 4D radar라는 새로운 센서 모달리티의 퓨전이 그 주제다.
 
 ---
 
@@ -748,13 +748,13 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 
 ## 마무리
 
-이 가이드는 센서 모델링(Ch.2)에서 출발하여 캘리브레이션(Ch.3), 상태 추정 이론(Ch.4), 특징점 매칭(Ch.5), VO/VIO(Ch.6), LiDAR odometry(Ch.7), 멀티센서 퓨전(Ch.8), Place Recognition(Ch.9), Loop Closure(Ch.10), 공간 표현(Ch.11), 실전 시스템(Ch.12), 그리고 연구 프런티어(Ch.13)까지 — 센서 퓨전의 전체 파이프라인을 단계별로 다루었다.
+센서 모델링(Ch.2)에서 출발한 흐름은 캘리브레이션(Ch.3), 상태 추정 이론(Ch.4), 특징점 매칭(Ch.5), VO/VIO(Ch.6), LiDAR odometry(Ch.7), 멀티센서 퓨전(Ch.8), Place Recognition(Ch.9), Loop Closure(Ch.10), 공간 표현(Ch.11), 실전 시스템(Ch.12), 연구 프런티어(Ch.13)까지 이어졌다.
 
-이 분야의 핵심 서사를 다시 한번 정리하면:
+핵심 흐름은 네 가지다.
 
 1. **전통 방법은 여전히 기반이다.** 칼만 필터, ICP, RANSAC, 팩터 그래프 — 수십 년 전에 제안된 이 방법들이 현대 시스템의 뼈대를 이루고 있다.
 2. **딥러닝은 지각(perception)에서 전통 방법을 밀어냈다.** 특징점 매칭, 깊이 추정, Place Recognition 등 "무엇을 보는가"의 영역에서 학습 기반 방법이 전통을 압도한다.
 3. **추론(inference)에서는 전통과 학습이 공존한다.** 상태 추정 backend는 여전히 최적화 기반이 지배적이지만, DROID-SLAM처럼 미분 가능 최적화로 경계를 허무는 시도가 진행 중이다.
 4. **Foundation model이 파이프라인을 바꾸고 있다.** DINOv2, SAM 등 범용 모델의 표현력이 센서 퓨전 파이프라인 곳곳에 유입되고 있다.
 
-센서 퓨전은 불완전한 관측으로부터 세상을 이해하는 기술이다. 이 가이드가 그 이해의 출발점이 되기를 바란다.
+센서 퓨전은 불완전한 관측으로부터 세상을 이해하는 기술이다. 출발점은 센서 모델과 추정기, 그리고 실패 모드를 같은 표 안에 놓는 일이다.

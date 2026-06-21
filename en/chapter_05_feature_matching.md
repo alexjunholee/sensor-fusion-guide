@@ -1,8 +1,8 @@
 # Ch.5 — Feature Matching & Correspondence: Technical Lineage
 
-Ch.4 established the mathematical framework of state estimation. But whether we use a Kalman filter or a factor graph, the **data association** problem — "which observation corresponds to which landmark?" — must be solved first. This chapter covers the technical lineage of its core: feature matching and correspondence search.
+Ch.4 established the mathematical framework of state estimation. But whether we use a Kalman filter or a factor graph, the **data association** problem — "which observation corresponds to which landmark?" — must be solved first. Its core is feature matching and correspondence search.
 
-> **Purpose of this chapter**: Almost every component of sensor fusion — Visual Odometry, calibration, loop closure, point cloud registration — depends on **correspondence**. This chapter traces the technical flow starting from mutual information and continuing through to RoMa, clearly showing which limitation of the previous generation each method addressed.
+> Almost every component of sensor fusion — Visual Odometry, calibration, loop closure, point cloud registration — depends on **correspondence**. The technical flow runs from mutual information to RoMa, and each step addresses a limitation of the previous generation.
 
 ---
 
@@ -1256,7 +1256,7 @@ $$C_{ijkl} = \sum_d g_1(i, j, d) \cdot g_2(k, l, d)$$
 
 Generates a 4D correlation volume $\mathbf{C} \in \mathbb{R}^{H \times W \times H \times W}$. This is average-pooled over the last two dimensions to build a 4-level **correlation pyramid** (scales 1, 2, 4, 8).
 
-Key insight: **rather than coarse-to-fine, multi-scale lookup is performed at a single resolution**.
+The important twist is that **multi-scale lookup is performed at a single resolution**, rather than coarse-to-fine.
 
 **3. Iterative Update (GRU)**: a ConvGRU iteratively refines the current flow estimate:
 

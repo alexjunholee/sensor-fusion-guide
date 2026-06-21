@@ -1,8 +1,8 @@
 # Ch.12 — Practical Systems & Benchmarks
 
-In Ch.2-11 we covered individual algorithms ranging from sensor modeling and state estimation to odometry, place recognition, and spatial representation. In this chapter we broaden our view from algorithms to **systems** and examine how these techniques are combined on real platforms.
+Ch.2-11 built the pieces: sensor modeling, state estimation, odometry, place recognition, and spatial representation. Real platforms combine these techniques into **systems**.
 
-Having covered the theory and algorithms of sensor fusion, we now examine how they are integrated in real systems. We analyze sensor fusion architectures on three representative platforms — autonomous driving, drones, and handheld mapping — and introduce benchmarks and tools for evaluating these systems.
+Sensor fusion architectures appear here on three representative platforms — autonomous driving, drones, and handheld mapping — along with benchmarks and tools for evaluating these systems.
 
 ---
 
@@ -445,7 +445,7 @@ Caveats when interpreting benchmark results:
 
 4. **Initialization differences**: Different initialization methods and times in VIO systems can yield different results on the same sequence.
 
-5. **Whether loop closure is included**: VO (no loop closure) vs SLAM (with loop closure) must be distinguished. Loop closure can dramatically improve ATE.
+5. **Whether loop closure is included**: VO (no loop closure) vs SLAM (with loop closure) must be distinguished. Loop closure can substantially improve ATE.
 
 ---
 

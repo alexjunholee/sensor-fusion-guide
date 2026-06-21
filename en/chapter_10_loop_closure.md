@@ -1,10 +1,10 @@
 # Ch.10 — Loop Closure & Global Optimization
 
-In Ch.9 we covered place recognition — recognizing previously visited locations. This chapter addresses how those recognition results are integrated into a SLAM system to actually correct the accumulated drift.
+In Ch.9 we covered place recognition — recognizing previously visited locations. Those recognition results must enter the SLAM system before they can correct accumulated drift.
 
 In a SLAM system, odometry inevitably accumulates drift. No matter how precise the sensors are, small errors in relative pose estimation build up over time and break global consistency. Loop closure is the mechanism that recognizes "we have revisited a previously visited place" and uses that information to correct the accumulated drift all at once.
 
-In this chapter we walk through the full loop closure pipeline (detection → verification → correction), the mathematical foundations of pose graph optimization at the heart of the correction step, and we extend the discussion to global relocalization and multi-session SLAM.
+The loop closure pipeline runs detection → verification → correction, and pose graph optimization sits at the center of the correction step. The same structure extends to global relocalization and multi-session SLAM.
 
 ---
 
@@ -193,7 +193,7 @@ def sampson_error(E, pts1, pts2):
 
 ### 10.1.3 The Danger of False Positives and How to Prevent Them
 
-Let us examine concretely why a false positive loop closure is so dangerous.
+A false positive loop closure is dangerous for a concrete reason.
 
 **Scenario**: Suppose the robot traverses two similar-looking corridors. If an incorrect loop closure is formed between keyframe $i$ in corridor A and keyframe $j$ in corridor B, the pose graph optimizer pulls these two poses close together. As a result, all poses between the two corridors are distorted, and the entire map folds or twists.
 
@@ -890,4 +890,4 @@ Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally,
 
 ---
 
-Through loop closure and global optimization, a SLAM system produces a globally consistent trajectory and map. But what form does this "map" take? Is it a point cloud, a grid, or a neural network? In the next chapter, we examine the various forms of **spatial representation** — the final output of sensor fusion — along with their strengths and weaknesses.
+Through loop closure and global optimization, a SLAM system produces a globally consistent trajectory and map. But what form does this "map" take? Is it a point cloud, a grid, or a neural network? That question leads to **spatial representation**, the final output of sensor fusion.

@@ -1,10 +1,10 @@
 # Ch.11 — Spatial Representations
 
-In Ch.6-10 we covered the process of estimating the robot's trajectory from sensor data and securing global consistency through loop closure. This chapter treats the byproduct and ultimate goal of that process: the **map** — the form in which the robot remembers and uses the world.
+In Ch.6-10 we covered the process of estimating the robot's trajectory from sensor data and securing global consistency through loop closure. What remains is the **map** — the byproduct and final goal of that process, and the form in which the robot remembers and uses the world.
 
 The ultimate output of sensor fusion is a **map** — a spatial representation of the environment. What a SLAM system estimates is not only the robot's trajectory but also the structure of the environment observed along that trajectory. The way in which the environment is represented determines what the robot can do: path planning requires free/occupied information, visual rendering requires texture information, and human interaction requires semantic information.
 
-In this chapter, starting from metric maps (quantitative geometric maps), we cover the full spectrum of spatial representations — mesh, neural representation, semantic map, and long-term maintenance.
+The starting point is metric maps (quantitative geometric maps), followed by mesh, neural representation, semantic map, and long-term maintenance.
 
 ---
 
@@ -565,7 +565,7 @@ Rendering is performed by splatting — projecting 3D Gaussians onto the image p
 | Memory | Fixed (model size) | Variable (proportional to number of Gaussians) |
 | Loop closure handling | Hard (weight deformation) | Relatively easy (Gaussian transformation) |
 
-**Current limitations**: neither method yet surpasses traditional map representations (TSDF, surfel) in accuracy and real-time performance across all situations. Especially in large-scale environments, dynamic scenes, and long-term SLAM, traditional methods remain more stable. However, in rendering quality neural representations are overwhelmingly superior, and this gap is closing rapidly.
+Limits remain. Neither method yet surpasses traditional map representations (TSDF, surfel) in accuracy and real-time performance across all situations. In large-scale environments, dynamic scenes, and long-term SLAM, traditional methods remain more stable. In rendering quality, neural representations are much stronger, and this gap is narrowing.
 
 **Recent major advances (2024-2025)**:
 
@@ -1084,4 +1084,4 @@ class DynamicMapManager:
 
 ---
 
-In this chapter we surveyed the full spectrum of spatial representations, from point-based representations (OctoMap) through continuous surfaces (TSDF/Mesh), neural representations (NeRF/3DGS), and semantic hierarchies (Scene Graph). Each representation is suited to different downstream tasks, and modern systems trend toward combining them hierarchically. In the next chapter we examine how the algorithms and representations covered so far are integrated in **real platforms** (autonomous driving, drones, handheld) and how performance is evaluated.
+Spatial representations span point-based representations (OctoMap), continuous surfaces (TSDF/Mesh), neural representations (NeRF/3DGS), and semantic hierarchies (Scene Graph). Each representation is suited to different downstream tasks, and modern systems trend toward combining them hierarchically. Real platforms then have to integrate these algorithms and representations in autonomous driving, drones, and handheld systems, and evaluate their performance.
