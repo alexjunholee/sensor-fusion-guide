@@ -1,28 +1,28 @@
 # Ch.13 — Frontiers & Emerging Directions
 
-Ch.2-12 systematically covered the established theory and practical systems of sensor fusion. In this final chapter, we turn our gaze to the future.
+Sensor fusion includes established theory and deployed systems as well as research directions that are still being validated.
 
-The field of sensor fusion still has directions that are not yet fully mature but could reshape the next several years. The topics include the extension of foundation models to spatial AI, end-to-end learned SLAM, scene-graph-based environmental understanding, cross-modal representation, and the fusion of new sensor modalities such as event cameras and 4D radar.
+These directions include extending foundation models to spatial AI, end-to-end learned SLAM, scene-graph-based environmental understanding, cross-modal representation, and the fusion of event cameras and 4D radar.
 
 ---
 
 ## 13.1 Foundation Models for Spatial AI
 
-Foundation models — general-purpose models pretrained on large-scale data (DINOv2, CLIP, SAM, GPT-4V, etc.) — are entering sensor fusion and SLAM pipelines. Although these models were not trained for any specific task, they provide rich visual and semantic representations that replace or augment multiple modules of traditional pipelines.
+Research increasingly uses representations from foundation models — general-purpose models pretrained on large-scale data, such as DINOv2, CLIP, and SAM — inside sensor-fusion and SLAM pipelines. Their features can support retrieval, matching, and semantic priors, but they do not automatically replace geometry or uncertainty handling.
 
 ### 13.1.1 Leveraging DINOv2/CLIP Features in SLAM
 
-**Visual features of DINOv2**: [DINOv2](https://arxiv.org/abs/2304.07193) (Oquab et al. 2024) is a ViT trained with self-supervised learning that provides pixel-level dense features. These features are:
+**Visual features of DINOv2**: [DINOv2](https://arxiv.org/abs/2304.07193) is a ViT trained with self-supervised learning. Tokens obtained for image patches can be used as dense features, and downstream experiments reveal the following properties.
 
-- **Illumination/season invariant**: they produce similar features for the same place under different conditions (day/night, summer/winter).
-- **Semantically aware**: they assign similar features to objects of the same kind (e.g., every "chair").
-- **Structure aware**: geometric structure (edges, planes, etc.) is also reflected in the features.
+- In some illumination and seasonal changes, the features help recover same-place correspondences.
+- Object categories and scene semantics can affect feature similarity.
+- Patch-level structure can support downstream correspondence and segmentation tasks.
 
 **AnyLoc's approach**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023) aggregates DINOv2's dense features with VLAD to produce a global place descriptor. This descriptor:
 
-- works in **every environment** — urban, indoor, aerial, underwater, subterranean — without any VPR-specific training.
-- outperforms existing learning-based VPR methods (NetVLAD, CosPlace, etc.) across diverse domains.
-- Dense features from the value facet of DINOv2's 31st layer perform 23% better than the CLS token.
+- was evaluated without VPR-specific fine-tuning on paper benchmarks spanning urban, indoor, aerial, underwater, and subterranean settings.
+- reports higher recall than the tested NetVLAD- and CosPlace-family baselines on several datasets, not a guarantee for every environment.
+- includes an ablation in which value-facet dense features from layer 31 average 23% higher results than the CLS token.
 
 ```python
 import numpy as np
@@ -111,65 +111,65 @@ class FoundationModelFeatureExtractor:
 
 **Where foundation models fit in the SLAM pipeline**:
 
-| Pipeline module | Traditional method | FM replacement/augmentation |
+| Pipeline module | Traditional method | Example use of learned features |
 |---------------|-----------|-------------|
 | Feature detection | FAST, ORB | SuperPoint + DINOv2 hybrid |
 | Feature matching | BF + ratio test | SuperGlue/LightGlue, LoFTR |
 | Place recognition | DBoW2, Scan Context | AnyLoc (DINOv2 + VLAD) |
 | Semantic segmentation | Task-specific model training | [SAM](https://arxiv.org/abs/2304.02643), open-vocabulary segmentation |
-| Depth estimation | Stereo matching | [Depth Anything](https://arxiv.org/abs/2401.10891) (monocular) |
-| Loop closure verification | Geometric only | FM descriptor consistency |
+| Depth estimation | Stereo matching | Relative-depth prior from [Depth Anything](https://arxiv.org/abs/2401.10891) |
+| Loop-closure candidate | DBoW2, Scan Context | FM descriptor similarity followed by geometric verification |
 
 ### 13.1.2 Open-Vocabulary 3D Understanding
 
 Extending CLIP's vision-language alignment to 3D maps allows a robot to understand and navigate its environment via natural language.
 
-**How it works**:
+The system operates as follows:
 
 1. Build a 3D map (point cloud, mesh, 3DGS) with SLAM.
 2. Extract CLIP visual features for each region of each observation image.
 3. Back-project the 2D features to their corresponding locations in the 3D map and attach them.
 4. When the user says "find the fire extinguisher," the CLIP text encoder encodes the text and returns the location in the 3D map with the highest similarity.
 
-**ConceptFusion, LERF, OpenScene**: representative systems of this approach. The core value is that 3D space can be queried by arbitrary text without a predefined class set.
+**ConceptFusion, LERF, OpenScene** are representative systems of this approach. They allow 3D space to be queried with arbitrary text without a predefined class set.
 
 Limits remain:
 - CLIP features have low spatial resolution (patch-level). Precise localization of small objects is difficult.
 - 3D consistency is hard to guarantee — the same object can have different features from different viewpoints.
 - Computational cost: extracting FM features from every image is expensive.
 
-### 13.1.3 How Much of the Traditional Pipeline Can FMs Replace?
+### 13.1.3 Evidence and Boundaries by Module
 
-An honest assessment as of 2025-2026:
+The evidence for foundation-model integration varies by task and benchmark. The following is not a replacement ranking; it identifies what must be validated for each use.
 
-**Areas where replacement is already under way**:
-- **Visual place recognition**: AnyLoc outperforms DBoW2 in most environments. The gap is especially large when there are condition changes (day/night, seasonal).
-- **Feature matching**: LoFTR and RoMa are trending toward replacing the traditional detect-describe-match pipeline. They are particularly strong in textureless environments.
-- **Monocular depth**: [Depth Anything](https://arxiv.org/abs/2401.10891) estimates monocular metric depth to a reasonable level. It can be used as an auxiliary sensor.
+**Areas with evidence on published benchmarks**:
+- **Visual place recognition**: AnyLoc reports strong recall for DINOv2+VLAD across several domains. Because its inputs, training assumptions, and compute differ from DBoW2, treat them as alternatives to test in the target environment and compare both false-positive rate and latency.
+- **Feature matching**: LoFTR and RoMa report strong results on benchmarks with difficult texture and viewpoint changes. Classical sparse features remain viable when compute, calibration, or repeatability requirements favor them.
+- **Monocular depth**: The base output of [Depth Anything](https://arxiv.org/abs/2401.10891) is relative depth. Fusion that requires metric scale needs a metric-depth fine-tune or constraints from another sensor, plus a separate treatment of output uncertainty.
 
-**Areas where replacement is still difficult**:
-- **LiDAR odometry**: Traditional methods (ICP, LOAM, FAST-LIO2) remain dominant. Learning-based LiDAR odometry lags in both generalization and accuracy.
-- **IMU integration**: Physics-based preintegration provides accuracy and theoretical guarantees that learning cannot replace.
-- **Backend optimization**: Optimization frameworks such as factor graphs and iSAM2 are not targets for FM replacement. The correct direction is to integrate FM outputs as factors.
+**Areas that still require a separate estimator**:
+- **LiDAR odometry**: Comparisons between geometry-based methods such as ICP, LOAM, and FAST-LIO2 and learned methods depend on the sensor and dataset. Learned features or correspondences do not remove motion modeling and registration validation.
+- **IMU integration**: Preintegration compresses kinematics and a noise model into a factor. Learned bias or noise corrections can be added, but they do not automatically replace the observation model and uncertainty propagation.
+- **Backend optimization**: Factor graphs and iSAM2 combine observations. An FM output used as a factor still needs explicit covariance, outlier handling, and correlation analysis.
 
-**Hybrid approaches are the most promising**: Preserving the structural rigor of the traditional pipeline while injecting the robust features and semantic information that FMs provide on a module-by-module basis is currently the most practical direction.
+A practical default is therefore a hybrid that retains the geometry and uncertainty structure of an estimator while adding learned features or semantic priors as testable modules.
 
-**Recent key developments (2024-2025)**:
+**Recent systems (2024-2025)**:
 
-- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): By directly integrating the geometric prior learned by the 3D reconstruction foundation model MASt3R into SLAM, this system achieves globally-consistent dense SLAM at 15 fps without assumptions about the camera model.
-- **[Depth Anything V2](https://arxiv.org/abs/2406.09414)** (Yang et al. NeurIPS 2024): Using a strategy that trains a teacher on synthetic data and a student on large-scale pseudo-labels, this work significantly improves the accuracy and robustness of monocular depth estimation. It can be used as a depth prior in sensor fusion.
+- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): This system integrates MASt3R's learned geometry into SLAM; the paper reports dense SLAM at 15 fps without a prespecified camera model.
+- **[Depth Anything V2](https://arxiv.org/abs/2406.09414)** (Yang et al. NeurIPS 2024): This work trains a teacher on synthetic data and a student on large-scale pseudo-labels. Its benchmark results make it a candidate depth prior, but fusion still requires validation of scale and uncertainty.
 
 ---
 
 ## 13.2 End-to-End Learned SLAM
 
-Traditional SLAM is built as a modular pipeline (feature extraction -> matching -> motion estimation -> mapping -> loop closure -> optimization). End-to-end learning has the ambitious goal of turning this entire pipeline into a single differentiable system that maps directly from input (images/sensors) to output (pose, map).
+Traditional SLAM is built as a modular pipeline (feature extraction -> matching -> motion estimation -> mapping -> loop closure -> optimization). End-to-end learning turns this pipeline into a single differentiable system that maps directly from input (images/sensors) to output (pose, map).
 
 ### 13.2.1 Current Representative Systems
 
-**[DROID-SLAM](https://arxiv.org/abs/2108.10869)** (Teed & Deng 2021): the most successful learning-based SLAM system to date.
+**[DROID-SLAM](https://arxiv.org/abs/2108.10869)** (Teed & Deng 2021) is a representative public system for learned visual SLAM.
 
-Core architecture:
+DROID-SLAM has the following structure:
 
 1. **RAFT-based iterative update operator**: A convolutional GRU iteratively refines the optical flow using features extracted from a correlation volume. This flow correction serves as a refinement of correspondences.
 
@@ -181,20 +181,20 @@ The Schur complement lets us solve for pose first:
 
 $$(\mathbf{H}_{pp} - \mathbf{H}_{pd} \mathbf{H}_{dd}^{-1} \mathbf{H}_{dp}) \Delta \boldsymbol{\xi} = \mathbf{b}_p - \mathbf{H}_{pd} \mathbf{H}_{dd}^{-1} \mathbf{b}_d$$
 
-Since $\mathbf{H}_{dd}$ is diagonal (each depth is independent), its inverse is $O(1)$. This implements the same structural efficiency as traditional BA inside a learning system.
+Since $\mathbf{H}_{dd}$ is diagonal, each diagonal inverse costs $O(1)$ and processing the full depth block is linear in the number of depth variables. This structure makes the Schur complement efficient to compute.
 
 3. **Frame-graph-based loop closure**: A frame graph is built dynamically based on co-visibility. On revisit, long-range edges are added to perform implicit loop closure.
 
-4. **A single model supports monocular/stereo/RGB-D**: Trained only on synthetic data (TartanAir), it achieves SOTA on four benchmarks.
+4. **A single model supports monocular/stereo/RGB-D**: One model trained on synthetic TartanAir data is applied to all three input types. The paper reports higher accuracy and fewer catastrophic failures than the tested baselines on selected metrics across four benchmarks.
 
-**DROID-SLAM's results and significance**:
+**Results reported for DROID-SLAM**:
 - 62% error reduction over the previous best on TartanAir
 - 82% reduction on EuRoC monocular
-- The first learning-based SLAM system to systematically surpass traditional systems
+- These percentages are relative comparisons under the paper's specific splits, metrics, and baselines
 
 ### 13.2.2 Differentiable SLAM Components
 
-Even without full end-to-end learning, research on making individual SLAM pipeline components differentiable is very active:
+Individual SLAM pipeline components can be made differentiable even without full end-to-end learning.
 
 **Differentiable rendering**: NeRF and 3DGS are themselves differentiable rendering systems. In SLAM, pose estimation can be performed by backpropagating a photometric loss.
 
@@ -204,32 +204,32 @@ Because the $\text{Render}$ function is differentiable, the gradient with respec
 
 **Differentiable ICP**: By making the nearest-neighbor search and SVD of traditional ICP differentiable, point cloud registration can be embedded inside a learning loop.
 
-**Differentiable pose graph optimization**: If optimizers such as iSAM2 are made differentiable, the frontend (feature extraction, matching) can be trained with error signals from the backend. "If the optimization result is poor, improve the feature extractor" becomes an end-to-end training signal.
+**Differentiable pose graph optimization**: If optimizers such as iSAM2 are made differentiable, the frontend (feature extraction, matching) can be trained with error signals from the backend. Optimization error becomes a training signal for the feature extractor.
 
 ### 13.2.3 Current Limitations and Possibilities
 
 **Limitations**:
-- **Generalization**: Performance degrades in environments outside the training distribution. DROID-SLAM generalizes reasonably well since it is trained on synthetic data, but it still falls short of traditional systems in large-scale outdoor environments where LiDAR dominates.
-- **Lack of theoretical guarantees**: Traditional optimization provides theoretical guarantees such as convergence and consistency. Learning-based systems lack such guarantees, making them difficult to apply to safety-critical use cases.
+- **Generalization**: Performance can change with cameras, motion, lighting, and dynamic scenes outside the training distribution. The DROID-SLAM paper evaluates synthetic-to-real generalization, but not every environment or sensor modality.
+- **Scope of verification**: Traditional pipelines make it easier to inspect residuals and modules separately, whereas a learned update operator is tied more strongly to its training distribution and evaluation protocol. Neither approach automatically guarantees global convergence or consistency for a general nonlinear SLAM problem.
 - **Computational cost**: Most learning-based systems require a GPU. Real-time operation on embedded platforms is challenging.
 - **Interpretability**: Failure analysis is difficult. Traditional systems allow tracing "which module failed," but end-to-end systems are closer to black boxes.
 
 **Possibilities**:
 - As FMs advance, the quality of feature extraction and matching continues to improve.
-- As differentiable optimization techniques mature, hybrid approaches that preserve traditional structure while taking advantage of learning become realistic.
+- As differentiable optimization techniques develop, learning-based modules can be integrated into traditional structures.
 - Multi-task learning: jointly training pose estimation, depth estimation, and semantic segmentation produces mutual benefits.
 
 ---
 
 ## 13.3 Spatial Memory & Scene Graphs
 
-A robot's ability to "remember and understand space" is more than simply storing point clouds. Humans possess hierarchical, relational, and temporal spatial memory — "there is a refrigerator in the kitchen, and there was milk inside it." This section surveys research frontiers in such high-level spatial memory systems.
+Spatial memory includes hierarchical, relational, and temporal information as well as point clouds. Humans remember space in statements such as "there is a refrigerator in the kitchen, and there was milk inside it." High-level spatial memory systems apply this structure to a robot's map.
 
 ### 13.3.1 Persistent Spatial Memory
 
 A traditional SLAM map reflects "the state of the environment at this moment." Persistent spatial memory is long-term spatial memory that also includes the history of how the environment changes over time.
 
-**Core challenges**:
+Persistent spatial memory poses three challenges:
 
 1. **Episodic spatial memory**: linking time, place, and event, as in "there was a box here last Tuesday."
 2. **Semantic persistence**: distinguishing permanent elements (walls, buildings) from transient ones (people, vehicles) to preserve the stability of long-term maps.
@@ -346,7 +346,7 @@ class PersistentSpatialMemory:
 
 ### 13.3.2 Scene-Graph-Based Environmental Understanding
 
-In Ch.11 we discussed the 3D Scene Graph of [Hydra](https://arxiv.org/abs/2201.13360). Here we explore the future directions that scene graphs open up.
+The 3D Scene Graph of [Hydra](https://arxiv.org/abs/2201.13360) supports the following extensions.
 
 **Scene Graph + Language**: Combining a scene graph with a natural language interface allows a robot to understand commands such as "bring me the remote on the table next to the sofa in the living room." This command is translated into a hierarchical traversal of the scene graph:
 
@@ -357,7 +357,7 @@ In Ch.11 we discussed the 3D Scene Graph of [Hydra](https://arxiv.org/abs/2201.1
 
 **Scene Graph + LLM**: An LLM such as GPT-4 takes a scene graph as input and performs high-level reasoning. It can answer queries such as "if a person falls in this room, where is the nearest phone?"
 
-**Dynamic scene graphs**: Hydra's current implementation assumes a static environment. Dynamic scene graphs include moving agents (people, vehicles) as nodes and update their relations in real time. This is central to social navigation and human-robot interaction (HRI).
+**Dynamic scene graphs**: Hydra's current implementation assumes a static environment. Dynamic scene graphs include moving agents (people, vehicles) as nodes and update their relations in real time. Social navigation and human-robot interaction (HRI) can use this information.
 
 ### 13.3.3 Time-Series Spatial Memory Management
 
@@ -373,13 +373,13 @@ Robots operating over long time spans require strategies for the **creation, mai
 
 ## 13.4 Cross-Modal Representation
 
-One of the fundamental challenges of sensor fusion is comparing heterogeneous sensor observations in a **common representation space**. A LiDAR point cloud and a camera image are completely different data forms, yet they observe the same physical environment. Cross-modal representation is the research direction that seeks to close this "representation gap."
+One challenge in sensor fusion is comparing heterogeneous sensor observations in a **common representation space**. A LiDAR point cloud and a camera image have different data forms, yet they observe the same physical environment. Cross-modal representations reduce this "representation gap."
 
 ### 13.4.1 Aligning Representations Across Heterogeneous Sensors
 
-**Why is it difficult?**
+Three differences make representation alignment difficult:
 
-- **Dimensional mismatch**: LiDAR returns 3D points, a camera returns a 2D image, and radar returns a range-Doppler map. The data forms are intrinsically different.
+- **Dimensional mismatch**: LiDAR returns 3D points, a camera returns a 2D image, and radar returns a range-Doppler map. The data forms differ.
 - **Information asymmetry**: LiDAR provides accurate range information but no texture. A camera provides rich texture but no absolute distance.
 - **Sensor-specific artifacts**: LiDAR motion distortion, camera rolling shutter, radar speckle noise — each sensor has its own noise pattern.
 
@@ -391,13 +391,13 @@ $$\mathcal{L}_{\text{contrastive}} = -\log \frac{\exp(\text{sim}(f_L(\mathbf{x}_
 
 Here $f_L$ is the LiDAR encoder, $f_C$ is the camera encoder, $\tau$ is the temperature, $(\mathbf{x}_L, \mathbf{x}_C)$ is a LiDAR-camera pair from the same place, and $\mathbf{x}_C^j$ is a negative sample.
 
-**Application to cross-modal place recognition**: A scenario in which a map built with LiDAR is localized against using only a camera. If the LiDAR descriptor and the camera descriptor live in the same space, a camera query can retrieve from a LiDAR map.
+**Application to cross-modal place recognition**: A camera-only system can localize against a map built with LiDAR. If the LiDAR descriptor and the camera descriptor occupy the same space, a camera query can retrieve locations from a LiDAR map.
 
 **LC$^2$** (Lee et al. 2023): LiDAR-Camera cross-modal place recognition. It aligns features from a LiDAR BEV image and a camera image into a common space.
 
 ### 13.4.3 Knowledge Distillation
 
-A method for transferring rich information from one modality (teacher) to another (student).
+Knowledge distillation transfers information from one modality (teacher) to another (student).
 
 **LiDAR -> Camera distillation**: The knowledge of a model trained with LiDAR's accurate 3D information is transferred to a camera-only model. At deployment, the camera alone can then approximate LiDAR-level 3D understanding.
 
@@ -415,7 +415,7 @@ A method for transferring rich information from one modality (teacher) to anothe
 
 ## 13.5 Event-Camera-Based Fusion
 
-The event camera (Dynamic Vision Sensor, DVS) is a sensor that is fundamentally different from traditional frame-based cameras. Each pixel independently senses brightness changes and asynchronously emits an **event** only at the moment a change occurs.
+The event camera (Dynamic Vision Sensor, DVS) operates differently from traditional frame-based cameras. Each pixel independently senses brightness changes and asynchronously emits an **event** only when a change occurs.
 
 ### 13.5.1 Principles and Advantages of the Event Camera
 
@@ -442,11 +442,11 @@ The polarity is $p = \text{sign}(\log I(x, y, t) - \log I(x, y, t_{\text{last}})
 | Static scene | provides information | no events (no information) |
 | Power consumption | high | very low |
 
-**Why is it important for sensor fusion?** Event cameras are robust in extreme conditions where traditional cameras fail — fast rotations, abrupt illumination changes (entering/exiting tunnels), low-light environments. This makes them an ideal complementary sensor that covers the weaknesses of other sensors.
+Event cameras provide information during fast rotations, abrupt illumination changes (entering/exiting tunnels), and low-light operation. They therefore complement traditional cameras and other sensors.
 
 ### 13.5.2 Event + Frame Fusion
 
-Approaches that combine an event camera with a traditional frame camera:
+Event cameras and traditional frame cameras are combined in the following ways:
 
 **Event-enhanced frame tracking**: Fast motion between frames is tracked with events, filling the gap between frame-based VO frames. This maintains tracking even during fast camera motion.
 
@@ -463,13 +463,13 @@ Approaches that combine an event camera with a traditional frame camera:
 
 **Current challenges**:
 - The data format of event cameras (an asynchronous event stream) is not compatible with traditional computer vision pipelines (frame-based). Converting events to frames (event frame) sacrifices the advantages.
-- Commercial event cameras remain expensive and have low resolution (even recent models are around 1280 x 720).
+- Event-camera price and resolution vary by model, and the product range remains narrower than for conventional frame cameras.
 - Training data is scarce. Most datasets are designed for frame cameras.
 
-**Recent key developments (2024-2025)**:
+**Recent systems and research (2024-2025)**:
 
 - **[EvenNICER-SLAM](https://arxiv.org/abs/2410.03812)** (2024): A system that integrates an event camera into neural implicit SLAM, using the high temporal resolution of events to improve tracking robustness under fast motion.
-- **Event-based 3D reconstruction survey** ([arxiv:2505.08438](https://arxiv.org/abs/2505.08438), 2025): The first comprehensive survey of event-driven 3D reconstruction, systematically organizing recent work on NeRF/3DGS-based event reconstruction, depth estimation, optical flow, and related topics.
+- **Event-based 3D reconstruction survey** ([arxiv:2505.08438](https://arxiv.org/abs/2505.08438), 2025): A survey of event-driven 3D reconstruction that organizes work on NeRF/3DGS-based event reconstruction, depth estimation, optical flow, and related topics.
 
 ```python
 class EventProcessor:
@@ -584,7 +584,7 @@ class EventProcessor:
 
 ## 13.6 4D Radar Fusion
 
-4D imaging radar is the fastest-rising new modality in sensor fusion. Whereas traditional automotive radar provided only range and angle, 4D radar provides four-dimensional information: range, azimuth, elevation, and Doppler velocity.
+4D imaging radar provides four-dimensional information: range, azimuth, elevation, and Doppler velocity. It adds elevation and Doppler velocity to the range and angle provided by traditional automotive radar.
 
 **Principle of range/velocity measurement in FMCW radar**: Most 4D radars use FMCW (Frequency-Modulated Continuous Wave). The transmitted signal's frequency increases linearly over time (chirp); range is measured from the beat frequency of the reflected signal, and velocity from the phase change between chirps:
 
@@ -598,22 +598,22 @@ Here $v$ is the radial velocity of the target, $\lambda$ is the carrier waveleng
 
 ### 13.6.1 Adverse-Weather Robustness
 
-The core value of 4D radar lies in its **robustness under adverse weather**:
+4D imaging radar often retains useful range and Doppler detections in conditions that degrade visible and near-infrared sensors, but it is not immune to adverse weather. The following table describes qualitative tendencies, not a performance guarantee for a particular device.
 
-| Condition | Camera | LiDAR | 4D Radar |
-|------|--------|-------|----------|
-| Clear day | best | best | good |
-| Rain | degraded | slightly degraded | normal |
-| Fog | severely degraded | severely degraded | normal |
-| Snow/dust | severely degraded | severely degraded | normal |
-| Night | severely degraded | normal | normal |
-| Direct sunlight | degraded | normal | normal |
+| Condition | Camera tendency | LiDAR tendency | 4D radar tendency | Main variables |
+|------|-----------------|----------------|-------------------|----------------|
+| Clear day | Rich color and texture information | Favors dense geometric detail | Provides range and Doppler, with potentially limited angular resolution | Target RCS, range, angular resolution |
+| Rain | Contrast loss and lens wetting | Backscatter and attenuation | Often less degraded, but rain clutter and a wet radome still matter | Rain rate, radome condition, frequency |
+| Fog | Reduced contrast and visibility | Backscatter and attenuation | Often relatively robust | Fog density, range, target RCS |
+| Snow/dust | Occlusion and contrast loss | Particle backscatter | Clutter, multipath, and surface accumulation remain | Particle density, accumulation, target RCS |
+| Night | Depends on illumination and exposure | Active ranging remains available | Active range and Doppler remain available | Illumination, surface reflectivity, target RCS |
+| Direct sunlight | Glare and saturation are possible | Solar background can affect the receiver | Optically insensitive, but RF interference remains | Receiver/filter, RF interference, mounting direction |
 
-Because radar's wavelength (millimeter wave) is much larger than raindrops, fog particles, and dust, scattering by these media is almost negligible. This complements the fundamental limitations of LiDAR (near-infrared) and cameras (visible light).
+Millimeter-wave radar is generally less sensitive to fog-sized particles than visible or near-infrared sensing, but the effect is not zero. Heavy precipitation, a wet or iced radome, multipath, RF interference, low-RCS targets, and limited angular resolution can reduce detection range or increase false alarms. Validate detection range, false-alarm rate, and Doppler error for each device under the target weather conditions.
 
 ### 13.6.2 4D Radar + Camera Fusion
 
-The fusion of 4D radar and a camera aims at a "low-cost perception system that works even in adverse weather":
+Combining 4D radar with a camera can compensate for their different failure modes. Validate cost and adverse-weather performance for the sensor models, mounting, compute platform, and target dataset.
 
 **BEV-based fusion**: BEV features are extracted from camera images (as in LSS or BEVFormer) and radar points are projected into the BEV space to be combined.
 
@@ -737,24 +737,24 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 | **nuScenes** | Camera, LiDAR, Radar | Urban | Includes 5 radars, some adverse weather |
 | **View-of-Delft** | Camera, LiDAR, 4D Radar | Urban | 4D radar + 3D annotation |
 
-**Recent key developments (2024-2025)**:
+**Recent systems and datasets (2024-2025)**:
 
-- **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (2024): The first large-scale, diverse benchmark for evaluating 4D radar-based SLAM, providing 44 sequences collected across three platforms (handheld, bicycle, SUV) under diverse weather and lighting conditions.
+- **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (2024): A benchmark for evaluating 4D-radar-based SLAM, providing 44 sequences collected across three platforms (handheld, bicycle, SUV) under diverse weather and lighting conditions.
 - **[4D Radar-Inertial Odometry](https://arxiv.org/abs/2412.13639)** (2024): Proposes a 3D Gaussian radar scene representation and multi-hypothesis scan matching, achieving more precise radar odometry than voxel-based methods.
 
-4D radar fusion is still in its early stages, but it is becoming a key technology for all-weather operation in autonomous driving. In particular, ego-motion estimation and dynamic object classification that exploit Doppler information are unique capabilities that cameras and LiDAR cannot provide.
+The deployment scope of 4D radar fusion remains limited. Ego-motion estimation and dynamic object classification based on Doppler information provide capabilities that LiDAR and cameras do not.
 
 ---
 
 ## Closing
 
-Starting from sensor modeling (Ch.2), this guide has traced the entire sensor fusion pipeline — through calibration (Ch.3), state estimation theory (Ch.4), feature matching (Ch.5), VO/VIO (Ch.6), LiDAR odometry (Ch.7), multi-sensor fusion (Ch.8), Place Recognition (Ch.9), Loop Closure (Ch.10), spatial representation (Ch.11), practical systems (Ch.12), and the research frontiers of Ch.13.
+The sensor fusion pipeline runs from sensor modeling (Ch.2) through calibration (Ch.3), state estimation theory (Ch.4), feature matching (Ch.5), VO/VIO (Ch.6), LiDAR odometry (Ch.7), multi-sensor fusion (Ch.8), Place Recognition (Ch.9), Loop Closure (Ch.10), spatial representation (Ch.11), practical systems (Ch.12), and research frontiers (Ch.13).
 
-To restate the core narrative of the field once more:
+Four trends emerge from this sequence:
 
 1. **Traditional methods remain the foundation.** Kalman filters, ICP, RANSAC, factor graphs — methods proposed decades ago form the skeleton of modern systems.
-2. **Deep learning has revolutionized perception.** In the domain of "what is being seen" — feature matching, depth estimation, Place Recognition — learning-based methods overwhelm traditional ones.
+2. **Deep learning is widely used in perception.** In feature matching, depth estimation, and Place Recognition, learned methods have reported higher scores than traditional baselines on several public benchmarks. The scope of that advantage depends on the dataset and evaluation protocol.
 3. **In inference, traditional and learned methods coexist.** State estimation backends are still dominated by optimization-based methods, but efforts such as DROID-SLAM are dissolving the boundary through differentiable optimization.
-4. **Foundation models are the new inflection point.** The expressive power of general-purpose models such as DINOv2 and SAM is permeating every part of the sensor fusion pipeline, and this trend will accelerate.
+4. **Foundation models are being integrated into the pipeline.** Sensor-fusion pipelines use representations from general-purpose models such as DINOv2 and SAM at several stages.
 
-Sensor fusion is not "the technology of combining sensor data" but **the technology of understanding the world from incomplete observations**. We hope this guide serves as a starting point for that understanding.
+Sensor fusion combines incomplete observations to estimate the state of the environment. A system design should consider sensor models, estimators, and failure modes together.

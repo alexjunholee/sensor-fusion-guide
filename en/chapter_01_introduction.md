@@ -6,15 +6,15 @@ Autonomous vehicles, drones, and service robots start from the same question: wh
 
 ## 1.1 Limitations of a Single Sensor
 
-When designing real-world robotic systems — autonomous vehicles, drones, service robots — the first question one encounters is, "Which sensor will we use to perceive the world?" Each sensor is grounded in a physical principle that lets it observe a particular facet of the environment, and that same physical principle imposes its intrinsic limitations.
+Each sensor observes a particular aspect of the environment through a physical principle, and the same principle also imposes limitations.
 
 ### Camera Limitations
 
-Cameras provide rich visual information about the environment, yet several fundamental limitations exist.
+Cameras provide visual information about the environment, but have clear limitations.
 
 **Illumination dependence.** A camera is a passive sensor that detects light reflected from objects. Performance therefore degrades sharply under poor lighting conditions such as nighttime, tunnels, or backlight. Auto-exposure mitigates this to some extent, but in scenes that exceed the sensor's dynamic range, saturation or underexposure is unavoidable.
 
-**Scale ambiguity.** A monocular camera projects the 3D world onto a 2D image and in doing so loses depth information. A 1 m object at 2 m distance and a 10 m object at 20 m distance can appear at identical size in the image. This scale ambiguity is the root cause of why monocular visual odometry cannot recover absolute scale. Without stereo cameras or fusion with other sensors, metric distance estimation in meters is fundamentally impossible.
+**Scale ambiguity.** A monocular camera projects the 3D world onto a 2D image and in doing so loses depth information. A 1 m object at 2 m distance and a 10 m object at 20 m distance can appear at identical size in the image. This scale ambiguity prevents monocular visual odometry from recovering absolute scale. Without stereo cameras or fusion with other sensors, metric distance estimation in meters is impossible.
 
 **Textureless environments.** In environments lacking visual features — white walls, long corridors, wide paved roads — feature point extraction and tracking fail. Direct visual odometry methods face the same problem when the photometric gradient is insufficient.
 
@@ -32,15 +32,15 @@ LiDAR (Light Detection And Ranging) is an active sensor that emits laser pulses 
 
 ### IMU Limitations
 
-An inertial measurement unit (IMU) is a sensor that measures acceleration and angular velocity, providing high-frequency (typically 100 Hz–1 kHz) proprioceptive data. Its greatest advantage is independence from the external environment, but it has a critical limitation.
+An inertial measurement unit (IMU) measures acceleration and angular velocity, providing high-frequency (typically 100 Hz–1 kHz) proprioceptive data. It does not depend on the external environment, but its measurement errors accumulate through integration.
 
-**Drift.** When IMU measurements are integrated to compute velocity and position, sensor bias and noise accumulate over time. Integrating acceleration twice to obtain position causes the error to grow in proportion to $t^2$. Even navigation-grade high-end IMUs exhibit substantial position error within minutes, while the MEMS-grade IMUs commonly used in robotics incur meter-level errors within seconds.
+**Drift.** When IMU measurements are integrated to compute velocity and position, sensor bias and noise accumulate over time. The position-error term caused by a constant accelerometer bias grows in proportion to $t^2$. Actual drift depends strongly on sensor grade, temperature compensation, initialization, motion, and external correction measurements, so an IMU grade alone does not determine a fixed error after a given number of seconds or minutes.
 
 $$\delta \mathbf{p}(t) \approx \frac{1}{2} \mathbf{b}_a \, t^2 + \frac{1}{\sqrt{3}} \sigma_a \, t^{3/2}$$
 
 Here $\mathbf{b}_a$ is the accelerometer bias and $\sigma_a$ is the acceleration noise density. A bias of only $0.01\,\text{m/s}^2$ yields a position error of 0.5 m after 10 seconds.
 
-**Absence of an absolute reference.** The IMU measures only relative changes and provides no information about absolute position or absolute heading. Roll and pitch can be extracted from the gravity direction, but yaw is unobservable without a magnetometer (an observability issue).
+**Absence of an absolute reference.** An IMU measures relative changes and does not by itself provide absolute position or heading. During stationary intervals, or when the accelerometer reliably indicates gravity, roll and pitch can be aligned; yaw remains unobservable for a standalone IMU. A magnetometer, GNSS course, or camera/LiDAR map alignment is needed to attach a heading reference.
 
 ### GNSS Limitations
 
@@ -84,7 +84,7 @@ In this form, sensors that measure different physical quantities compensate for 
 **Representative example: Camera + IMU (Visual-Inertial Odometry)**
 
 - The camera provides relative changes of a 6-DoF pose, but its scale is ambiguous and it fails under high-speed motion.
-- The IMU provides high-frequency acceleration/angular velocity, interpolating fast motion between camera frames and recovering scale from the gravity direction.
+- The IMU provides high-frequency acceleration and angular velocity, helping bridge motion between camera frames. With sufficiently exciting motion, metric acceleration combined with visual constraints can make scale observable, while the accelerometer also contributes to estimating the gravity direction.
 - The IMU supplies what the camera lacks — scale and high-frequency motion — while the camera supplies what the IMU lacks — drift correction.
 
 **Representative example: GNSS + IMU**
@@ -93,7 +93,7 @@ In this form, sensors that measure different physical quantities compensate for 
 - The IMU provides high-frequency (hundreds of Hz) relative motion.
 - When GNSS is lost inside a tunnel, the IMU carries navigation in the short term, and when GNSS returns, the accumulated IMU drift is corrected.
 
-The key point of this type is the **extension of observability**. State variables that are unobservable to one sensor become observable through another sensor's observations.
+This form of fusion **extends observability**. State variables that are unobservable to one sensor become observable through another sensor's observations.
 
 ### Competitive Fusion
 
@@ -109,11 +109,11 @@ In this form, sensors measuring the same physical quantity are deployed redundan
 
 $$\hat{\mu} = \frac{\sigma_2^2 z_1 + \sigma_1^2 z_2}{\sigma_1^2 + \sigma_2^2}, \quad \sigma_{\text{fused}}^2 = \frac{\sigma_1^2 \sigma_2^2}{\sigma_1^2 + \sigma_2^2}$$
 
-The variance of the fused estimate is always smaller than that of either individual estimate: $\sigma_{\text{fused}}^2 < \min(\sigma_1^2, \sigma_2^2)$. This is exactly the same principle as the update step of a Kalman filter.
+Under the assumptions used by the formula — unbiased, independent Gaussian observations with correctly known variances — $\sigma_{\text{fused}}^2 < \min(\sigma_1^2, \sigma_2^2)$. The guarantee fails if correlation is ignored or the variances are wrong. This is a special case of a scalar Kalman update with an independent measurement.
 
 **Representative example: multi-LiDAR systems**
 
-In autonomous vehicles, it is common to arrange 4–6 LiDARs around the vehicle to secure a 360° field of view while also using redundant observations in overlapping regions to increase reliability.
+Multiple LiDARs placed around a vehicle can extend field of view and provide redundant observations in overlapping regions. The number and layout depend on range, occlusion, cost, and failure-coverage requirements.
 
 ### Cooperative Fusion
 
@@ -168,7 +168,7 @@ Sensor B → [Subsystem B] → Estimate B ─┘
 **Disadvantages:**
 - Information loss: each subsystem internally summarizes (compresses) its observations before outputting, so raw-observation detail (e.g., the individual uncertainty of each feature point) is lost.
 - Ignoring correlations: when independent subsystems use a shared observation (e.g., the same IMU data), the two estimates become correlated, and ignoring this correlation leads to overconfidence. This is known as the "double counting" problem.
-- Loss of optimality: because information is summarized, the overall system is not optimal in the information-theoretic sense.
+- Possible loss of optimality: if the intermediate output is not a sufficient statistic or does not carry cross-correlation, information can be lost relative to an estimator that combines the raw observations consistently.
 
 ### Tightly Coupled
 
@@ -199,9 +199,9 @@ Here $\mathbf{r}_{\text{IMU}}$ is the IMU preintegration residual, $\mathbf{r}_{
 - LiDAR feature points, IMU preintegration, and GNSS position observations are jointly optimized in a single factor graph.
 
 **Advantages:**
-- Maximum information usage: all information in the raw observations is used, enabling information-theoretically superior estimation.
-- Cross-calibration: inter-sensor cross-calibration happens naturally. For instance, camera observations contribute to IMU bias estimation, and IMU data stabilize camera feature point tracking.
-- Graceful degradation: even when observations from one sensor drop (e.g., in feature-poor environments), observations from the others continue to support the estimate.
+- Potential information preservation: retaining individual residuals and covariances can preserve more information than fusing intermediate poses. Actual quality still depends on modeling, linearization, and outlier handling.
+- Cross-state estimation: when extrinsics, time offsets, or biases are included in the state and the motion provides observability, camera observations can contribute to IMU-bias estimation and similar cross-calibration effects.
+- Room for graceful degradation: if another sensor still observes the required states, it may carry the estimate when one sensor loses observations. This requires failure detection and observability analysis rather than following automatically from tight coupling.
 
 **Disadvantages:**
 - Complexity: every sensor's observation model must be implemented in the single estimator, making system design and debugging complex.
@@ -216,7 +216,7 @@ In this approach, fusion occurs at the **signal level** of the sensors. This ter
 
 - In typical tightly coupled schemes, the GNSS receiver outputs pseudoranges, which are fed into the navigation filter.
 - In ultra-tight, the INS's predicted velocity is fed back into the code/carrier tracking loop inside the GNSS receiver.
-- This narrows the receiver's tracking loop bandwidth, increasing noise immunity and maintaining satellite tracking in severely jammed or weak-signal environments.
+- This feedback narrows the receiver's tracking-loop bandwidth. The receiver becomes more resistant to noise and can maintain satellite tracking under severe interference or weak signals.
 
 **Analogous concepts in vision:**
 
@@ -233,44 +233,44 @@ In visual-inertial systems, the counterpart to ultra-tight coupling is using the
 | Partial failure handling | Easy | Requires design | Difficult |
 | Representative systems | Independent VO + LO → EKF | VINS-Mono, LIO-SAM, FAST-LIO2, ORB-SLAM3 | GNSS/INS deep integration |
 
-In modern robotics, the **tightly coupled** approach is mainstream. Loosely coupled is simple to implement but loses accuracy due to information loss, while ultra-tightly coupled requires access to specialized hardware and is therefore limited in scope. VINS-Mono, FAST-LIO2, LIO-SAM, and the other most widely used open-source systems today all adopt a tightly coupled architecture. Most recently, [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035), which tightly couples LiDAR, inertial, and visual sensors in a single framework, has shown results that substantially surpass existing systems in both accuracy and real-time performance.
+Many public VIO and LIO systems use a **tightly coupled** design. Loosely coupled systems are easier to implement and swap as modules, but compressing measurements into intermediate estimates can discard information. Ultra-tightly coupled systems require access to internal sensor signals or tracking loops and therefore have a narrower scope. VINS-Mono, FAST-LIO2, and LIO-SAM are representative public implementations that tightly couple different sensor combinations. [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035) combines LiDAR, IMU, and cameras in one framework and reports accuracy and throughput improvements under the datasets and comparison protocol in its paper.
 
 ---
 
 ## 1.4 Classical vs Learning-based: What Deep Learning Changed and What It Did Not
 
-For decades, the field of sensor fusion was dominated by **classical** approaches grounded in probabilistic estimation theory (Kalman filter, factor graph) and geometric methods (epipolar geometry, ICP). Since the mid-2010s, as deep learning changed computer vision, learning-based methods have entered sensor fusion as well. However, the extent of that penetration differs greatly by area.
+For decades, the field of sensor fusion was dominated by **classical** approaches grounded in probabilistic estimation theory (Kalman filter, factor graph) and geometric methods (epipolar geometry, ICP). Since the mid-2010s, learning-based methods have entered sensor fusion along with the broader spread of deep learning in computer vision. Their reach and performance differ by area.
 
 ### What Deep Learning Changed
 
-**Feature extraction and matching.** Traditionally, handcrafted feature descriptors such as SIFT and ORB were used. [SuperPoint (DeTone et al., 2018)](https://arxiv.org/abs/1712.07629) performs keypoint detection and description jointly via self-supervised learning, greatly improving robustness to illumination and viewpoint changes. [SuperGlue (Sarlin et al., 2020)](https://arxiv.org/abs/1911.11763) revolutionized feature point matching using graph neural networks (GNNs) and attention mechanisms. Most recently, **detector-free** methods such as [LoFTR (Sun et al., 2021)](https://arxiv.org/abs/2104.00680) and [RoMa (Edstedt et al., 2024)](https://arxiv.org/abs/2305.15404) directly find dense correspondences without keypoints, succeeding at matching even in texture-scarce environments.
+**Feature extraction and matching.** Traditionally, handcrafted feature descriptors such as SIFT and ORB were used. [SuperPoint (DeTone et al., 2018)](https://arxiv.org/abs/1712.07629) performs keypoint detection and description jointly via self-supervised learning, improving robustness to illumination and viewpoint changes. [SuperGlue (Sarlin et al., 2020)](https://arxiv.org/abs/1911.11763) applies graph neural networks (GNNs) and attention mechanisms to feature matching. **Detector-free** methods such as [LoFTR (Sun et al., 2021)](https://arxiv.org/abs/2104.00680) and [RoMa (Edstedt et al., 2024)](https://arxiv.org/abs/2305.15404) directly find dense correspondences without keypoints and can match texture-scarce environments.
 
-In this area, learning-based methods clearly surpass traditional methods — one can speak of a **paradigm shift**.
+Learning-based matchers report higher results than handcrafted baselines on several public benchmarks, but deployment comparisons must also include latency, memory, and domain shift.
 
-**Place Recognition.** The transition from Bag of Words (DBoW2) to [NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247) was dramatic. CNN-based global descriptors enabled place recognition that is far more robust to illumination, seasonal, and viewpoint changes. More recently, [AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688) leverages features from foundation models such as DINOv2 to deliver place recognition that works universally across diverse environments without any additional training.
+**Place Recognition.** [NetVLAD (Arandjelović et al., 2016)](https://arxiv.org/abs/1511.07247) aggregates CNN features with a trainable VLAD layer and reports higher recall than the tested image-retrieval baselines. [AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688) evaluates DINOv2 features with unsupervised VLAD across several domains. Because these methods differ from DBoW2 in input features and compute, compare them on the same dataset and verification pipeline.
 
-**Monocular depth estimation.** Estimating depth from a single image is a task that is impossible with classical methods (geometric cues are insufficient). Models such as [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) have reached strong monocular depth results through training on large-scale data. Its successor, [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414), pushed precision further through synthetic-data training and large-scale pseudo-labeling, and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) enables zero-shot absolute-scale depth estimation, opening the possibility of using metric depth information in sensor fusion without LiDAR. This technology has the potential to replace or complement LiDAR in sensor fusion.
+**Monocular depth estimation.** Projective geometry from one image cannot uniquely determine a scene's absolute scale. [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) is a monocular relative-depth model trained on large-scale data. Its successor, [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414), improves precision through synthetic-data training and large-scale pseudo-labeling, and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) uses learned priors for zero-shot metric-depth estimation. Before using these predictions in fusion, validate scale bias and uncertainty on the target camera and environment.
 
-**Map representations.** NeRF and 3D Gaussian Splatting opened a new paradigm for representing scenes with neural networks. NeRF-SLAM, Gaussian Splatting SLAM, and related systems provide photorealistic map representations that go beyond traditional point maps or voxel grids.
+**Map representations.** NeRF and 3D Gaussian Splatting represent scenes with neural networks. NeRF-SLAM, Gaussian Splatting SLAM, and related systems provide photorealistic map representations distinct from traditional point maps or voxel grids.
 
-**Event cameras.** Event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing extremely high temporal resolution (microsecond level) and wide dynamic range. As a recent [event camera survey (Huang et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM research is active, and fusion with conventional frame-based cameras is opening new possibilities in high-speed motion and low-light environments.
+**Event cameras.** Event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing microsecond-scale temporal resolution and wide dynamic range. As an [event camera survey (Huang et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM combine event cameras with conventional frame-based cameras for high-speed motion and low-light environments.
 
 ### What Deep Learning Did Not Change
 
 **State estimation backends.** Probabilistic estimation frameworks such as Kalman filters and factor graph optimization have not been replaced by deep learning. The reasons are clear:
 
-1. **Rigorous propagation of uncertainty**: Kalman filters and factor graphs mathematically and rigorously track and propagate the uncertainty of observations. Deep learning models struggle to provide comparably calibrated uncertainty.
-2. **Guaranteed physical laws**: physical laws are directly encoded into the state transition model (dynamics, kinematics), preventing physically impossible estimates. Learning-based methods cannot guarantee such hard constraints.
-3. **Data efficiency**: probabilistic frameworks operate without any data, given only a sensor noise model and a system model. Learning-based methods require large-scale training data.
-4. **Generalization**: learning-based odometry (e.g., DeepVO) tends to drop sharply in performance in environments that differ from the training data. Geometric methods are agnostic to the environment.
+1. **Explicit uncertainty propagation**: Kalman filters and factor graphs compute uncertainty under an assumed model and covariance. Their covariance can still become inconsistent under model mismatch, linearization error, or ignored correlation, and learned observations require separate calibration.
+2. **Physical models and constraints**: dynamics and kinematics can be encoded in state transitions and residuals. This alone does not prevent every physically impossible estimate; required hard constraints must be expressed in the optimization or parameterization.
+3. **Dependence on training data**: model-based estimators can run without large supervised training sets, but still require sensor calibration, noise tuning, and validation data. Learned components additionally require management of the training distribution and supervision assumptions.
+4. **Generalization**: learning-based odometry can degrade outside its training distribution. Geometric methods are also affected by texture, illumination, dynamic objects, and sensor noise, but can be applied without retraining.
 
-**LiDAR odometry.** Since [LOAM (Zhang & Singh, 2014)](https://frc.ri.cmu.edu/~zhangji/publications/RSS_2014.pdf), LiDAR odometry has remained overwhelmingly dominated by traditional methods. Point cloud registration methods such as ICP, GICP, and NDT are mathematically well understood, deliver excellent real-time performance, and apply immediately to new environments. Learning-based LiDAR odometry (DeepLO-family) has not yet reached the accuracy and generalization of traditional methods.
+**LiDAR odometry.** Geometry-based LiDAR odometry remains widely used after [LOAM (Zhang & Singh, 2014)](https://frc.ri.cmu.edu/~zhangji/publications/RSS_2014.pdf). The models and failure conditions of point-cloud registration methods such as ICP, GICP, and NDT are comparatively well understood, and the methods can be applied to new environments without retraining. Learning-based LiDAR odometry can be competitive on individual datasets, but generalization across distribution and sensor changes must be tested separately.
 
-**Calibration.** For camera intrinsic calibration, the checkerboard method of [Zhang (2000)](https://doi.org/10.1109/34.888718) remains the standard. Learning-based methods for targetless calibration are under active research, but they have not yet surpassed target-based methods in precision.
+**Calibration.** The planar-target method of [Zhang (2000)](https://doi.org/10.1109/34.888718) remains a widely used foundation for camera intrinsic calibration. Targetless and learning-based methods are also active research areas, but precision and observability must be compared with target-based methods for the specific sensor setup and data-collection protocol.
 
-### Hybrid Approach: The Current Mainstream
+### Hybrid Approach
 
-The most successful systems today adopt a **hybrid** structure that combines a learning-based frontend with a classical backend.
+A **hybrid** structure that combines a learning-based frontend with a classical backend is a common design choice.
 
 ```
 [Learning-based frontend]         [Classical backend]
@@ -289,20 +289,18 @@ The most successful systems today adopt a **hybrid** structure that combines a l
 
 Each topic follows the same arc: **traditional methods → what deep learning enabled → where tradition is still needed**. The table below summarizes the technical lineage.
 
-| Area | Classical | Learning-based | Current mainstream |
+| Area | Classical | Learning-based | Relationship in practice |
 |------|-----------|---------------|----------|
 | Feature matching | SIFT/ORB + BF/FLANN | SuperPoint+SuperGlue → LoFTR → RoMa | Hybrid |
-| Visual odometry | Feature-based (ORB) / Direct (DSO) | DROID-SLAM, DPV-SLAM | Tradition leads, learning catching up |
-| LiDAR odometry | ICP/LOAM | DeepLO-family | Tradition overwhelmingly leads |
-| Place recognition | BoW/VLAD | NetVLAD → AnyLoc | Learning leads |
-| Depth estimation | Stereo matching | Mono depth (Depth Anything) | Learning leads (mono) |
-| Calibration | Target-based | Targetless + learning | Tradition leads |
+| Visual odometry | Feature-based (ORB) / Direct (DSO) | DROID-SLAM, DPV-SLAM | Choice depends on accuracy, compute, and domain |
+| LiDAR odometry | ICP/LOAM | DeepLO-family | Geometry-centered, sometimes with learned components |
+| Place recognition | BoW/VLAD | NetVLAD → AnyLoc | Mixed retrieval frontends, followed by geometric verification |
+| Depth estimation | Stereo matching | Mono depth (Depth Anything) | Separate roles for metric stereo and learned priors |
+| Calibration | Target-based | Targetless + learning | Select target or targetless methods by requirements |
 | Map representation | Occupancy/TSDF | NeRF / 3DGS | Coexistence |
-| State estimation backend | KF / Factor Graph | End-to-end attempts | Tradition overwhelmingly leads |
+| State estimation backend | KF / Factor Graph | End-to-end attempts | Model-based estimator with learned observations |
 
-A noteworthy pattern in this table is that **the closer to perception, the stronger learning is; the closer to inference/estimation, the stronger tradition is**. This pattern provides an important criterion for deciding where to invest deep learning and where to retain traditional methods when designing a sensor fusion system.
-
-The classification of sensor fusion and the division of roles between classical and learning-based methods now set the reading order.
+Learned features are often used in perception modules, while model-based estimators combine geometry and uncertainty. This is not an absolute boundary; it is a starting point for separating each module's inputs, failure modes, and validation metrics.
 
 ---
 
@@ -310,7 +308,7 @@ The classification of sensor fusion and the division of roles between classical 
 
 ### Relation to robotics-practice
 
-robotics-practice surveys Spatial AI broadly. Here the focus narrows to **sensor fusion, localization, and retrieval**.
+robotics-practice surveys Spatial AI broadly. This guide focuses on **sensor fusion, localization, and retrieval**.
 
 - Where robotics-practice introduces EKF/PF in one or two pages, this text treats each topic at chapter depth — from the derivation of the Kalman filter through ESKF, IMU preintegration, and factor graph optimization.
 - Where robotics-practice introduces sensors at a general level, this text derives each sensor's **noise model and observation equations** in equation form.
@@ -320,7 +318,7 @@ robotics-practice surveys Spatial AI broadly. Here the focus narrows to **sensor
 
 The organization is:
 
-1. **Ch.1 — Introduction** (this chapter): motivation and classification of sensor fusion
+1. **Ch.1 — Introduction**: motivation and classification of sensor fusion
 2. **Ch.2 — Sensor Modeling**: observation models and noise characteristics of each sensor (equation-focused)
 3. **Ch.3 — Calibration**: calibration theory and practice for various sensor combinations
 4. **Ch.4 — State Estimation Theory**: Bayesian filtering, the Kalman filter family, particle filters, factor graphs
@@ -343,19 +341,19 @@ The intended audience of this guide is a robotics newcomer with the following ba
 - **Basic optimization**: familiarity with least squares and gradient descent
 - **Python**: ability to read and run code built on numpy and scipy
 
-Each chapter of this guide follows the flow **intuition → equations → code/examples**. We first provide an intuitive understanding of a concept, then derive it rigorously in mathematics, and finally implement it in Python code to verify.
+Each concept moves from intuition to equations, with Python code and examples used to check the result.
 
 ---
 
 ## 1.6 Cross-Cutting Themes of This Guide
 
-Throughout this guide, the reader will repeatedly encounter several core questions:
+Several questions recur throughout the guide:
 
-1. **"Why was this traditional method important?"** — Understand the fundamental problem each traditional method solved and the elegance of its solution.
+1. **"Why was this traditional method important?"** — Understand the problem each traditional method solved and its solution.
 2. **"What did deep learning change?"** — See concretely which limitations of traditional methods learning-based methods overcame.
 3. **"Where is tradition still needed?"** — Analyze the areas that deep learning has not replaced and why.
 4. **"Where is the gap between theory and practice?"** — Examine the differences between papers and real systems, and the engineering issues encountered in practice.
 
 With these questions in view, individual algorithms begin to form a field-level map of sensor fusion.
 
-The next step is mathematical: the **observation model of each sensor**. Every fusion algorithm starts by expressing, in equations, how a sensor "sees" the world.
+Every fusion algorithm starts by expressing, in equations, how a sensor "sees" the world through its observation model.

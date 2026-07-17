@@ -20,16 +20,16 @@ Loop closure detection은 "현재 센서 관측이 과거의 어떤 관측과 �
 
 1. **BoW(Bag of Words) 기반**: DBoW2를 사용하여 ORB 특징점의 visual word histogram을 비교한다. ORB-SLAM3는 이 방식을 사용한다. 각 키프레임을 BoW 벡터 $\mathbf{v}_i$로 표현하고, 현재 프레임 $\mathbf{v}_q$와의 유사도를 $s(\mathbf{v}_q, \mathbf{v}_i) = 1 - \frac{1}{2} \left| \frac{\mathbf{v}_q}{\|\mathbf{v}_q\|} - \frac{\mathbf{v}_i}{\|\mathbf{v}_i\|} \right|$ (L1-score)로 계산한다.
 
-2. **학습 기반**: [Arandjelovic et al. 2016](https://arxiv.org/abs/1511.07247)(NetVLAD), [Keetha et al. 2023](https://arxiv.org/abs/2308.00688)(AnyLoc) 등의 글로벌 디스크립터를 사용한다. AnyLoc은 [Oquab et al. 2023](https://arxiv.org/abs/2304.07193)(DINOv2)의 dense feature를 VLAD로 집계하여 환경 특화 학습 없이도 범용적으로 동작한다. 코사인 유사도로 후보를 랭킹한다:
+2. **학습 기반**: [NetVLAD](https://arxiv.org/abs/1511.07247), [AnyLoc](https://arxiv.org/abs/2308.00688) 등의 global descriptor를 사용한다. AnyLoc은 [DINOv2](https://arxiv.org/abs/2304.07193) dense feature를 VLAD로 집계해 place-specific label 학습 없이 여러 domain에 적용하지만, 새 sensor·환경에서 recall을 검증해야 한다. 코사인 유사도로 후보를 랭킹한다:
 
 $$s(\mathbf{d}_q, \mathbf{d}_i) = \frac{\mathbf{d}_q^\top \mathbf{d}_i}{\|\mathbf{d}_q\| \|\mathbf{d}_i\|}$$
 
 **LiDAR loop closure detection**에서는 3D 포인트 클라우드 기반 디스크립터를 사용한다:
 
 - **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: 센서 중심의 극좌표계에서 bin/sector별 최대 높이를 기록하여 공간 구조를 직접 보존하는 디스크립터다. ring key와 sector key를 이용한 2단계 검색으로 효율적 후보 탐색이 가능하며, 역방향 재방문에도 강건하다.
-- **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: 학습 기반 3D place recognition으로, 대규모 환경에서 Scan Context보다 높은 recall을 보인다.
+- **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: 학습 기반 3D place recognition이다. Scan Context와의 recall 순위는 데이터셋, sensor pattern, 학습 domain에 따라 달라진다.
 
-**시간적 필터링**: 최근 프레임과의 매칭은 loop closure가 아니라 연속 tracking이다. 시간적으로 충분히 떨어진 키프레임(예: 최소 30초 이상 경과)만 후보로 고려한다.
+**시간적 필터링**: 최근 frame과의 matching은 보통 연속 tracking이므로 인접 keyframe을 후보에서 제외한다. 시간이나 이동거리 간격은 platform 속도, keyframe rate, 재방문 형태로 조정한다. 아래 30초는 동작을 보여 주는 예시값이다.
 
 ```python
 import numpy as np
@@ -88,7 +88,7 @@ Detection 단계는 appearance similarity만으로 후보를 걸러내므로, fa
 
 기하학적 검증은 다음 방법을 쓴다.
 
-1. **2D-2D: Essential matrix 검증**: 현재 프레임과 후보 키프레임 사이에서 특징점 매칭을 수행하고, RANSAC으로 essential matrix $\mathbf{E}$를 추정한다. 인라이어 수가 충분하고(예: ≥ 20), 인라이어 비율이 높으면(예: ≥ 50%) 유효한 loop closure로 판단한다.
+1. **2D-2D: Essential matrix 검증**: 현재 frame과 후보 keyframe 사이에서 특징점을 matching하고 RANSAC으로 essential matrix를 추정한다. 인라이어 수·비율뿐 아니라 공간 분포, pose plausibility, 반복 검출을 확인한다. 아래 20개·50%는 예시이며 detector와 scene에 맞춰 검증한다.
 
 $$\mathbf{p}_2^\top \mathbf{E} \mathbf{p}_1 = 0, \quad \mathbf{E} = [\mathbf{t}]_\times \mathbf{R}$$
 
@@ -221,7 +221,7 @@ $$e_{ij} = \text{Log}(\mathbf{T}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf
 
 ## 10.2 Pose Graph Optimization
 
-Pose graph optimization은 SLAM 백엔드의 핵심이다. 프론트엔드(odometry, loop closure)가 만든 상대 제약들을 만족시키며 전체 pose trajectory의 전역 일관성을 최적화한다.
+Pose graph optimization은 프론트엔드(odometry, loop closure)가 만든 상대 제약들을 만족시키며 전체 pose trajectory의 전역 일관성을 최적화한다.
 
 ### 10.2.1 SE(3) Pose Graph
 
@@ -236,7 +236,7 @@ Pose graph는 그래프 $\mathcal{G} = (\mathcal{V}, \mathcal{E})$로 표현된�
 
 $$\mathbf{e}_{ij} = \text{Log}(\tilde{\mathbf{T}}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j) \in \mathbb{R}^6$$
 
-여기서 $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$은 행렬 로그(matrix logarithm)로 Lie algebra에 매핑한다. 이 6차원 벡터는 $($ 회전 3 + 병진 3 $)$의 오차를 인코딩한다.
+여기서 $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$은 행렬 로그(matrix logarithm)로 Lie algebra에 매핑한다. 이 6차원 벡터는 회전 3차원과 병진 3차원의 오차를 인코딩한다.
 
 **최적화 목표**: 모든 에지 오차의 가중 제곱합을 최소화한다:
 
@@ -355,7 +355,7 @@ def pose_graph_cost(poses, edges, measurements, information_matrices):
 
 실제 SLAM 시스템에서는 이상치(outlier) 측정이 불가피하다. 잘못된 loop closure, 센서 오류, 동적 객체가 원인이다. 표준 least squares 비용 함수 $\rho(x) = x^2$는 이상치에 극도로 민감하다 — 큰 오차가 비용을 지배하여 전체 해를 왜곡한다.
 
-**Robust kernel** (M-estimator)은 큰 잔차의 영향을 제한하여 이상치에 강건한 최적화를 가능하게 한다.
+**Robust kernel** (M-estimator)은 큰 잔차의 영향을 제한하여 이상치에 대한 민감도를 줄인다.
 
 | Kernel | $\rho(s)$ ($s = e^2$) | 특성 |
 |--------|----------------------|------|
@@ -420,11 +420,11 @@ def robust_pose_graph_cost(poses, edges, measurements, info_matrices,
 
 ### 10.2.3 iSAM2: Incremental Smoothing and Mapping
 
-새 키프레임이 추가될 때마다 전체 그래프를 재최적화하는 batch 방식은 대규모 환경에서 곧 한계를 드러낸다. 현대 SLAM의 대부분은 영향받는 부분만 선택적으로 업데이트하는 incremental 방식을 택한다. [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419)가 그 핵심 알고리즘이다.
+새 키프레임이 추가될 때마다 전체 그래프를 재최적화하는 batch 방식은 대규모 환경에서 곧 한계를 드러낸다. 현대 SLAM의 대부분은 영향받는 부분만 선택적으로 업데이트하는 incremental 방식을 택한다. [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419)는 이 incremental optimization을 구현한다.
 
-**핵심 아이디어**: 새 변수나 측정이 추가되면, 영향이 파급되는 범위를 파악하고 그 부분만 재계산한다.
+새 변수나 측정이 추가되면, 영향이 파급되는 범위를 파악하고 그 부분만 재계산한다.
 
-**Bayes tree**: iSAM2의 핵심 자료구조다. Factor graph를 variable elimination하면 clique tree가 되는데, Bayes tree는 이 clique tree에 방향성을 부여한 것이다.
+**Bayes tree**: iSAM2는 이 자료구조를 사용한다. Factor graph를 variable elimination하면 clique tree가 되는데, Bayes tree는 이 clique tree에 방향성을 부여한 것이다.
 
 Factor graph의 MAP 추정은 다음과 같이 분해된다.
 
@@ -444,11 +444,11 @@ $$p(\mathbf{x} | \mathbf{z}) = \prod_i p(x_i | \text{Sep}(x_i))$$
 2. 해당 clique와 그 조상(ancestor)만 QR 분해를 재수행한다.
 3. 나머지 tree는 그대로 유지한다.
 
-**Fluid relinearization**: 비선형 최적화에서 선형화 지점이 현재 추정치와 크게 달라진 변수만 재선형화한다. iSAM v1에서 필요했던 주기적 batch 재선형화를 완전히 없앤다.
+**Fluid relinearization**: 선형화 지점이 현재 추정치와 임계값 이상 달라진 변수를 선택적으로 재선형화한다. iSAM v1처럼 정해진 주기의 full-batch 재선형화를 요구하지 않지만, 큰 loop closure는 영향 범위를 넓힐 수 있다.
 
 **변수 재정렬(variable reordering)**: 새 변수 추가 시 전체 elimination order를 재계산하지 않고, 영향받는 부분만 incremental하게 재정렬한다.
 
-iSAM2는 GTSAM 라이브러리의 핵심 엔진이며, LIO-SAM과 ORB-SLAM3의 백엔드에서 쓰인다. 대규모 환경에서도 일정 시간 내에 최적화를 마쳐 실시간 SLAM을 가능하게 한다.
+GTSAM 라이브러리는 iSAM2를 제공하며 [LIO-SAM](https://arxiv.org/abs/2007.00258)이 이를 백엔드에 사용한다. ORB-SLAM3는 iSAM2가 아니라 수정된 g2o로 비선형 최적화를 수행한다. iSAM2는 새 factor의 영향을 받는 Bayes-tree 부분을 갱신해 매번 전체 batch 문제를 다시 푸는 비용을 줄인다.
 
 ```python
 class SimpleIncrementalOptimizer:
@@ -536,7 +536,7 @@ ORB-SLAM3의 relocalization은 DBoW2로 후보 키프레임을 검색하고, ORB
 
 ### 10.3.2 Prior Map + Online Sensor
 
-자율주행에서는 사전에 구축한 HD map(고정밀 지도) 위에서 실시간 센서 데이터로 localization하는 것이 일반적이다. 이때의 핵심 과제는:
+자율주행에서는 사전에 구축한 HD map(고정밀 지도) 위에서 실시간 센서 데이터로 localization하는 것이 일반적이다. 이때 세 과제를 다뤄야 한다.
 
 - **맵과 환경의 불일치**: 시간이 지나면 건물이 바뀌고, 나뭇잎이 자란다. Prior map과 현재 관측 사이의 차이를 처리해야 한다.
 - **Cross-modal matching**: HD map이 LiDAR로 만들어졌는데 현재 센서는 카메라뿐일 수 있다. 이종 센서 간 정합이 필요하다.
@@ -555,7 +555,7 @@ $$x_t^{[k]} \sim p(x_t | u_t, x_{t-1}^{[k]})$$
 $$w_t^{[k]} = p(z_t | x_t^{[k]}, m)$$
 4. **Resampling**: 가중치에 비례하여 particle을 재샘플링한다. 가중치가 높은 particle은 복제되고, 낮은 particle은 제거된다.
 
-MCL의 핵심 장점은 multi-modal 분포를 표현한다는 것이다. 로봇이 여러 장소 중 어디에 있을지 모를 때 여러 가설을 동시에 유지한다. 관측이 쌓일수록 particle들이 올바른 위치로 수렴한다.
+MCL은 multi-modal 분포를 표현할 수 있다. 로봇이 여러 장소 중 어디에 있을지 모를 때 여러 가설을 동시에 유지한다. 관측이 쌓일수록 particle들이 올바른 위치로 수렴한다.
 
 LiDAR 기반 MCL 예시:
 
@@ -740,7 +740,7 @@ Map anchoring이 초기 정렬을 제공하면, inter-session loop closure가 �
 
 ### 10.4.3 ORB-SLAM3 Multi-Map System
 
-ORB-SLAM3의 Atlas 시스템은 multi-session SLAM의 대표적 구현이다. 핵심 메커니즘은 다음과 같다:
+ORB-SLAM3의 Atlas 시스템은 multi-session SLAM의 대표적 구현이다. 다음과 같이 동작한다.
 
 1. **Active map**: 현재 tracking 중인 맵. 정상적으로 동작할 때는 이 맵에서 키프레임과 맵 포인트를 추가한다.
 
@@ -859,7 +859,7 @@ class MultiMapAtlas:
 - **분산 최적화**: 중앙 서버 없이 로봇들이 자율적으로 맵을 병합할 수 있어야 한다. Kimera-Multi와 Swarm-SLAM이 이 문제를 본다.
 - **Relative pose 불확실성**: 로봇 간 초기 상대 pose가 알려져 있지 않으므로, inter-robot loop closure로 정렬해야 한다.
 
-분산 pose graph optimization의 핵심 아이디어:
+분산 pose graph optimization은 다음과 같이 쓸 수 있다.
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
@@ -869,11 +869,11 @@ $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} 
 
 ## 10.5 최근 연구 (2024-2025)
 
-**[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)**: iSAM2에 Graduated Non-Convexity(GNC)를 통합하여 incremental SLAM에서 온라인으로 이상치 loop closure를 제거하는 robust backend다. 90% 이상의 outlier 측정에서도 강건하게 동작하며, 기존 offline 방법과 동등한 성능을 실시간으로 달성한다. GNC의 이론적 토대는 [Yang et al. 2020](https://arxiv.org/abs/1909.08605)이 마련했다.
+**[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)**: iSAM2에 [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605)를 통합한 incremental robust backend다. 저자들은 논문의 합성·실험 설정에서 90%를 넘는 outlier 비율과 offline baseline 비교 결과를 보고한다. 이 수치는 outlier 구조와 초기값이 다른 문제의 보장이 아니다.
 
 **[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)**: Kimera SLAM 라이브러리의 차세대 버전으로, 백엔드의 outlier rejection을 기존 PCM에서 GNC로 교체하여 강건성을 높였다. 드론과 자율주행 차량을 포함한 다양한 플랫폼에서 실증했으며, metric-semantic SLAM의 실전 배포를 위한 종합적인 개선을 담았다.
 
-**[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)**: PCM의 pairwise consistency를 group-k consistency로 확장하여, 더 엄격한 이상치 탐지를 가능하게 한다. Multi-robot map merging에서 PCM보다 false positive를 더 억제한다.
+**[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)**: PCM의 pairwise consistency를 group-k consistency로 확장하여 이상치를 더 엄격하게 탐지한다. Multi-robot map merging에서 PCM보다 false positive를 더 억제한다.
 
 ---
 

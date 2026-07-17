@@ -1,8 +1,8 @@
 # Ch.4 — State Estimation 이론
 
-Ch.2에서 센서의 관측 모델을, Ch.3에서 센서 간 캘리브레이션을 다루었다. 이제 이 관측 데이터로부터 로봇의 상태(위치, 자세, 속도 등)를 추정하는 **알고리즘**을 다룰 차례다. 이 챕터에서 다루는 칼만 필터, 팩터 그래프, IMU 사전적분은 Ch.6-8에서 살펴볼 모든 odometry/fusion 시스템의 수학적 엔진이다.
+센서의 관측 모델과 캘리브레이션 파라미터는 로봇의 상태(위치, 자세, 속도 등)를 추정하는 **알고리즘**의 입력이다. 칼만 필터, 팩터 그래프, IMU 사전적분은 Ch.6-8의 odometry/fusion 시스템에서 이 입력을 처리한다.
 
-> **목표**: 센서 퓨전의 수학적 기반인 상태 추정(state estimation) 이론을 체계적으로 다룬다. Bayesian filtering에서 출발하여 Kalman 필터 계열, Particle Filter를 거쳐, 현대 SLAM의 핵심인 factor graph 기반 최적화까지 이어지는 기술 계보를 따라간다. 각 방법의 유도 과정을 상세히 보여주고, 왜 현대 로봇 시스템이 filtering에서 optimization으로 이동했는지를 설명한다.
+> 상태 추정(state estimation)은 Bayesian filtering에서 Kalman 필터 계열과 Particle Filter를 거쳐 factor graph 기반 최적화로 이어진다. 각 방법의 유도 과정과 함께 현대 로봇 시스템이 filtering에서 optimization으로 이동한 이유를 설명한다.
 
 ---
 
@@ -10,7 +10,7 @@ Ch.2에서 센서의 관측 모델을, Ch.3에서 센서 간 캘리브레이션�
 
 ### 4.1.1 상태 추정 문제의 정의
 
-로봇의 상태 추정 문제는 본질적으로 **조건부 확률 추론** 문제다. 우리가 알고 싶은 것은 현재까지의 모든 관측 $\mathbf{z}_{1:k}$와 제어 입력 $\mathbf{u}_{1:k}$가 주어졌을 때 상태 $\mathbf{x}_k$의 사후 확률(posterior)이다:
+로봇의 상태 추정은 **조건부 확률 추론** 문제다. 현재까지의 모든 관측 $\mathbf{z}_{1:k}$와 제어 입력 $\mathbf{u}_{1:k}$가 주어졌을 때 상태 $\mathbf{x}_k$의 사후 확률(posterior)을 구한다:
 
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k}, \mathbf{u}_{1:k})$$
 
@@ -47,7 +47,7 @@ $$p(\mathbf{x}_k \mid \mathbf{x}_{0:k-1}, \mathbf{u}_{1:k}, \mathbf{z}_{1:k-1}) 
 2. **조건부 관측 독립**: 관측 $\mathbf{z}_k$는 현재 상태 $\mathbf{x}_k$가 주어지면 다른 모든 것에 독립이다:
 $$p(\mathbf{z}_k \mid \mathbf{x}_{0:k}, \mathbf{u}_{1:k}, \mathbf{z}_{1:k-1}) = p(\mathbf{z}_k \mid \mathbf{x}_k)$$
 
-이 두 가정 덕분에, 전체 관측 이력 $\mathbf{z}_{1:k}$를 저장할 필요 없이 직전 추정치만으로 현재 추정치를 갱신할 수 있다. 이것이 **재귀적 추정(recursive estimation)**의 핵심이다.
+이 두 가정 덕분에 전체 관측 이력 $\mathbf{z}_{1:k}$를 저장하지 않고도 직전 추정치만으로 현재 추정치를 갱신할 수 있다. 이를 **재귀적 추정(recursive estimation)**이라 한다.
 
 ### 4.1.3 Prediction-Update Cycle
 
@@ -117,7 +117,7 @@ $$\mathbf{z}_k = \mathbf{H}_k \mathbf{x}_k + \mathbf{v}_k, \quad \mathbf{v}_k \s
 - $\mathbf{Q}_k \in \mathbb{R}^{n \times n}$: 프로세스 노이즈 공분산 (양의 반정치, symmetric)
 - $\mathbf{R}_k \in \mathbb{R}^{m \times m}$: 관측 노이즈 공분산 (양의 정치, symmetric)
 
-핵심 성질: 가우시안 분포에 선형 변환을 적용하면 결과도 가우시안이다. 따라서 사후 분포가 항상 가우시안으로 유지되며, 평균과 공분산만으로 완전히 기술할 수 있다.
+가우시안 분포에 선형 변환을 적용하면 결과도 가우시안이다. 따라서 사후 분포는 계속 가우시안으로 유지되며, 평균과 공분산만으로 기술할 수 있다.
 
 #### MMSE 유도 — 왜 Kalman Filter가 최적인가
 
@@ -154,7 +154,7 @@ $$\begin{bmatrix} \mathbf{x}_k \\ \mathbf{z}_k \end{bmatrix} \sim \mathcal{N}\le
 
 여기서 $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k \in \mathbb{R}^{m \times m}$는 혁신 공분산(innovation covariance)이다.
 
-가우시안 결합 분포의 조건부 분포 공식을 적용하면 (가우시안의 핵심 성질: 결합이 가우시안이면 조건부도 가우시안이고, 조건부 평균은 원래 평균 + 관측과의 상관에 비례하는 보정):
+가우시안 결합 분포의 조건부 분포 공식을 적용한다. 결합이 가우시안이면 조건부도 가우시안이고, 조건부 평균은 원래 평균에 관측과의 상관에 비례하는 보정을 더한 값이다:
 
 $$\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1} (\mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1})$$
 
@@ -163,14 +163,14 @@ $$\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{P}_{k|k-1} \mathbf
 $$\boxed{\mathbf{K}_k = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1} = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top (\mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k)^{-1}}$$
 
 칼만 이득의 직관적 의미:
-- $\mathbf{R}_k \to \mathbf{0}$ (관측이 매우 정확): $\mathbf{K}_k \to \mathbf{H}_k^{-1}$ → 관측을 거의 그대로 믿는다
+- $\mathbf{R}_k \to \mathbf{0}$ (관측 잡음이 작음): 관측 가능한 부분공간에서 갱신이 측정 제약을 더 강하게 따른다. $\mathbf{H}_k^{-1}$ 표기는 $\mathbf{H}_k$가 정사각·가역인 특수한 경우에만 성립한다
 - $\mathbf{P}_{k|k-1} \to \mathbf{0}$ (예측이 매우 정확): $\mathbf{K}_k \to \mathbf{0}$ → 관측을 무시하고 예측을 믿는다
-- 칼만 이득은 예측의 불확실성과 관측의 불확실성 사이의 **최적 가중치**를 자동으로 결정한다
+- 선형 모델과 지정한 잡음 공분산이 맞다면 칼만 이득은 조건부 평균의 가중치를 결정한다
 
 **혁신(Innovation)**:
 $$\tilde{\mathbf{y}}_k = \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1} \in \mathbb{R}^m$$
 
-예측한 관측과 실제 관측의 차이. 이것이 0이면 예측이 완벽했다는 뜻이다.
+예측한 관측과 실제 관측의 차이다. 값이 0이면 그 측정 잔차가 0이라는 뜻일 뿐, 미관측 상태나 모델 오차까지 없다는 뜻은 아니다.
 
 **상태 갱신**:
 $$\boxed{\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde{\mathbf{y}}_k}$$
@@ -178,7 +178,7 @@ $$\boxed{\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde
 **공분산 갱신**:
 $$\boxed{\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}}$$
 
-이 공분산 갱신 공식은 Joseph form $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$으로 쓰면 수치적으로 더 안정적이다. Joseph form은 $\mathbf{K}_k$에 수치 오차가 있어도 $\mathbf{P}_{k|k}$의 대칭성과 양의 반정치성을 보장한다.
+이 공분산 갱신 공식은 Joseph form $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$으로 쓰면 수치적으로 더 안정적이다. $\mathbf{P}_{k|k-1}$과 $\mathbf{R}_k$가 양의 반정치라면 이 식은 그 대수적 구조를 보존하며, 구현에서는 반올림 오차를 줄이기 위해 대칭화나 분해 기반 풀이도 사용한다.
 
 #### KF 최적성 정리
 
@@ -187,7 +187,7 @@ $$\boxed{\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_
 2. **MAP (Maximum A Posteriori) 추정량**: 가우시안 분포에서 평균 = 최빈값이므로 MAP과 MMSE가 일치
 3. **BLUE (Best Linear Unbiased Estimator)**: 가우시안 가정 없이도, 선형 비편향 추정량 중에서 최소 분산
 
-Kalman의 1960년 원논문은 Wiener 필터의 주파수 도메인 접근법을 상태공간(state-space) 시간 도메인 표현으로 대체하여, 시변(time-varying) 시스템과 다변량 시스템으로 자연스럽게 확장할 수 있게 한 혁신이었다.
+Kalman의 1960년 원논문은 Wiener 필터의 주파수 도메인 접근법을 상태공간(state-space) 시간 도메인 표현으로 바꾸어 시변(time-varying) 시스템과 다변량 시스템으로 확장했다.
 
 #### Python 구현
 
@@ -310,13 +310,13 @@ print(f"최종 위치 불확실성 (1σ): {np.sqrt(P[0,0]):.3f}")
 
 실제 로봇 시스템은 거의 항상 비선형이다. 카메라의 3D→2D 투영, IMU의 쿼터니언 기반 회전, LiDAR의 scan matching, GPS의 좌표 변환 모두 비선형 함수다. EKF는 Kalman Filter를 비선형 시스템으로 확장하는 가장 직접적인 방법이다.
 
-#### 핵심 아이디어: 1차 테일러 전개 (선형화)
+#### 1차 테일러 전개 (선형화)
 
 비선형 시스템 모델:
 $$\mathbf{x}_k = f(\mathbf{x}_{k-1}, \mathbf{u}_k) + \mathbf{w}_k$$
 $$\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k$$
 
-이 시스템에서는 가우시안을 비선형 함수에 통과시키면 결과가 더 이상 가우시안이 아니다. EKF의 핵심 근사는 **현재 추정치 근방에서 함수를 1차 테일러 전개하여 선형화**하는 것이다.
+이 시스템에서는 가우시안을 비선형 함수에 통과시키면 결과가 더 이상 가우시안이 아니다. EKF는 **현재 추정치 근방에서 함수를 1차 테일러 전개하여 선형화**한다.
 
 운동 모델의 선형화 (추정치 $\hat{\mathbf{x}}_{k-1|k-1}$ 근방에서):
 
@@ -357,7 +357,7 @@ $$\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}
 
 ### 4.2.3 Error-State Kalman Filter (ESKF)
 
-ESKF(Error-State Kalman Filter)는 현대 로봇 센서 퓨전 시스템에서 가장 널리 사용되는 필터 형태다. MSCKF, VINS-Mono, OpenVINS, FAST-LIO 등 거의 모든 주요 VIO/LIO 시스템이 ESKF를 채택하고 있다.
+ESKF(Error-State Kalman Filter)는 IMU가 포함된 상태 추정에서 널리 쓰이는 정식화다. MSCKF·OpenVINS 같은 필터 기반 VIO와 FAST-LIO 계열은 오차 상태 또는 그에 가까운 매니폴드 필터 정식화를 사용한다. 반면 [VINS-Mono](https://doi.org/10.1109/TRO.2018.2853729)는 ESKF가 아니라 sliding-window 비선형 최적화 기반이다.
 
 #### 왜 EKF 대신 ESKF를 쓰는가
 
@@ -367,11 +367,11 @@ ESKF(Error-State Kalman Filter)는 현대 로봇 센서 퓨전 시스템에서 �
 
 3D 회전은 SO(3) 매니폴드 위에 존재하며, $\mathbb{R}^n$이 아니다. 쿼터니언 $\mathbf{q} \in \mathbb{H}$로 표현하면 $\|\mathbf{q}\| = 1$ 제약이 있고, 회전 행렬 $\mathbf{R} \in SO(3)$은 $\mathbf{R}^\top \mathbf{R} = \mathbf{I}$, $\det(\mathbf{R}) = 1$ 제약이 있다.
 
-EKF의 상태 갱신 $\hat{\mathbf{x}} \leftarrow \hat{\mathbf{x}} + \mathbf{K} \tilde{\mathbf{y}}$에서 "+" 연산은 유클리드 공간의 덧셈이다. 쿼터니언에 벡터를 더하면 단위 쿼터니언이 아니게 된다. 갱신 후 재정규화하는 임시방편은 이론적으로 올바르지 않으며, 일관성 문제를 야기한다.
+순진한 EKF 상태 갱신 $\hat{\mathbf{x}} \leftarrow \hat{\mathbf{x}} + \mathbf{K} \tilde{\mathbf{y}}$의 "+"는 유클리드 덧셈이다. 쿼터니언 네 성분에 그대로 증분을 더하면 단위 노름 제약을 벗어난다. 정규화와 공분산 투영을 일관되게 설계한 직접 쿼터니언 EKF도 가능하지만, 단순히 갱신 뒤 값만 정규화하면 제약 방향의 불확실성을 잘못 처리할 수 있다.
 
 **문제 2: 오차 상태는 "거의 0"**
 
-오차 상태(error state) $\delta\mathbf{x} = \mathbf{x} - \hat{\mathbf{x}}$는 정의상 0 근처에 머문다 (갱신 때마다 리셋되므로). 따라서 1차 선형화의 정확도가 매우 높다. 반면 원래 상태에 대한 선형화는 운동이 큰 경우 정확도가 떨어진다.
+오차 상태(error state) $\delta\mathbf{x} = \mathbf{x} \boxminus \hat{\mathbf{x}}$는 갱신 뒤 명목 상태에 주입되고 0으로 리셋된다. 명목 궤적이 실제 상태에 충분히 가까우면 작은 접선 공간에서 선형화할 수 있다. 다만 리셋 자체가 작은 선형화 오차를 보장하지 않으므로, 초기화·관측 가능성·모델 오차를 함께 확인해야 한다.
 
 **문제 3: 느린 변화(slow-varying) 상태와 빠른 변화(fast-varying) 상태의 분리**
 
@@ -383,7 +383,7 @@ ESKF는 두 개의 상태를 동시에 관리한다:
 
 1. **명목 상태(Nominal State)** $\hat{\mathbf{x}}$: 비선형 운동 모델을 따라 적분되며, 노이즈 항을 포함하지 않는다. 불확실성을 추적하지 않는다.
 
-2. **오차 상태(Error State)** $\delta\mathbf{x}$: 명목 상태와 실제 상태의 차이. 칼만 필터로 추정한다. 오차 상태는 정의상 "작은 값"이므로 선형화 오차가 최소화된다.
+2. **오차 상태(Error State)** $\delta\mathbf{x}$: 명목 상태와 실제 상태의 국소 차이. 칼만 필터로 추정한다. 명목 상태가 실제 상태에 가까운 동안에는 접선 공간의 1차 근사가 유효하며, 주입 뒤에는 reset Jacobian으로 공분산 좌표도 바꾼다.
 
 실제 상태는 두 상태의 합성(composition)으로 복원된다:
 
@@ -409,7 +409,7 @@ $$\hat{\mathbf{x}} = \begin{bmatrix} {}^W\hat{\mathbf{p}} \\ {}^W\hat{\mathbf{v}
 **오차 상태** (15차원 — 회전의 최소 파라미터화):
 $$\delta\mathbf{x} = \begin{bmatrix} \delta\mathbf{p} \\ \delta\mathbf{v} \\ \delta\boldsymbol{\theta} \\ \delta\mathbf{b}_a \\ \delta\mathbf{b}_g \end{bmatrix} \in \mathbb{R}^{15}$$
 
-핵심: 쿼터니언(4차원)의 오차 표현이 3차원 벡터 $\delta\boldsymbol{\theta}$다. 단위 쿼터니언 제약 때문에 실제 자유도는 3이고, ESKF는 이 최소 파라미터화를 자연스럽게 사용한다. EKF에서 쿼터니언을 직접 상태에 넣으면 4차원 표현의 1개 자유도가 과잉이 되어 공분산 행렬이 singular해지는 문제가 있다.
+쿼터니언(4차원)의 오차는 3차원 벡터 $\delta\boldsymbol{\theta}$로 표현한다. 단위 쿼터니언 제약 때문에 실제 자유도는 3이고, ESKF는 이 최소 파라미터화를 자연스럽게 사용한다. 쿼터니언 네 성분을 EKF 상태에 직접 넣는 방식도 가능하지만, 정규화와 공분산의 제약 방향을 일관되게 처리해야 한다.
 
 #### ESKF 알고리즘
 
@@ -537,13 +537,13 @@ $w_i^{(m)}$과 $w_i^{(c)}$는 평균과 공분산에 각각 사용하는 가중�
 
 **장점**:
 - 자코비안 계산이 불필요하다. 복잡한 관측 모델(예: 카메라 투영 + 왜곡)에서 큰 이점.
-- 2차 비선형성까지 정확히 포착한다 (EKF는 1차까지만).
+- 비선형 함수를 통과시킨 sigma point로 평균과 공분산의 곡률 효과를 근사한다. 정확도 차수는 분포, 함수, sigma-point 파라미터에 따라 달라진다.
 - 구현이 EKF보다 간단할 수 있다 (자코비안 유도 대신 함수 호출만 필요).
 
 **단점**:
 - $2n+1$개 sigma point 각각을 비선형 함수에 통과시켜야 하므로, 상태 차원 $n$이 클 때 연산량이 증가한다.
 - 매니폴드 위의 상태(SO(3) 등)를 다루려면 sigma point의 생성과 통계 계산을 매니폴드 연산으로 대체해야 하며, 이것이 깔끔하지 않다.
-- 실전에서 ESKF가 UKF보다 선호되는 이유: ESKF는 이미 오차 상태(작은 값)에서 동작하므로 1차 선형화의 정확도가 충분하고, 매니폴드 처리가 자연스러우며, 계산량이 적다.
+- IMU 상태 추정에서 ESKF가 자주 선택되는 이유: 접선 공간 오차로 매니폴드를 다루고, sigma point를 모두 전파하지 않아 계산량을 줄일 수 있다. 어느 필터가 더 정확한지는 모델, 초기 오차, 조정값에 따라 달라진다.
 
 ### 4.2.5 Iterated Extended Kalman Filter (IEKF)
 
@@ -571,7 +571,7 @@ $$\hat{\mathbf{x}}^{(j+1)} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}^{(j)} \left[\
 
 IEKF는 사실상 관측 업데이트 단계에서 **Gauss-Newton 최적화**를 수행하는 것과 동치이다. 이 관점은 §4.5의 factor graph 기반 최적화와의 연결을 이해할 때 중요하다.
 
-FAST-LIO2가 IEKF를 채택한 이유: LiDAR point-to-plane/point-to-edge 관측 모델은 비선형성이 상당하며, 수백~수천 개의 점을 한 번에 갱신해야 한다. IEKF의 반복 선형화는 이 상황에서 한 번의 EKF 업데이트보다 상당히 정확한 결과를 준다.
+FAST-LIO2는 다수의 LiDAR point-to-plane 잔차를 상태 갱신에 넣고 반복 재선형화하는 매니폴드 IEKF를 사용한다. 한 번의 선형화보다 잔차의 비선형성을 더 반영할 수 있지만, 정확도 향상과 반복 횟수는 초기 오차, 장면 기하, 종료 조건에 따라 달라진다.
 
 ---
 
@@ -623,13 +623,13 @@ $$N_{\text{eff}} = \frac{1}{\sum_{i=1}^N (w_k^{(i)})^2}$$
 
 $N_{\text{eff}} < N_{\text{threshold}}$ (보통 $N/2$)이면 리샘플링을 수행한다.
 
-**리샘플링**: 가중치가 높은 입자를 복제하고 낮은 입자를 제거하여 가중치를 균등하게 만드는 과정.
+**리샘플링**: 가중치가 높은 입자를 복제하고 낮은 입자를 제거하여 가중치를 균등하게 만드는 과정이다.
 
 주요 리샘플링 전략:
 
 **Multinomial Resampling**: 가중치를 확률로 사용하여 $N$번 독립 추출. 가장 직관적이지만 분산이 크다.
 
-**Systematic Resampling**: 하나의 균등 난수 $U_0 \sim \text{Uniform}(0, 1/N)$을 생성하고, $U_i = U_0 + (i-1)/N$으로 CDF를 타서 리샘플링. 분산이 가장 작아 실전에서 가장 많이 사용된다.
+**Systematic Resampling**: 하나의 균등 난수 $U_0 \sim \text{Uniform}(0, 1/N)$을 생성하고, $U_i = U_0 + (i-1)/N$으로 CDF를 타서 리샘플링한다. 구현 비용이 낮고 multinomial resampling보다 분산을 줄이는 경우가 많지만, 모든 가중치 배열에서 최소 분산을 보장하지는 않는다.
 
 **Stratified Resampling**: 각 층에서 독립 균등 난수를 사용. Systematic과 multinomial의 중간.
 
@@ -741,7 +741,7 @@ $$\text{Var}[\hat{\mathbf{x}}_{\text{RBPF}}] \leq \text{Var}[\hat{\mathbf{x}}_{\
 
 ### 4.3.5 Particle Filter의 한계와 현재 위치
 
-PF의 가장 큰 한계는 **차원의 저주(curse of dimensionality)**다. 상태 공간의 차원이 높아지면 의미 있는 근사를 위해 필요한 입자 수가 지수적으로 증가한다. 전형적인 VIO/LIO 시스템의 상태 벡터는 15차원 이상이므로, 순수 PF는 실용적이지 않다.
+PF의 큰 한계는 **차원의 저주(curse of dimensionality)**다. 일반적인 고차원 문제에서는 의미 있는 근사를 위한 입자 수가 매우 빠르게 늘어난다. VIO/LIO의 상태는 보통 자세·속도·바이어스를 함께 포함하므로, 강한 proposal이나 Rao–Blackwellization 없이 전체 상태를 입자로 표현하는 방식은 실시간 구현에서 대개 비효율적이다.
 
 따라서 현대 로봇 시스템에서 PF의 역할은 제한적이다:
 
@@ -763,7 +763,7 @@ $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$$
 **Smoothing**: 모든 관측 (미래 포함)을 사용하여 과거 상태를 추정한다.
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:T}), \quad k < T$$
 
-Smoother는 "미래의 관측"을 활용하므로, 같은 시각의 추정치가 filter보다 항상 같거나 더 정확하다. 단, 실시간 추정에는 filter가 필요하고, smoother는 후처리(batch) 또는 지연(fixed-lag) 형태로 사용된다.
+정확한 확률 모델과 같은 손실 함수를 가정하면 미래 관측을 조건에 추가한 smoother는 평균적인 Bayes risk를 줄일 수 있다. 그러나 개별 궤적의 실제 오차나 근사 최적화 결과가 filter보다 항상 작다는 보장은 없다. 실시간 추정에는 filter가 필요하고, smoother는 후처리(batch) 또는 지연(fixed-lag) 형태로 사용된다.
 
 ### 4.4.2 Fixed-Lag Smoother
 
@@ -771,9 +771,9 @@ Fixed-lag smoother는 현재 시각 $k$에서 $L$단계 이전까지의 관측�
 
 $$p(\mathbf{x}_{k-L} \mid \mathbf{z}_{1:k})$$
 
-이것은 filtering과 full smoothing의 절충이다. $L$만큼의 지연(latency)을 허용하면 더 나은 추정을 얻을 수 있다.
+이것은 filtering과 full smoothing의 절충이다. $L$만큼의 지연(latency)을 허용하면 과거 상태를 추가 관측으로 다시 추정할 수 있다.
 
-VINS-Mono, ORB-SLAM3 등의 슬라이딩 윈도우 최적화 시스템은 사실상 fixed-lag smoother다. 윈도우 내의 키프레임들을 동시에 최적화하므로, 단순 필터링보다 정확하다.
+VINS-Mono, ORB-SLAM3 등의 슬라이딩 윈도우 최적화 시스템은 fixed-lag smoothing에 가까운 구조다. 윈도우 내 키프레임을 함께 재선형화할 수 있다는 장점이 있지만, 정확도 비교는 계산 budget, 모델과 데이터셋을 맞춰야 한다.
 
 ### 4.4.3 Full Smoothing (Batch Optimization)
 
@@ -789,7 +789,7 @@ $$\mathbf{x}_{0:T}^* = \arg\max_{\mathbf{x}_{0:T}} p(\mathbf{x}_{0:T} \mid \math
 
 ### 4.4.4 왜 현대 SLAM은 Filtering에서 Optimization으로 갔는가
 
-2000년대 초반까지 SLAM은 EKF-SLAM이 주류였다. 그러나 점차 graph-based optimization(= batch smoothing)으로 이동했다. 그 이유:
+2000년대 초반까지 SLAM은 EKF-SLAM이 주류였다. 그러나 점차 graph-based optimization(= batch smoothing)으로 이동했다. 네 가지 이유가 있다.
 
 **1. 선형화 지점의 문제 (Linearization Point)**
 
@@ -799,13 +799,13 @@ EKF는 "한 번 선형화하면 끝"이다. 시각 $k$에서의 자코비안은 
 
 **2. 일관성(Consistency) 문제**
 
-EKF-SLAM은 관측 가능성(observability) 조건을 위반하는 경향이 있다. 특히 SLAM에서 첫 번째 포즈가 고정되어야(unobservable) 하는데, EKF의 선형화가 이를 깨뜨려 4개의 unobservable direction이 observable해지는 inconsistency가 발생한다. 이 문제는 FEJ(First-Estimate Jacobian)로 완화할 수 있지만 완전히 해결되지는 않는다.
+SLAM에는 외부 기준이 없을 때 전역 좌표계를 함께 옮겨도 관측이 같아지는 gauge freedom이 있다. unobservable direction의 수는 2D SLAM, 3D SLAM, visual-inertial 추정에서 각각 다르며, 예를 들어 VIO는 보통 전역 위치 3축과 중력축 yaw의 네 방향을 갖는다. 구현에서는 첫 포즈나 일부 자유도를 고정해 gauge를 정하지만, EKF가 매 시점 다른 추정치에서 선형화하면 이 방향에 허위 정보가 생겨 inconsistency가 발생할 수 있다. FEJ(First-Estimate Jacobian)와 observability-constrained 계열은 선형화가 null space를 더 잘 보존하도록 설계한다.
 
 **3. 스케일러빌리티(Scalability)**
 
 EKF-SLAM에서 $M$개 랜드마크의 공분산 행렬 크기는 $O((n + 3M)^2)$이고, 각 갱신의 계산량은 $O((n+3M)^2)$이다. 맵이 커지면 감당할 수 없다.
 
-Graph-based SLAM에서는 정보 행렬(information matrix, Hessian)이 **희소(sparse)**하다. 각 변수(포즈, 랜드마크)는 직접 관측한 다른 변수들과만 연결되므로, 정보 행렬의 대부분이 0이다. 이 희소성을 활용하면 변수 수에 거의 선형인 시간에 최적화할 수 있다.
+Graph-based SLAM에서는 정보 행렬(information matrix, Hessian)이 **희소(sparse)**하다. 각 변수(포즈, 랜드마크)는 직접 관측한 다른 변수들과만 연결되므로, 정보 행렬의 많은 항이 0이다. 희소성을 이용하면 dense 풀이보다 계산을 줄일 수 있지만, 실제 복잡도는 그래프의 연결 구조, 소거 순서, 루프 클로저가 만드는 fill-in에 따라 달라진다.
 
 **4. 루프 클로저(Loop Closure) 처리의 자연스러움**
 
@@ -813,14 +813,14 @@ Graph-based SLAM에서는 정보 행렬(information matrix, Hessian)이 **희소
 
 | 관점 | Filtering (EKF) | Optimization (Graph) |
 |------|----------------|---------------------|
-| 선형화 | 한 번, 고정 | 반복 재선형화 가능 |
-| 과거 상태 | 마지널라이즈되어 소실 | 전부 유지 |
-| 루프 클로저 | 어렵고 비쌈 | factor 추가로 자연스럽게 |
-| 정보 행렬 구조 | Dense | Sparse |
-| 계산량 (M 랜드마크) | $O(M^2)$ per step | $O(M)$ (sparse 활용) |
-| 일관성 | FEJ 등 추가 조치 필요 | 재선형화로 자연 완화 |
+| 선형화 | 기본 EKF는 갱신 시 한 번 | batch/smoother는 반복 재선형화 가능 |
+| 과거 상태 | 기본 필터는 제거하지만 상태 증강 가능 | full smoothing은 유지, fixed-lag는 마지널라이즈 |
+| 루프 클로저 | 과거 상태·상관을 유지해야 함 | 새 factor를 추가한 뒤 영향 구간 갱신 |
+| 행렬 구조 | 공분산은 대체로 dense | factor/Hessian의 희소성을 활용 가능 |
+| 계산량 | 상태와 관측 구조에 의존 | 그래프 구조·소거 순서·fill-in에 의존 |
+| 일관성 | 선형화·관측 가능성 처리가 필요 | 재선형화만으로 보장되지 않으며 gauge·마지널라이제이션 처리가 필요 |
 
-그러나 필터 기반이 완전히 사라진 것은 아니다. [MSCKF (Mourikis & Roumeliotis, 2007)](https://ieeexplore.ieee.org/document/4209642)와 OpenVINS는 EKF 기반이면서도 경쟁력 있는 성능을 보여주며, 특히 계산 자원이 극히 제한된 환경(마이크로 UAV 등)에서 여전히 유용하다. FAST-LIO2의 IEKF도 필터 기반이지만, ikd-tree와 결합하여 최적화 기반 시스템과 대등한 정확도를 달성한다.
+필터 기반도 계속 쓰인다. [MSCKF (Mourikis & Roumeliotis, 2007)](https://ieeexplore.ieee.org/document/4209642)와 OpenVINS는 계산량을 제한해야 하는 환경에 적용되며, FAST-LIO2도 IEKF와 ikd-tree를 결합한다. 필터와 최적화의 정확도 비교는 데이터셋, 센서, 계산 예산을 맞춘 실험으로 해야 한다.
 
 ---
 
@@ -849,7 +849,7 @@ $$p(\mathbf{X} \mid \mathbf{Z}) \propto \prod_{i} f_i(\mathbf{X}_i)$$
 | GPS factor | $\mathbf{x}_k$ | 절대 위치 관측 |
 | Loop closure factor | $\mathbf{x}_i, \mathbf{x}_j$ | 루프 클로저 상대 포즈 |
 
-factor graph의 핵심 강점은 **모듈성(modularity)**이다. 새로운 센서를 추가하려면 해당 센서에 대응하는 factor를 정의하고 그래프에 추가하기만 하면 된다. 기존 factor들은 수정할 필요가 없다.
+factor graph는 **모듈성(modularity)**을 갖는다. 새로운 센서를 추가하려면 해당 센서에 대응하는 factor를 정의하고 그래프에 추가하면 된다. 기존 factor는 수정할 필요가 없다.
 
 ### 4.5.2 MAP Inference = Nonlinear Least Squares
 
@@ -906,11 +906,11 @@ $$\mathbf{X}^{(k+1)} = \mathbf{X}^{(k)} \boxplus \Delta\mathbf{X}^{(k)}$$
 
 ### 4.5.4 Levenberg-Marquardt Method
 
-Gauss-Newton은 순수한 근사 2차 방법이지만, 초기값이 나쁘거나 비선형성이 심하면 발산할 수 있다. **Levenberg-Marquardt(LM)** 방법은 GN과 경사 하강법(gradient descent)의 절충으로, 정규화 항을 추가한다:
+Gauss-Newton은 잔차의 2차 미분 항을 생략하고 $\mathbf{J}^\top\mathbf{J}$로 Hessian을 근사한다. 초기값이 나쁘거나 비선형성이 심하면 발산할 수 있다. **Levenberg-Marquardt(LM)** 방법은 GN과 경사 하강법의 성격을 조절하도록 감쇠 항을 추가한다:
 
 $$(\mathbf{H} + \lambda \mathbf{I}) \Delta\mathbf{X} = -\mathbf{b}$$
 
-- $\lambda$가 작으면 → GN에 가까움 (빠른 수렴, 2차 수렴)
+- $\lambda$가 작으면 → GN에 가까움 (해 근처의 조건이 좋으면 빠르게 수렴)
 - $\lambda$가 크면 → gradient descent에 가까움 (작은 스텝, 안전)
 
 $\lambda$의 조절 전략: 갱신이 비용 함수를 감소시키면 $\lambda$를 줄이고 (GN 모드), 증가시키면 $\lambda$를 키운다 (보수적 모드).
@@ -947,7 +947,7 @@ $$\mathbf{J}_i = \frac{\partial \mathbf{r}_i}{\partial \boldsymbol{\xi}}\bigg|_{
 
 Batch 최적화를 매 키프레임마다 처음부터 다시 수행하면 시간이 비현실적으로 오래 걸린다. **iSAM2** ([Kaess et al., 2012](https://doi.org/10.1177/0278364911430419))는 Bayes tree 자료구조를 사용하여 incremental하게 최적화를 수행한다.
 
-핵심 아이디어:
+iSAM2는 네 가지 장치를 사용한다:
 
 1. **Bayes Tree**: factor graph의 elimination 결과를 방향성 트리로 표현. 각 노드는 clique(변수의 부분집합)에 대한 조건부 확률 밀도를 저장.
 
@@ -957,7 +957,7 @@ Batch 최적화를 매 키프레임마다 처음부터 다시 수행하면 시�
 
 4. **변수 순서 재정렬(Variable Reordering)**: 새 변수/factor 추가 시 전체 재정렬 없이 영향받는 부분만 지역적으로 재정렬.
 
-iSAM2는 GTSAM의 핵심 알고리즘으로, LIO-SAM·VINS-Mono 등 현대 SLAM 시스템 다수가 이를 백엔드로 쓴다.
+GTSAM은 iSAM2를 구현하며, [LIO-SAM](https://arxiv.org/abs/2007.00258) 같은 시스템이 이를 백엔드로 쓴다. VINS-Mono는 GTSAM/iSAM2가 아니라 Ceres 기반 sliding-window 최적화를 사용한다.
 
 > **최근 동향 — Continuous-Time Factor Graph**: 이산 키프레임 기반 factor graph를 **연속 시간(continuous-time)**으로 확장하는 연구가 활발하다. [Wong et al. (2024)](https://arxiv.org/abs/2402.06174)는 Gaussian Process motion prior를 사용하여 radar-inertial 및 LiDAR-inertial odometry를 연속 시간 factor graph로 통합하고, 비동기 센서 측정을 자연스럽게 처리할 수 있음을 보였다.
 
@@ -966,13 +966,13 @@ iSAM2는 GTSAM의 핵심 알고리즘으로, LIO-SAM·VINS-Mono 등 현대 SLAM 
 | 특성 | GTSAM | Ceres Solver | g2o |
 |------|-------|-------------|-----|
 | 개발 | Georgia Tech ([Dellaert](https://gtsam.org/)) | Google ([Ceres](http://ceres-solver.org/)) | [Kümmerle et al.](https://doi.org/10.1109/ICRA.2011.5979949) |
-| 핵심 철학 | Factor graph + Bayes tree | 범용 NLS solver | Graph optimization |
+| 설계 | Factor graph + Bayes tree | 범용 NLS solver | Graph optimization |
 | Incremental | iSAM2 (native) | 없음 (batch) | 없음 (batch) |
 | 매니폴드 | 내장 (Rot2, Rot3, Pose2, Pose3, ...) | Local parameterization | 내장 |
 | IMU Preintegration | 내장 (`PreintegratedImuMeasurements`) | 사용자 정의 | 사용자 정의 |
 | 자동 미분 | 수치 미분 가능 | 자동 미분 (ceres::AutoDiffCostFunction) | 없음 |
 | 언어 | C++ (Python 바인딩) | C++ | C++ |
-| 대표 사용처 | LIO-SAM, VINS-Mono | Cartographer, ORB-SLAM3 BA | 많은 SLAM 시스템의 포즈 그래프 |
+| 대표 사용처 | LIO-SAM | Cartographer, VINS-Mono | ORB-SLAM3, 많은 SLAM 시스템의 포즈 그래프 |
 | 학습 곡선 | Factor 정의만 하면 됨 | Cost function 정의 | Vertex/Edge 정의 |
 
 ```python
@@ -1060,7 +1060,7 @@ $$\Delta\mathbf{v}_{ij} \triangleq \mathbf{R}_i^\top (\mathbf{v}_j - \mathbf{v}_
 
 $$\Delta\mathbf{p}_{ij} \triangleq \mathbf{R}_i^\top (\mathbf{p}_j - \mathbf{p}_i - \mathbf{v}_i \Delta t_{ij} - \frac{1}{2}\mathbf{g}\Delta t_{ij}^2) = \sum_{k=i}^{j-1}\left[\Delta\mathbf{v}_{ik}\Delta t + \frac{1}{2}\Delta\mathbf{R}_{ik}(\tilde{\mathbf{a}}_k - \mathbf{b}_a^i)\Delta t^2\right] \in \mathbb{R}^3$$
 
-핵심 관찰: **우변은 IMU 측정값과 바이어스 추정치에만 의존하고, 키프레임 $i$의 글로벌 포즈 $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$와 무관하다.** 따라서 키프레임 포즈가 최적화로 바뀌어도 우변을 재계산할 필요가 없다.
+**우변은 IMU 측정값과 바이어스 추정치에만 의존하고, 키프레임 $i$의 글로벌 포즈 $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$와 무관하다.** 따라서 키프레임 포즈가 최적화로 바뀌어도 우변을 재계산할 필요가 없다.
 
 #### Step 2: 재귀적 계산 (On-Manifold)
 
@@ -1095,7 +1095,7 @@ $$\frac{\partial \Delta\bar{\mathbf{R}}_{i,k+1}}{\partial \mathbf{b}_g} = -\Delt
 
 $$\text{Jr}(\boldsymbol{\phi}) = \mathbf{I} - \frac{1 - \cos\theta}{\theta^2}[\boldsymbol{\phi}]_\times + \frac{\theta - \sin\theta}{\theta^3}[\boldsymbol{\phi}]_\times^2, \quad \theta = \|\boldsymbol{\phi}\|$$
 
-바이어스 변화가 작으면 ($\|\delta\mathbf{b}\|$가 작으면) 이 1차 보정은 충분히 정확하다. 바이어스가 크게 변하면 preintegration을 처음부터 다시 계산하지만, 실전에서는 거의 발생하지 않는다.
+바이어스 변화가 작으면 ($\|\delta\mathbf{b}\|$가 작으면) 1차 보정을 사용할 수 있다. 보정 뒤 잔차나 바이어스 변화가 구현의 허용 범위를 넘으면 저장한 IMU 표본으로 preintegration을 다시 계산한다.
 
 #### Step 4: 공분산 전파
 
@@ -1391,7 +1391,7 @@ Factor graph 기반 SLAM/VIO 시스템은 새로운 키프레임이 들어올 �
 
 ### 4.7.2 Schur Complement
 
-Marginalization의 수학적 핵심은 **Schur complement**다. 정보 행렬 $\mathbf{H}$를 마지널라이즈할 변수($\mathbf{x}_m$)와 유지할 변수($\mathbf{x}_r$)로 분할한다. 정규 방정식을 $\mathbf{H}\Delta\mathbf{x} = \mathbf{b}$로 쓴다 (§4.5.3의 $-\mathbf{b}$를 $\mathbf{b}$로 재정의, 즉 $\mathbf{b} \triangleq -\mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$):
+Marginalization은 **Schur complement**를 사용한다. 정보 행렬 $\mathbf{H}$를 마지널라이즈할 변수($\mathbf{x}_m$)와 유지할 변수($\mathbf{x}_r$)로 분할한다. 정규 방정식을 $\mathbf{H}\Delta\mathbf{x} = \mathbf{b}$로 쓴다 (§4.5.3의 $-\mathbf{b}$를 $\mathbf{b}$로 재정의, 즉 $\mathbf{b} \triangleq -\mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$):
 
 $$\mathbf{H} \Delta\mathbf{x} = \mathbf{b}$$
 
@@ -1538,22 +1538,22 @@ Schur complement 계산에서 $\mathbf{H}_{mm}^{-1}$의 역행렬이 필요하�
 
 ## 4장 요약
 
-이 장은 센서 퓨전의 수학적 기반인 상태 추정 이론을 다룬다. 핵심 메시지를 정리한다:
+상태 추정 방법의 관계는 다음과 같다:
 
-1. **Bayesian Filtering Framework**는 prediction-update 재귀 구조로, 모든 상태 추정 방법의 공통 뼈대다. Chapman-Kolmogorov 방정식과 Bayes 정리가 이론적 근거이지만, 비선형 시스템에서는 근사가 필수적이다.
+1. **Bayesian Filtering Framework**는 순차 필터의 prediction-update 재귀 구조다. Chapman-Kolmogorov 방정식과 Bayes 정리가 이론적 근거이며, 일반 비선형 시스템에서는 적분을 근사한다. Batch smoothing과 factor graph는 관련 확률 모델을 다른 계산 구조로 푼다.
 
-2. **Kalman Filter 계열**은 가우시안 근사를 통해 사후 분포를 평균과 공분산으로 추적한다. EKF는 1차 선형화, ESKF는 오차 상태에서의 선형화로 매니폴드 문제를 자연스럽게 처리하며, UKF는 sigma point 변환, IEKF는 반복 선형화로 비선형성에 대응한다. 현대 로봇 시스템에서는 ESKF가 사실상 표준이다.
+2. **Kalman Filter 계열**은 가우시안 근사를 통해 사후 분포를 평균과 공분산으로 추적한다. EKF는 1차 선형화, ESKF는 오차 상태에서의 선형화로 매니폴드 문제를 자연스럽게 처리하며, UKF는 sigma point 변환, IEKF는 반복 선형화로 비선형성에 대응한다. IMU 기반 필터에서는 ESKF 계열이 널리 쓰인다.
 
 3. **Particle Filter**는 다봉 분포와 강한 비선형을 다룰 수 있지만 차원의 저주로 고차원 문제에 부적합하다. RBPF(FastSLAM)로 일부 완화 가능하며, 2D SLAM과 global localization에서 여전히 활용된다.
 
 4. **Filtering에서 Optimization으로의 전환**은 재선형화, 희소성 활용, 루프 클로저 처리 등 여러 이점 때문에 현대 SLAM의 주류가 되었다. 다만 필터 기반(MSCKF, FAST-LIO2)도 특정 조건에서 경쟁력을 유지한다.
 
-5. **Factor Graph**는 확률적 추론을 모듈적으로 구성하고 MAP = NLS로 환원하는 강력한 프레임워크다. Gauss-Newton/LM으로 매니폴드 위에서 풀며, iSAM2의 incremental smoothing이 실시간 처리를 가능하게 한다.
+5. **Factor Graph**는 확률적 추론을 모듈적으로 구성하고 MAP = NLS로 환원하는 프레임워크다. Gauss-Newton/LM으로 매니폴드 위에서 풀며, iSAM2의 incremental smoothing으로 실시간 처리한다.
 
-6. **IMU Preintegration**은 고속 IMU 측정을 키프레임 간 factor로 압축하는 핵심 기술이다. On-manifold 유도와 바이어스 1차 보정 덕분에 재적분 없이 factor graph에 통합할 수 있다.
+6. **IMU Preintegration**은 고속 IMU 측정을 키프레임 간 factor로 압축한다. On-manifold 유도는 글로벌 포즈가 바뀔 때 재적분하지 않게 하고, 작은 바이어스 변화는 1차 보정한다. 변화가 크면 다시 적분한다.
 
-7. **Marginalization**은 슬라이딩 윈도우의 정보 보존 메커니즘이다. Schur complement가 핵심 연산이며, FEJ가 일관성 유지의 열쇠다.
+7. **Marginalization**은 제거할 변수의 선형화 정보를 prior로 옮긴다. Schur complement를 사용하며, FEJ는 관측 불가능 방향을 보존해 일관성 저하를 줄이는 한 방법이다.
 
-이 장의 이론은 이후의 VIO(Ch.6), LIO(Ch.7), 멀티센서 퓨전(Ch.8) 챕터에서 실제 시스템의 설계와 구현을 이해하는 데 필수적인 기반이 된다.
+같은 이론은 VIO(Ch.6), LIO(Ch.7), 멀티센서 퓨전(Ch.8)의 시스템 설계와 구현에도 쓰인다.
 
-> **2024-2025 연구 방향**: 두 흐름이 특히 주목받는다. **대칭 기반 필터**: Equivariant Filter(EqF)와 Invariant EKF가 Lie 군의 대칭 구조를 활용하여 일관성과 수렴성을 구조적으로 보장한다. **연속 시간 최적화**: Gaussian Process motion prior를 사용한 continuous-time factor graph가 비동기 멀티센서 퓨전의 새 패러다임으로 자리잡고 있다. 한편 [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289)처럼 RNN/Transformer로 칼만 이득이나 프로세스 모델을 학습하는 접근도 활발하나, 안전성 보장이 과제로 남아 있다.
+> **2024-2025 연구 방향**: Equivariant Filter와 Invariant EKF는 Lie 군의 대칭을 이용해 특정 시스템과 가정에서 오차 동역학·일관성·수렴 분석을 개선한다. 연속 시간 최적화에서는 Gaussian Process motion prior를 사용한 factor graph가 비동기 멀티센서 퓨전에 쓰인다. [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289)처럼 칼만 이득이나 모델 일부를 학습하는 접근도 연구되며, 분포 변화와 안전성 검증이 남는다.

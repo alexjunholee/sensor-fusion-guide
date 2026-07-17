@@ -55,9 +55,9 @@ $$\min_{\mathbf{R}, \mathbf{t}} \sum_{i} \| \mathbf{q}_i - (\mathbf{R} \mathbf{p
 
 이 최적화 문제의 closed-form 해는 SVD를 이용하여 구할 수 있다 (ICP, Ch.7 참조).
 
-### 5.1.3 왜 센서 퓨전의 핵심인가
+### 5.1.3 센서 퓨전에서의 역할
 
-센서 퓨전에서 correspondence는 시스템 전체의 정확도를 결정하는 병목이다. 잘못된 대응점(outlier) 하나가 포즈 추정을 완전히 망가뜨릴 수 있고, 대응점을 찾지 못하면 (텍스처 없는 환경) 시스템 자체가 동작하지 않는다. 이 챕터의 나머지 부분에서는 이 문제를 어떻게 해결해 왔는지의 기술적 계보를 추적한다.
+센서 퓨전의 정확도는 correspondence 품질에 크게 좌우된다. 잘못된 대응점(outlier)은 포즈 추정을 불안정하게 만들고, 텍스처가 부족한 환경처럼 충분한 대응점을 찾기 어려운 조건에서는 포즈를 추정할 수 없다. 이를 해결하는 방법은 전통적 특징점 검출·기술에서 학습 기반 정합으로 발전해 왔다.
 
 ---
 
@@ -174,7 +174,7 @@ keypoints, descriptors = orb.detectAndCompute(img, None)
 
 #### SIFT (Scale-Invariant Feature Transform, 2004)
 
-SIFT는 [Lowe (2004)](https://link.springer.com/article/10.1023/B:VISI.0000029664.99615.94)가 제안한, **스케일, 회전, 조명 변화에 불변한** 특징점 검출 및 기술 알고리즘이다. 20년간 특징점 매칭의 사실상 표준이었으며, 2020년 특허 만료 이후 자유롭게 사용 가능하다.
+SIFT는 [Lowe (2004)](https://link.springer.com/article/10.1023/B:VISI.0000029664.99615.94)가 제안한 특징점 검출·기술 알고리즘이다. 스케일과 평면 내 회전에 불변하도록 설계됐고, 정규화된 gradient descriptor 덕분에 일정 범위의 조명 변화와 affine 왜곡에도 강건하다. 오랫동안 특징점 매칭의 대표 기준선으로 쓰였으며 미국 특허는 2020년에 만료됐다.
 
 **Stage 1 — Scale-Space Extrema Detection (DoG)**:
 
@@ -222,7 +222,7 @@ keypoints, descriptors = sift.detectAndCompute(img, None)
 
 #### SURF (Speeded-Up Robust Features, 2006)
 
-SURF는 [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_32)이 SIFT의 속도 문제를 해결하기 위해 제안했다. 핵심 아이디어:
+SURF는 [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_32)이 SIFT의 속도 문제를 해결하기 위해 제안했다. 다음 세 가지 선택으로 계산량을 줄인다.
 
 - **Integral image**를 이용한 박스 필터로 LoG를 근사. 어떤 크기의 박스 필터든 O(1)에 계산.
 - **Hessian determinant**를 검출 기준으로 사용 (DoG 대신):
@@ -230,13 +230,13 @@ SURF는 [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_3
 $$\det(\mathbf{H}) = D_{xx} D_{yy} - (0.9 \cdot D_{xy})^2$$
 
 - 64차원 디스크립터 (SIFT의 128차원 대비 절반): Haar wavelet 응답의 합과 절댓값 합.
-- SIFT 대비 3~7배 빠르면서 유사한 정확도.
+- integral image와 box filter로 Hessian 근사를 빠르게 계산하도록 설계됐다. 속도와 정확도 차이는 구현, 영상 크기, 하드웨어에 따라 달라진다.
 
 SURF는 특허 문제로 최근에는 잘 사용되지 않으며, 실시간 응용에서는 ORB가, 정확도가 중요한 응용에서는 SIFT나 학습 기반 방법이 선호된다.
 
 ### 5.2.3 Binary Descriptors: BRIEF, ORB, BRISK
 
-이진 디스크립터는 패치 내 점 쌍의 밝기를 비교하여 0/1 비트열을 생성하는 디스크립터다. **Hamming distance**로 매칭하므로 float 디스크립터 대비 수십 배 빠르다.
+이진 디스크립터는 패치 내 점 쌍의 밝기를 비교하여 0/1 비트열을 만든다. XOR와 popcount로 Hamming distance를 계산할 수 있어 부동소수점 거리보다 낮은 비용으로 구현되는 경우가 많지만, 실제 속도비는 디스크립터 길이와 라이브러리·하드웨어에 따라 달라진다.
 
 | 디스크립터 | 비트 수 | 특징 |
 |-----------|--------|------|
@@ -261,7 +261,7 @@ Harris (1988)     — 코너 검출의 수학적 정의
     ↓ 스케일 불변성 필요
 SIFT (2004)       — scale-space + 128D float descriptor (정확하지만 느림)
     ↓ 속도 개선
-SURF (2006)       — integral image + 64D (3~7× 빠름, 여전히 float)
+SURF (2006)       — integral image + 64D (속도 지향, float)
     ↓ 실시간 요구
 FAST (2006)       — 극한 속도 검출 (descriptor 없음)
     ↓ 검출+기술 통합
@@ -332,7 +332,7 @@ for m, n in matches:  # m: best, n: second best
 
 #### RANSAC (Random Sample Consensus, 1981)
 
-[Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692)가 제안한 로버스트 추정 패러다임:
+[Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692)은 다음 절차로 로버스트 추정을 수행한다.
 
 1. 전체 매칭 중 모델에 필요한 최소 $n$개를 무작위 추출 (예: Fundamental matrix는 8점, 7점, 또는 5점)
 2. 추출한 점으로 모델 추정
@@ -365,7 +365,7 @@ inlier_matches = [m for m, flag in zip(good_matches, mask.ravel()) if flag]
 
 Chum & Matas가 제안했다. RANSAC이 균등 무작위 샘플링을 하는 반면, PROSAC은 **매칭 품질(예: 디스크립터 거리)** 순으로 정렬한 뒤 상위 매칭부터 점진적으로 샘플링한다.
 
-직관: 좋은 매칭일수록 인라이어일 확률이 높으므로, 상위 매칭에서 먼저 모델을 시도하면 더 빨리 좋은 모델을 찾는다. RANSAC 대비 수~수십 배 빠른 수렴.
+직관: 순위 점수가 인라이어 확률과 상관된다면 상위 매칭부터 모델을 시도해 유효한 가설을 더 일찍 찾을 수 있다. 이점은 점수의 보정과 실제 인라이어 순위에 의존한다.
 
 #### MAGSAC / MAGSAC++ (2019/2020)
 
@@ -422,7 +422,7 @@ _, R, t, mask_pose = cv2.recoverPose(E, pts1, pts2, cameraMatrix=K)
 ```
 Least Squares (아웃라이어에 취약)
     ↓ 아웃라이어 대응
-RANSAC (1981)   — 최초의 로버스트 추정 패러다임
+RANSAC (1981)   — 무작위 표본 기반 robust estimation의 대표적 출발점
     ↓ 사전 정보 활용
 PROSAC (2005)   — 매칭 품질 기반 진행적 샘플링
     ↓ 임계값 자동화
@@ -457,11 +457,11 @@ $$I(X; Y) = H(X) + H(Y) - H(X, Y)$$
 
 **직관**: 두 이미지가 올바르게 정렬(aligned)되었을 때, 한 이미지의 픽셀 값을 알면 같은 위치의 다른 이미지 픽셀 값을 더 잘 예측할 수 있다. 즉 $I(X; Y)$가 최대가 된다. 정렬이 어긋나면 두 이미지의 관계가 약해져서 $I(X; Y)$가 감소한다.
 
-핵심 성질: MI는 두 변수 사이의 **비선형적 통계적 의존성**을 측정한다. 단순한 상관계수(correlation coefficient)가 포착하지 못하는 관계도 잡아낸다.
+MI는 두 변수 사이의 **비선형적 통계적 의존성**을 측정하므로, 단순한 상관계수(correlation coefficient)가 포착하지 못하는 관계도 잡아낸다.
 
 ### 5.4.2 MI 기반 다중 모달리티 정합
 
-MI의 진정한 가치는 **서로 다른 모달리티의 센서 데이터를 정합**할 수 있다는 점이다. 원래 의료 영상(medical imaging)에서 CT-MRI 정합을 위해 개발된 방법이다.
+MI는 **서로 다른 모달리티의 센서 데이터를 정합**하는 데 쓸 수 있다. 처음에는 의료 영상(medical imaging)의 CT-MRI 정합에 적용되었다.
 
 왜 MI가 다중 모달리티에서 작동하는가?
 
@@ -531,12 +531,12 @@ def compute_mi(img_a, img_b, bins=256):
     pxy = hist_2d / hist_2d.sum()
     px = pxy.sum(axis=1)
     py = pxy.sum(axis=0)
-    
+
     # MI = H(X) + H(Y) - H(X,Y)
     hx = -np.sum(px[px > 0] * np.log(px[px > 0]))
     hy = -np.sum(py[py > 0] * np.log(py[py > 0]))
     hxy = -np.sum(pxy[pxy > 0] * np.log(pxy[pxy > 0]))
-    
+
     return hx + hy - hxy
 
 def compute_nid(img_a, img_b, bins=256):
@@ -547,7 +547,7 @@ def compute_nid(img_a, img_b, bins=256):
     )
     pxy = hist_2d / hist_2d.sum()
     hxy = -np.sum(pxy[pxy > 0] * np.log(pxy[pxy > 0]))
-    
+
     return 1.0 - mi / hxy if hxy > 0 else 1.0
 ```
 
@@ -559,11 +559,11 @@ def compute_nid(img_a, img_b, bins=256):
 
 ### 5.5.1 SuperPoint (2018): 자기지도학습 기반 검출+기술의 통합
 
-[DeTone et al. (2018)](https://arxiv.org/abs/1712.07629)의 SuperPoint는 **키포인트 검출과 디스크립터 추출을 단일 네트워크로 통합**한 최초의 실용적 딥러닝 파이프라인이다.
+[DeTone et al. (2018)](https://arxiv.org/abs/1712.07629)의 SuperPoint는 **키포인트 검출과 디스크립터 추출을 단일 fully convolutional network에서 함께 계산**하고, Homographic Adaptation으로 자기지도 학습한다.
 
-#### Homographic Adaptation: 핵심 학습 전략
+#### Homographic Adaptation 학습 전략
 
-SuperPoint의 가장 중요한 기술적 기여는 **라벨 없이 반복성 높은 키포인트 검출기를 학습하는 방법**이다.
+SuperPoint는 **라벨 없이 반복성 높은 키포인트 검출기를 학습**한다.
 
 1. 하나의 이미지에 무작위 호모그래피를 100회 이상 적용
 2. 각 변환된 이미지에서 키포인트를 검출
@@ -581,12 +581,12 @@ SuperPoint의 가장 중요한 기술적 기여는 **라벨 없이 반복성 높
 
 VGG 스타일 인코더(공유 백본) → 두 개의 디코더 헤드로 분기:
 
-**Interest Point Decoder**: 
+**Interest Point Decoder**:
 - 입력 이미지를 8×8 셀 그리드로 나눔
 - 각 셀에서 65채널 (64개 위치 + 1 "no interest point") softmax 수행
 - 셀 내 위치를 직접 예측하는 방식으로 픽셀 단위 키포인트 히트맵 생성
 
-**Descriptor Decoder**: 
+**Descriptor Decoder**:
 - 공유 백본의 feature map에서 256차원 디스크립터 맵을 출력
 - 검출된 키포인트 위치에서 bi-cubic interpolation으로 샘플링
 - L2 정규화 적용
@@ -600,7 +600,7 @@ $$L_{desc} = \sum_{(i,j) \in \text{pos}} \max(0, m_p - \mathbf{d}_i^\top \mathbf
 
 여기서 $m_p, m_n$은 positive/negative margin.
 
-**성능**: 단일 포워드 패스로 검출+기술을 동시 수행. 640×480 이미지에서 약 70 FPS (GPU 기준).
+**논문 보고 성능**: 단일 포워드 패스로 검출과 기술을 함께 수행한다. SuperPoint 논문은 저자들의 GPU·구현에서 640×480 입력 약 70 FPS를 보고했으며, 현재 처리량은 하드웨어와 후보점 수에 따라 다시 측정해야 한다.
 
 ```python
 import torch
@@ -624,7 +624,7 @@ with torch.no_grad():
 
 [D2-Net (Dusmanu et al., 2019)](https://arxiv.org/abs/1905.03561)은 검출과 기술을 더 극단적으로 통합한 방법이다. SuperPoint가 여전히 검출 헤드와 기술 헤드를 분리한 반면, D2-Net은 **같은 특징 맵에서 검출과 기술을 동시에 수행**한다.
 
-핵심 아이디어: VGG16의 중간 특징 맵 $\mathbf{F} \in \mathbb{R}^{H \times W \times C}$를 사용하여:
+D2-Net은 VGG16의 중간 특징 맵 $\mathbf{F} \in \mathbb{R}^{H \times W \times C}$를 다음 두 작업에 함께 사용한다.
 - **Detection**: 각 위치에서 채널 축 최대값을 취한 뒤, 공간적 NMS를 적용하여 키포인트 선택
 - **Description**: 같은 위치의 $C$-차원 벡터를 디스크립터로 사용
 
@@ -644,7 +644,7 @@ R2D2는 두 가지를 별도의 confidence map으로 예측하고, 이들의 곱
 
 [DISK (Tyszkiewicz et al., 2020)](https://arxiv.org/abs/2006.13566)는 **reinforcement learning** 관점에서 키포인트 검출을 학습한다. 매칭에 성공하면 보상(reward), 실패하면 벌칙(penalty)을 주어 검출기를 학습한다.
 
-핵심 차별점: 매칭 정확도를 직접 최적화하는 방식으로, 검출과 매칭의 end-to-end 최적화에 한 발 더 다가갔다.
+DISK는 매칭 정확도를 직접 최적화하여 검출과 매칭을 end-to-end로 학습한다.
 
 ### 5.5.5 전통 대비 장점: Illumination/Viewpoint Invariance 향상
 
@@ -665,7 +665,7 @@ R2D2는 두 가지를 별도의 confidence map으로 예측하고, 이들의 곱
 
 ### 5.6.1 SuperGlue (2020): Attention 기반 매칭
 
-[Sarlin et al. (2020)](https://arxiv.org/abs/1911.11763)의 SuperGlue는 키포인트 매칭을 **그래프 신경망(GNN)과 어텐션 메커니즘**으로 학습 가능한 문제로 재정의했다. 전통적인 nearest-neighbor 매칭을 학습 기반 매칭으로 대체한 최초의 상용급 시스템이다.
+[Sarlin et al. (2020)](https://arxiv.org/abs/1911.11763)의 SuperGlue는 키포인트 매칭과 unmatched point rejection을 **그래프 신경망(GNN), 어텐션, optimal transport**로 함께 푸는 학습 기반 matcher다.
 
 #### 문제 정의: 부분 할당(Partial Assignment)
 
@@ -737,11 +737,11 @@ SuperPoint가 검출+기술을 학습화했다면, SuperGlue는 **매칭 단계�
 
 ### 5.6.2 LightGlue (2023): SuperGlue의 효율화
 
-[Lindenberger et al. (2023)](https://arxiv.org/abs/2306.13643)의 LightGlue는 SuperGlue의 정확도를 유지하면서 **적응적 연산량 조절(adaptive computation)**로 속도를 3-5배 끌어올렸다.
+[Lindenberger et al. (2023)](https://arxiv.org/abs/2306.13643)의 LightGlue는 **적응적 연산량 조절(adaptive computation)**을 사용한다. 논문은 평가 설정의 평균에서 SuperGlue와 비슷한 정확도와 3–5배 속도 향상을 보고했으며, 실제 비율은 키포인트 수와 하드웨어에 따라 달라진다.
 
 #### SuperGlue의 문제점 진단
 
-- 항상 고정된 9개 GNN 레이어와 100회 Sinkhorn 반복을 수행 → 쉬운 매칭에도 불필요하게 많은 연산.
+- 공개 SuperGlue 구성은 고정된 GNN 깊이와 Sinkhorn 반복 수를 사용하므로, 입력 난이도에 따라 계산량을 줄이지 않는다.
 - 키포인트 수 $N$에 대해 $O(N^2)$ attention이 반복되므로, 키포인트가 많을수록 급격히 느려짐.
 
 #### 핵심 개선: Adaptive Depth & Width
@@ -755,8 +755,8 @@ SuperPoint가 검출+기술을 학습화했다면, SuperGlue는 **매칭 단계�
 - 매칭 불가능하다고 판단된 키포인트를 중간 레이어에서 제거.
 - Attention의 시퀀스 길이가 점진적으로 줄어들어 후반 레이어의 계산이 가벼워짐.
 
-**Sinkhorn 제거**: 
-Optimal Transport 대신 단순한 **dual-softmax + mutual nearest neighbor**로 매칭. Sinkhorn의 반복 비용을 완전히 제거하면서도 성능 저하가 거의 없다.
+**Sinkhorn 제거**:
+Optimal Transport 대신 **dual-softmax + mutual nearest neighbor**로 매칭해 Sinkhorn 반복을 사용하지 않는다. 정확도 차이는 데이터셋과 설정에 따라 평가한다.
 
 $$P_{ij} = \text{softmax}_j(S_{ij}) \cdot \text{softmax}_i(S_{ij})$$
 
@@ -766,7 +766,7 @@ $$P_{ij} = \text{softmax}_j(S_{ij}) \cdot \text{softmax}_i(S_{ij})$$
 - 추론 시에만 적응적 종료를 활성화.
 - SuperPoint, DISK, ALIKED 등 다양한 로컬 특징 검출기와 호환되도록 범용 설계.
 
-**성능**: SuperGlue 대비 동등한 정확도에서 **3-5배 빠름**. 쉬운 쌍에서는 최대 10배 이상 속도 향상.
+**성능**: LightGlue 논문은 평가 설정에서 SuperGlue와 비슷한 정확도를 유지하면서 평균 **3–5배**, 쉬운 image pair에서는 그보다 큰 속도 향상을 보고한다. 실제 배율은 keypoint 수와 하드웨어에 따라 달라진다.
 
 ```python
 # LightGlue 사용 예제 (kornia / hloc)
@@ -794,15 +794,15 @@ SuperPoint detect+describe → SuperGlue attention matching → LightGlue 효율
     (2018)                       (2020)                        (2023)
 ```
 
-이 진화 경로의 핵심 서사: **파이프라인의 각 단계를 하나씩 딥러닝으로 대체하되, 3단계 직렬 구조 자체는 유지**. 이 구조의 장점은 모듈성과 해석 가능성이며, 단점은 검출 단계의 실패가 전체 파이프라인의 실패로 이어진다는 것이다. 이 구조적 한계를 깨뜨린 것이 다음 절의 Detector-Free 패러다임이다.
+파이프라인의 각 단계를 하나씩 딥러닝으로 대체하는 동안에도 3단계 직렬 구조 자체는 유지됐다. 이 구조의 장점은 모듈성과 해석 가능성이며, 단점은 검출 단계의 실패가 전체 파이프라인의 실패로 이어진다는 것이다. 다음 절의 detector-free 방법은 이 검출 단계를 없앤다.
 
 ---
 
-## 5.7 Detector-Free Matching (패러다임 전환)
+## 5.7 Detector-Free Matching
 
 ### 5.7.1 왜 Detector-Free가 필요한가
 
-Detect-then-match 파이프라인은 **검출기가 키포인트를 찾지 못하면 매칭 자체가 불가능**하다는 근본적 한계가 있다. 이는 다음과 같은 실전 환경에서 치명적이다:
+Detect-then-match 파이프라인에서는 **검출기가 키포인트를 찾지 못하면 매칭도 수행할 수 없다**. 다음과 같은 환경에서 이 문제가 두드러진다.
 
 - **텍스처 없는 영역**: 흰 벽, 콘크리트 바닥, 하늘 — 그래디언트가 약해 코너/블롭 검출 실패
 - **반복 패턴**: 타일, 창문 격자 — 검출은 되지만 디스크립터가 유사하여 모호 매칭
@@ -812,7 +812,7 @@ Detector-free 접근법은 검출 단계를 없애고, **이미지의 모든 위
 
 ### 5.7.2 LoFTR (2021): Coarse-to-Fine Transformer Matching
 
-[Sun et al. (2021)](https://arxiv.org/abs/2104.00680)의 LoFTR는 **검출기 없이 두 이미지 간 밀집 매칭을 수행하는 트랜스포머 기반 아키텍처**로, detector-free matching이라는 새로운 패러다임을 열었다.
+[Sun et al. (2021)](https://arxiv.org/abs/2104.00680)의 LoFTR는 **검출기 없이 두 이미지 간 밀집 매칭을 수행하는 트랜스포머 기반 아키텍처**다.
 
 #### 아키텍처
 
@@ -867,7 +867,7 @@ with torch.no_grad():
         'image1': img1_tensor,
     }
     result = loftr(input_dict)
-    
+
     mkpts0 = result['keypoints0']     # (K, 2) — 이미지 0의 매칭 좌표
     mkpts1 = result['keypoints1']     # (K, 2) — 이미지 1의 매칭 좌표
     confidence = result['confidence'] # (K,) — 매칭 신뢰도
@@ -875,13 +875,13 @@ with torch.no_grad():
 
 #### 기술 계보에서의 위치
 
-LoFTR는 **패러다임 전환점**이다. SuperPoint→SuperGlue로 이어진 detect-then-match 파이프라인과 결별하고, 검출기를 완전히 제거했다. 트랜스포머의 어텐션이 검출과 매칭을 동시에 수행한다. 이미지의 모든 위치가 상대 이미지의 모든 위치와 직접 소통(cross-attention)하므로, 별도의 검출 단계 없이도 매칭이 가능해졌다.
+LoFTR는 SuperPoint→SuperGlue로 이어진 detect-then-match 파이프라인에서 검출기를 제거했다. 트랜스포머의 어텐션이 검출과 매칭을 동시에 수행한다. 이미지의 모든 위치가 상대 이미지의 모든 위치와 직접 소통(cross-attention)하므로, 별도의 검출 단계 없이도 매칭이 가능해졌다.
 
 ### 5.7.3 QuadTree Attention: LoFTR의 효율화
 
 LoFTR의 coarse-level transformer는 이미지의 모든 위치를 시퀀스로 평탄화하므로, 해상도가 높아지면 시퀀스 길이가 급격히 증가한다. QuadTree Attention (Tang et al., 2022)은 이를 해결한다.
 
-핵심 아이디어: 어텐션을 계층적으로 수행한다.
+어텐션은 다음 순서로 계층화된다.
 
 1. 가장 거친(coarsest) 해상도에서 전체 어텐션을 수행
 2. 높은 어텐션 점수를 가진 영역만 선택
@@ -894,22 +894,22 @@ LoFTR의 coarse-level transformer는 이미지의 모든 위치를 시퀀스로 
 
 ASpanFormer (Chen et al., 2022)는 LoFTR의 또 다른 한계를 해결한다: **모든 위치가 같은 크기의 어텐션 범위를 가져야 하는가?**
 
-핵심 아이디어: 각 위치마다 **적응적으로 어텐션 범위(span)**를 조절한다.
+각 위치의 **어텐션 범위(span)**를 적응적으로 조절한다.
 
 - 텍스처가 풍부한 영역: 좁은 범위로 정밀한 매칭
 - 텍스처가 부족한 영역: 넓은 범위로 컨텍스트를 활용한 매칭
 
 이를 통해 LoFTR이 텍스처 없는 영역에서 보이던 매칭 정확도 저하를 완화한다.
 
-### 5.7.5 RoMa (2024): DINOv2 + Dense Matching의 성숙
+### 5.7.5 RoMa (2024): DINOv2 + Dense Matching
 
-[Edstedt et al. (2024)](https://arxiv.org/abs/2305.15404)의 RoMa는 detector-free 매칭의 **성숙 단계**를 대표한다. 두 가지 핵심 진화를 통해 LoFTR 계열을 큰 폭으로 상회한다.
+[Edstedt et al. (2024)](https://arxiv.org/abs/2305.15404)의 RoMa는 DINOv2 특징과 detector-free dense matching을 결합한다. LoFTR 계열과 구별되는 두 가지 설계를 쓴다.
 
 #### Foundation Model 활용
 
 LoFTR가 처음부터(scratch) 학습한 것과 달리, RoMa는 **사전학습된 DINOv2 ViT-Large를 특징 추출기로 사용**한다 (가중치 동결).
 
-DINOv2는 대규모 자기지도학습으로 학습된 범용 시각 특징으로, 이미 풍부한 의미적(semantic) 정보를 내포한다. 이는 "특징 학습은 범용 모델에 맡기고, 매칭 로직만 학습하면 된다"는 철학적 전환이다.
+DINOv2는 대규모 자기지도학습으로 학습된 범용 시각 특징으로, 풍부한 의미적(semantic) 정보를 담고 있다. RoMa는 이 특징을 고정한 채 매칭 로직만 학습한다.
 
 #### 아키텍처
 
@@ -940,7 +940,7 @@ $$L = -\sum_{(\mathbf{x}_A, \mathbf{x}_B^*)} \log p(\mathbf{x}_B^* | \mathbf{x}_
 
 #### 성능
 
-MegaDepth 및 ScanNet 벤치마크에서 LoFTR, ASpanFormer 등을 큰 폭으로 상회. 특히 **넓은 baseline(큰 시점 변화)**에서의 성능 향상이 두드러진다.
+RoMa 원 논문의 relative-pose 실험에서는 MegaDepth·ScanNet에서 비교한 LoFTR·ASpanFormer 계열보다 높은 AUC를 보고했다. 개선 폭은 dataset과 각도 threshold에 따라 다르며, 논문은 큰 viewpoint·appearance 변화가 포함된 WxBS에서도 36% 상대 향상을 강조한다.
 
 ```python
 # RoMa 사용 예제
@@ -963,7 +963,7 @@ matches, certainty_scores = roma_model.sample(
 
 #### 기술 계보에서의 위치
 
-RoMa는 두 가지 핵심 전환을 체현한다:
+RoMa는 두 가지 설계를 결합한다.
 
 1. **Foundation Model 활용**: 처음부터 학습 → 대규모 사전학습 모델의 특징을 기반으로 매칭 로직만 학습
 2. **확률적 매칭**: 결정론적 점 예측 → 확률 분포 예측, 불확실한 매칭을 명시적으로 다룸
@@ -972,15 +972,15 @@ RoMa는 RAFT의 iterative refinement 아이디어와 LoFTR의 detector-free 사�
 
 ### 5.7.6 최신 동향: 3D-Aware Dense Matching (2024-2025)
 
-2024-2025년에는 2D 매칭을 넘어 **3D 기하학을 직접 예측하면서 매칭을 수행**하는 패러다임이 등장했다.
+2024-2025년에는 2D 매칭을 넘어 **3D 기하학을 직접 예측하면서 매칭을 수행**하는 방법이 등장했다.
 
 **DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132)는 캘리브레이션이나 포즈 정보 없이 임의의 이미지 쌍에서 직접 3D pointmap을 회귀하는 방법이다. 기존 매칭 파이프라인이 "2D 매칭 → 3D 복원"의 순서를 따른 반면, DUSt3R는 이를 뒤집어 **3D 구조 자체를 직접 예측하고, 대응점은 3D 공간에서 자연스럽게 얻어지는 부산물**로 다룬다.
 
-**MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756)는 DUSt3R에 dense local feature head를 추가하여 밀집 매칭을 강화했다. Map-free localization 벤치마크에서 기존 최고 방법 대비 30%p(절대) VCRE AUC 향상을 달성했다.
+**MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756)는 DUSt3R에 dense local feature head를 추가했다. 저자들은 논문의 map-free localization 설정에서 이전 비교 방법보다 VCRE AUC가 30%p 높았다고 보고한다.
 
-**VGGT (Wang et al., 2025)**: [VGGT](https://arxiv.org/abs/2503.11651) (Visual Geometry Grounded Transformer)는 CVPR 2025 Best Paper로, 하나 이상의 이미지로부터 카메라 파라미터, pointmap, depth map, 3D point track을 **단일 feed-forward 패스로 동시에 추론**한다. 1초 이내의 추론 시간으로, 후처리 최적화가 필요한 기존 방법들을 능가하는 정확도를 보인다.
+**VGGT (Wang et al., 2025)**: [VGGT](https://arxiv.org/abs/2503.11651) (Visual Geometry Grounded Transformer)는 CVPR 2025 Best Paper로, 하나 이상의 이미지로부터 camera parameter, pointmap, depth map, 3D point track을 **단일 feed-forward pass로 동시에 추론**한다. 원 논문은 자체 평가 설정에서 image reconstruction을 1초 이내에 처리하고, 비교한 geometry-optimization 기반 방법보다 높은 여러 3D task 성능을 보고한다.
 
-이 흐름은 "매칭은 2D 문제"라는 오랜 가정을 해체하고, **3D 기하학을 직접 추론하는 것이 결국 더 강건한 매칭을 낳는다**는 새로운 패러다임을 형성하고 있다.
+이들 방법은 2D 대응점을 먼저 구한 뒤 3D를 복원하던 순서를 바꾸어, 3D 기하학을 직접 추론한 결과에서 대응점을 얻는다.
 
 ---
 
@@ -1031,19 +1031,19 @@ fpfh = o3d.pipelines.registration.compute_fpfh_feature(
 
 ### 5.8.2 3DMatch (2017): Learned 3D Descriptors의 시작
 
-[Zeng et al. (2017)](https://arxiv.org/abs/1603.08182)의 3DMatch는 RGB-D 데이터에서 **학습을 통해 3D 매칭 디스크립터를 추출**하는 최초의 시스템이다.
+[Zeng et al. (2017)](https://arxiv.org/abs/1603.08182)의 3DMatch는 RGB-D reconstruction에서 자동 수집한 correspondence로 local volumetric descriptor를 학습한 초기의 영향력 있는 시스템이다.
 
 - **학습 데이터**: 62개 실내 장면의 RGB-D 재구성에서 자동 생성한 대응점 쌍
 - **아키텍처**: 3D TDF(Truncated Distance Function) 볼륨을 입력으로 하는 3D CNN
 - **출력**: 512차원 로컬 디스크립터
 
-3DMatch는 학습 기반 3D 디스크립터의 출발점이며, 동시에 **3DMatch Benchmark**라는 표준 벤치마크를 제공하여 후속 연구의 평가 기준이 되었다.
+3DMatch는 학습 기반 3D descriptor 연구의 주요 기준점이 되었고, 함께 공개한 **3DMatch Benchmark**도 후속 연구에서 널리 쓰이는 평가셋이 되었다.
 
 ### 5.8.3 FCGF (Fully Convolutional Geometric Features, 2019)
 
 [Choy et al. (2019)](https://arxiv.org/abs/1904.09793)의 FCGF는 **sparse convolution**을 이용하여 전체 점군에서 한 번의 포워드 패스로 모든 점의 디스크립터를 추출한다.
 
-3DMatch가 각 키포인트 주변의 로컬 볼륨을 개별적으로 처리하는 반면, FCGF는 전체 점군을 한꺼번에 처리하므로 **수십~수백 배 빠르다**. 32차원 디스크립터로 3DMatch의 512차원보다 간결하면서도 더 높은 정확도를 달성했다.
+3DMatch가 각 키포인트 주변의 로컬 볼륨을 개별 처리하는 반면, FCGF는 sparse convolution으로 전체 점군의 특징을 함께 계산한다. FCGF 논문은 해당 구현·하드웨어·벤치마크에서 큰 처리시간 단축과 32차원 디스크립터의 높은 registration 성능을 보고했다.
 
 ### 5.8.4 Predator (2021): Overlap-Aware 3D Matching
 
@@ -1065,7 +1065,7 @@ fpfh = o3d.pipelines.registration.compute_fpfh_feature(
 
 #### 기하학적 트랜스포머 아키텍처
 
-핵심은 **rigid transformation에 불변한 기하학적 특징**을 학습하는 것이다. 두 가지 기하학적 인코딩을 사용한다:
+GeoTransformer는 **rigid transformation에 불변한 기하학적 특징**을 학습하기 위해 두 가지 기하학적 인코딩을 사용한다:
 
 **1. 쌍별 거리 인코딩(Pairwise Distance)**:
 
@@ -1083,11 +1083,11 @@ $$\text{Attn}_{ij} = \frac{\mathbf{q}_i^\top \mathbf{k}_j}{\sqrt{d}} + b(\text{P
 
 #### RANSAC-Free 변환 추정
 
-슈퍼포인트 수준의 강건한 대응점이 높은 인라이어 비율을 달성하므로, **RANSAC 없이 직접 변환을 추정**할 수 있다. 이로 인해 **100배의 속도 향상**을 달성한다.
+GeoTransformer는 슈퍼포인트 대응을 고른 뒤 local-to-global registration으로 변환 가설을 집계하므로 별도의 외부 RANSAC 단계를 생략할 수 있다. 저자들은 논문의 구현과 비교 설정에서 이 단계의 큰 처리시간 단축을 보고했지만, 대응점이 오염된 다른 데이터에서도 같은 비율이나 성공을 보장하지는 않는다.
 
 #### 성능
 
-3DLoMatch 벤치마크에서 인라이어 비율 17-30%p 향상, 정합 리콜 7%p 이상 향상. 특히 **저오버랩(10-30%)** 시나리오에서 기존 방법 대비 큰 폭의 개선.
+논문은 3DLoMatch의 비교 설정에서 기준 방법에 따라 인라이어 비율 17–30%p, registration recall 7%p 이상의 향상을 보고했다. 이 수치는 저오버랩으로 정의된 해당 벤치마크와 평가 프로토콜에 한정된다.
 
 ```python
 # GeoTransformer 사용 예제
@@ -1115,7 +1115,7 @@ FPFH (2009)          — 기하학적 각도 히스토그램
 SHOT (2010)          — 방향 히스토그램
     ↓ 학습 기반
 [Learned 3D Descriptors]
-3DMatch (2017)       — 최초의 학습 기반 3D 디스크립터 + 벤치마크
+3DMatch (2017)       — 초기 learned 3D descriptor + benchmark
     ↓ 효율화
 FCGF (2019)          — sparse conv, 전체 점군 한 번에 처리
     ↓ 오버랩 인식
@@ -1156,7 +1156,7 @@ P2-Net (Yu et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패
 
 ### 5.9.3 왜 Cross-Modal이 어려운가: Representation Gap
 
-2D-3D cross-modal 매칭이 근본적으로 어려운 이유:
+다음 네 차이가 2D-3D cross-modal 매칭을 어렵게 만든다.
 
 1. **표현의 이질성(Representation Heterogeneity)**: 2D 이미지는 정규 격자 위의 밝기/색상, 3D 점군은 불규칙하게 분포된 좌표+강도. 데이터 구조 자체가 다르다.
 
@@ -1238,7 +1238,7 @@ Euler-Lagrange 방정식을 풀면 반복적 갱신 수식을 얻는다. Dense f
 
 #### FlowNet / FlowNet 2.0 (2015/2017)
 
-[Dosovitskiy et al. (2015)](https://arxiv.org/abs/1504.06852)의 FlowNet은 **optical flow를 CNN으로 직접 예측**한 최초의 딥러닝 방법이다. 두 이미지를 입력으로 받아 flow 필드를 출력하는 encoder-decoder 구조.
+[Dosovitskiy et al. (2015)](https://arxiv.org/abs/1504.06852)의 FlowNet은 두 이미지에서 optical-flow field를 end-to-end supervised learning으로 직접 예측한 초기 CNN 시스템이다. 두 이미지를 입력으로 받아 flow field를 출력하는 encoder-decoder 구조다.
 
 [FlowNet 2.0 (Ilg et al., 2017)](https://arxiv.org/abs/1612.01925)은 여러 FlowNet을 스택하여 정확도를 끌어올렸다.
 
@@ -1267,9 +1267,9 @@ $$C_{ijkl} = \sum_d g_1(i, j, d) \cdot g_2(k, l, d)$$
 4. Hidden state에서 flow 잔차(residual) $\Delta \mathbf{f}$ 예측
 5. Flow 업데이트: $\mathbf{f}^{k+1} = \mathbf{f}^k + \Delta \mathbf{f}$
 
-학습 시 12회, 추론 시 12~32회 반복. **반복 횟수를 늘리면 정확도가 향상**되는 특성(test-time adaptability).
+원 논문 구성은 학습 시 12회, 추론 시 12~32회 갱신을 사용한다. 추가 반복이 논문 실험에서 오차를 낮추기도 했지만, 수렴 뒤에는 개선이 보장되지 않으므로 지연시간과 검증 오차로 횟수를 정한다.
 
-**All-Pairs vs. Coarse-to-Fine**: 기존 PWC-Net, FlowNet 등은 피라미드에서 coarse flow를 먼저 추정하고 점진적으로 정밀화하는데, 큰 변위가 coarse 레벨에서 놓치면 복구 불가. RAFT는 **전체 해상도에서 모든 상관관계를 한 번에 보유**하므로 큰 변위도 놓치지 않는다.
+**All-Pairs vs. Coarse-to-Fine**: coarse-to-fine 방법은 거친 단계의 대응 오류를 후속 단계에서 복구하기 어려울 수 있다. RAFT는 모든 feature 쌍의 상관을 만들어 반복 갱신 중 여러 스케일에서 조회하므로 큰 변위 후보에도 접근할 수 있다. 다만 반복 최적화와 특징이 실패하면 큰 변위를 여전히 놓칠 수 있다.
 
 **학습**: 모든 반복 단계의 예측에 대해 ground-truth flow와의 L1 loss를 적용하되, 후반 반복에 exponentially increasing weights:
 
@@ -1297,7 +1297,7 @@ with torch.no_grad():
 
 #### UniMatch (2023)
 
-[Xu et al. (2023)](https://arxiv.org/abs/2211.05783)의 UniMatch는 **optical flow, stereo matching, depth estimation을 하나의 통합 프레임워크**로 처리한다. 핵심 아이디어는 세 태스크가 모두 "두 관측 사이의 dense correspondence"라는 공통 문제로 귀결된다는 것이다.
+[Xu et al. (2023)](https://arxiv.org/abs/2211.05783)의 UniMatch는 **optical flow, stereo matching, depth estimation을 하나의 통합 프레임워크**로 처리한다. 세 태스크를 모두 "두 관측 사이의 dense correspondence" 문제로 표현한다.
 
 ### 5.10.3 Dense Stereo: SGM → RAFT-Stereo → UniMatch
 
@@ -1305,7 +1305,7 @@ Stereo matching은 좌우 카메라 이미지에서 **수평 방향의 시차(di
 
 #### SGM (Semi-Global Matching, Hirschmuller 2005)
 
-전통적 dense stereo의 대표. 핵심 아이디어:
+SGM은 전통적인 dense stereo 방법으로, 다음 순서로 시차를 구한다.
 - 각 픽셀에서 모든 시차 후보에 대한 매칭 비용(cost) 계산
 - 8(또는 16) 방향에서 1D 동적 프로그래밍으로 비용을 집계(aggregation)
 - 집계된 비용에서 최소값을 선택하여 시차 결정
@@ -1338,7 +1338,7 @@ Horn-Schunck (1981)  — 글로벌 최적화, 전 픽셀 flow
     ↓ 딥러닝
 FlowNet (2015)       — CNN 직접 예측
 [PWC-Net](https://arxiv.org/abs/1709.02371) (2018)       — cost volume + coarse-to-fine
-    ↓ 패러다임 전환
+    ↓ 전역 상관·반복 갱신
 RAFT (2020)          — all-pairs correlation + iterative GRU
     ↓ 트랜스포머
 FlowFormer (2022)    — cost volume 토큰화 + transformer
@@ -1346,13 +1346,13 @@ FlowFormer (2022)    — cost volume 토큰화 + transformer
 UniMatch (2023)      — flow + stereo + depth 통합
 ```
 
-RAFT의 all-pairs correlation과 iterative refinement 아이디어는 dense matching뿐 아니라 **detector-free feature matching** (LoFTR, RoMa)과 **learned SLAM** (DROID-SLAM)에도 직접적으로 영향을 미쳤다.
+RAFT의 all-pairs correlation과 iterative refinement는 dense matching, **detector-free feature matching**(LoFTR, RoMa), **learned SLAM**(DROID-SLAM)에 영향을 미쳤다.
 
 ---
 
 ## 기술 계보 요약
 
-이 챕터에서 다룬 모든 기술의 흐름을 하나의 다이어그램으로 정리한다:
+아래 도식은 이 장에서 다룬 기술의 흐름을 잇는다:
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1360,106 +1360,106 @@ RAFT의 all-pairs correlation과 iterative refinement 아이디어는 dense matc
 ═══════════════════════════════════════════════════════════════════════════════
 
 [2D Detection & Description]
-                                                                              
-Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB (2011)             
-  코너 검출           scale-space       극한 속도       FAST+BRIEF             
-  structure tensor    DoG + 128D        검출만          binary descriptor       
-                      float descriptor                                        
-         │                │                                                   
-         │   정확도 vs 속도 트레이드오프의 역사                               
-         ▼                ▼                                                   
-[학습 기반 Detection & Description]                                           
-                                                                              
-    SuperPoint (2018) ──→ D2-Net (2019) ──→ R2D2 (2019) ──→ DISK (2020)      
-      self-supervised      detect=describe    reliability      RL 기반         
-      homographic adapt    joint feature map  + repeatability                  
-         │                                                                    
-         │                                                                    
-         ▼                                                                    
-[학습 기반 Matching — 파이프라인 유지]                                        
-                                                                              
-    SuperGlue (2020) ──────────────→ LightGlue (2023)                        
-      GNN + cross-attention           adaptive depth/width                    
-      Sinkhorn optimal transport      dual-softmax (Sinkhorn 제거)            
-      O(N²) × 9 layers               조기 종료, 3-5× 빠름                    
-                                                                              
-═══════════════════════ 패러다임 전환 ═══════════════════════════════════       
-                                                                              
-[Detector-Free Matching — 파이프라인 해체]                                    
-                                                                              
-    LoFTR (2021) ──→ QuadTree (2022) ──→ ASpanFormer (2022) ──→ RoMa (2024) 
-      transformer         O(N log N)        adaptive span          DINOv2     
-      coarse-to-fine       효율화           텍스처 적응             확률적 매칭 
-      검출기 완전 제거                                              foundation 
+
+Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB (2011)
+  코너 검출           scale-space       극한 속도       FAST+BRIEF
+  structure tensor    DoG + 128D        검출만          binary descriptor
+                      float descriptor
+         │                │
+         │   정확도 vs 속도 트레이드오프의 역사
+         ▼                ▼
+[학습 기반 Detection & Description]
+
+    SuperPoint (2018) ──→ D2-Net (2019) ──→ R2D2 (2019) ──→ DISK (2020)
+      self-supervised      detect=describe    reliability      RL 기반
+      homographic adapt    joint feature map  + repeatability
+         │
+         │
+         ▼
+[학습 기반 Matching — 파이프라인 유지]
+
+    SuperGlue (2020) ──────────────→ LightGlue (2023)
+      GNN + cross-attention           adaptive depth/width
+      Sinkhorn optimal transport      dual-softmax (Sinkhorn 제거)
+      O(N²) × 9 layers               조기 종료, 3-5× 빠름
+
+═══════════════════════ 검출기 없는 정합으로 전환 ═══════════════════════
+
+[Detector-Free Matching — 파이프라인 해체]
+
+    LoFTR (2021) ──→ QuadTree (2022) ──→ ASpanFormer (2022) ──→ RoMa (2024)
+      transformer         O(N log N)        adaptive span          DINOv2
+      coarse-to-fine       효율화           텍스처 적응             확률적 매칭
+      검출기 완전 제거                                              foundation
                                                                     model 활용
                                                                         │
 ═══════════════════════ 3D-Aware 전환 ═══════════════════════════════════
                                                                         │
 [3D-Aware Dense Matching — 2D 매칭을 넘어]                              ▼
-                                                                              
-    DUSt3R (2024) ──→ MASt3R (2024) ──→ VGGT (2025, CVPR Best Paper)  
-      3D pointmap         dense local        feed-forward 3D 추론      
-      직접 회귀            feature 추가       camera+depth+pointmap     
+
+    DUSt3R (2024) ──→ MASt3R (2024) ──→ VGGT (2025, CVPR Best Paper)
+      3D pointmap         dense local        feed-forward 3D 추론
+      직접 회귀            feature 추가       camera+depth+pointmap
       매칭 = 3D 부산물     매칭 성능 강화     단일 패스 통합 추론
 ═══════════════════════════════════════════════════════════════════════════════
 
-[Dense Matching & Optical Flow — 병렬 진화]                                   
-                                                                              
-    LK (1981) ──→ Horn-Schunck (1981) ──→ FlowNet (2015)                     
-      로컬 window    글로벌 smoothness      CNN 직접 예측                      
-         │                                      │                             
-         ▼                                      ▼                             
+[Dense Matching & Optical Flow — 병렬 진화]
+
+    LK (1981) ──→ Horn-Schunck (1981) ──→ FlowNet (2015)
+      로컬 window    글로벌 smoothness      CNN 직접 예측
+         │                                      │
+         ▼                                      ▼
     PWC-Net (2018) ──→ RAFT (2020) ──→ FlowFormer (2022) ──→ UniMatch (2023)
-      cost volume       4D all-pairs      transformer           flow+stereo   
-      coarse-to-fine    iterative GRU     cost tokenization     +depth 통합   
-                            │                                                 
-                            │ RAFT의 아이디어 전파                             
-                            ├──→ LoFTR (all-pairs attention)                  
-                            ├──→ RoMa (iterative refinement)                  
-                            └──→ DROID-SLAM (correlation + DBA)               
-                                                                              
+      cost volume       4D all-pairs      transformer           flow+stereo
+      coarse-to-fine    iterative GRU     cost tokenization     +depth 통합
+                            │
+                            │ RAFT의 아이디어 전파
+                            ├──→ LoFTR (all-pairs attention)
+                            ├──→ RoMa (iterative refinement)
+                            └──→ DROID-SLAM (correlation + DBA)
+
 ═══════════════════════════════════════════════════════════════════════════════
 
-[3D-3D Correspondence — 독립 진화]                                            
-                                                                              
-    FPFH (2009) ──→ SHOT (2010) ──→ 3DMatch (2017) ──→ FCGF (2019)          
-      기하학 히스토그램   방향 히스토그램    학습 3D descriptor   sparse conv    
-                                                │                             
-                                                ▼                             
-                                         Predator (2021)                      
-                                           overlap-aware                      
-                                                │                             
-                                                ▼                             
-                                        GeoTransformer (2022)                 
-                                           기하학적 transformer                
-                                           RANSAC-free                        
-                                                                              
+[3D-3D Correspondence — 독립 진화]
+
+    FPFH (2009) ──→ SHOT (2010) ──→ 3DMatch (2017) ──→ FCGF (2019)
+      기하학 히스토그램   방향 히스토그램    학습 3D descriptor   sparse conv
+                                                │
+                                                ▼
+                                         Predator (2021)
+                                           overlap-aware
+                                                │
+                                                ▼
+                                        GeoTransformer (2022)
+                                           기하학적 transformer
+                                           RANSAC-free
+
 ═══════════════════════════════════════════════════════════════════════════════
 
-[Cross-Modal — MI 기반 우회 전략]                                             
-                                                                              
-    MI (정보 이론) ──→ NMI ──→ NID (Koide et al. 2023)                       
-      다중 모달리티      정규화     LiDAR-Camera calibration                    
-      통계적 의존성                                                            
-                                                                              
+[Cross-Modal — MI 기반 우회 전략]
+
+    MI (정보 이론) ──→ NMI ──→ NID (Koide et al. 2023)
+      다중 모달리티      정규화     LiDAR-Camera calibration
+      통계적 의존성
+
 ═══════════════════════════════════════════════════════════════════════════════
 
-핵심 서사:
+요약:
   1. 전통적 3단계 파이프라인(detect → describe → match)을 딥러닝으로
      각각 대체하는 흐름: SIFT → SuperPoint → SuperGlue → LightGlue
 
   2. 파이프라인 자체를 해체하고 end-to-end 밀집 매칭으로 전환하는 흐름:
      RAFT → LoFTR → RoMa
 
-  3. Foundation model 활용의 부상: DINOv2 특징을 매칭의 기반으로 활용하여,
-     "특징 학습은 범용 모델에 맡기고 매칭 로직만 학습"하는 패러다임 전환.
+  3. Foundation model 활용: DINOv2 특징을 매칭의 기반으로 고정하고
+     매칭 로직을 학습하는 흐름.
 
-  4. 3D-Aware 매칭의 등장 (2024-2025): DUSt3R → MASt3R → VGGT로 이어지는
-     흐름에서, "2D 매칭 후 3D 복원"이 아닌 "3D를 직접 추론하면 매칭은
-     자연스럽게 따라온다"는 역발상이 큰 성공을 거두고 있다.
+  4. 3D-Aware 매칭의 등장(2024-2025): DUSt3R → MASt3R → VGGT는
+     "2D 매칭 후 3D 복원"의 순서를 뒤집어, 3D 구조를 직접 추론한 뒤
+     그 구조에서 대응점을 얻는다.
 
-  후자(2, 3, 4)가 점점 우세해지는 추세이나, 전자(1)의 효율성과 해석 가능성은
-  여전히 실용적 가치가 있다.
+  2, 3, 4는 고정된 검출기-기술자 파이프라인 밖으로 매칭을 확장한다.
+  1은 효율성과 해석 가능성이 중요한 조건에서 여전히 유용하다.
 ```
 
-이 챕터에서 다룬 매칭 기술들은 다음 챕터부터 본격적으로 활용된다. Ch.6에서는 이 기술들이 Visual Odometry의 frontend에서 어떻게 배치되는지, 그리고 Ch.4에서 다룬 상태 추정 방법이 backend에서 어떻게 결합되는지를 구체적인 시스템들을 통해 살펴본다.
+Ch.6은 이 매칭 기술을 Visual Odometry의 frontend에 배치하고, Ch.4의 상태 추정 방법을 backend와 연결한다.

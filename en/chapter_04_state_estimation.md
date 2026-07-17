@@ -1,8 +1,8 @@
 # Ch.4 — State Estimation Theory
 
-Ch.2 covered sensor observation models, and Ch.3 addressed inter-sensor calibration. It is now time for the **algorithms** that estimate the robot's state (position, attitude, velocity, etc.) from this observation data. The Kalman filter, factor graph, and IMU preintegration covered in this chapter are the mathematical engines behind every odometry and fusion system we examine in Ch.6–8.
+Sensor observation models and inter-sensor calibration parameters are inputs to the **algorithms** that estimate a robot's state (position, attitude, velocity, etc.). Kalman filters, factor graphs, and IMU preintegration process those inputs in the odometry and fusion systems of Ch.6–8.
 
-> **Goal**: We systematically treat state estimation theory, the mathematical foundation of sensor fusion. Starting from Bayesian filtering, we follow the technical lineage through the Kalman filter family and the particle filter, up to factor-graph-based optimization, which is at the heart of modern SLAM. We show each method's derivation in detail and explain why modern robotics systems moved from filtering to optimization.
+> State estimation runs from Bayesian filtering through the Kalman filter family and the particle filter to factor-graph-based optimization. The derivations also explain why modern robotics systems moved from filtering to optimization.
 
 ---
 
@@ -10,7 +10,7 @@ Ch.2 covered sensor observation models, and Ch.3 addressed inter-sensor calibrat
 
 ### 4.1.1 Definition of the State Estimation Problem
 
-The robot state estimation problem is fundamentally a **conditional probabilistic inference** problem. What we wish to know is the posterior over the state $\mathbf{x}_k$ given all observations up to the present $\mathbf{z}_{1:k}$ and control inputs $\mathbf{u}_{1:k}$:
+Robot state estimation is a **conditional probabilistic inference** problem. It seeks the posterior over the state $\mathbf{x}_k$ given all observations up to the present $\mathbf{z}_{1:k}$ and control inputs $\mathbf{u}_{1:k}$:
 
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k}, \mathbf{u}_{1:k})$$
 
@@ -47,7 +47,7 @@ $$p(\mathbf{x}_k \mid \mathbf{x}_{0:k-1}, \mathbf{u}_{1:k}, \mathbf{z}_{1:k-1}) 
 2. **Conditional observation independence**: Given the current state $\mathbf{x}_k$, the observation $\mathbf{z}_k$ is independent of everything else:
 $$p(\mathbf{z}_k \mid \mathbf{x}_{0:k}, \mathbf{u}_{1:k}, \mathbf{z}_{1:k-1}) = p(\mathbf{z}_k \mid \mathbf{x}_k)$$
 
-Thanks to these two assumptions, we can update the current estimate using only the previous estimate, without storing the entire observation history $\mathbf{z}_{1:k}$. This is the crux of **recursive estimation**.
+These two assumptions let us update the current estimate from the previous estimate without storing the entire observation history $\mathbf{z}_{1:k}$. This procedure is **recursive estimation**.
 
 ### 4.1.3 Prediction-Update Cycle
 
@@ -117,7 +117,7 @@ Here:
 - $\mathbf{Q}_k \in \mathbb{R}^{n \times n}$: process noise covariance (positive semi-definite, symmetric)
 - $\mathbf{R}_k \in \mathbb{R}^{m \times m}$: measurement noise covariance (positive definite, symmetric)
 
-Key property: applying a linear transformation to a Gaussian yields another Gaussian. Thus the posterior remains Gaussian at all times and is fully described by its mean and covariance.
+Applying a linear transformation to a Gaussian yields another Gaussian. Thus the posterior remains Gaussian and is fully described by its mean and covariance.
 
 #### MMSE Derivation — Why the Kalman Filter Is Optimal
 
@@ -154,7 +154,7 @@ $$\begin{bmatrix} \mathbf{x}_k \\ \mathbf{z}_k \end{bmatrix} \sim \mathcal{N}\le
 
 Here $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k \in \mathbb{R}^{m \times m}$ is the innovation covariance.
 
-Applying the formula for the conditional of a Gaussian joint (the key Gaussian property: if the joint is Gaussian, the conditional is also Gaussian, and the conditional mean equals the original mean plus a correction proportional to the correlation with the observation):
+For a jointly Gaussian distribution, the conditional is also Gaussian, and its mean equals the original mean plus a correction proportional to the correlation with the observation:
 
 $$\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1} (\mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1})$$
 
@@ -163,14 +163,14 @@ Defining the **Kalman gain** $\mathbf{K}_k \in \mathbb{R}^{n \times m}$:
 $$\boxed{\mathbf{K}_k = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1} = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top (\mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k)^{-1}}$$
 
 Intuitive meaning of the Kalman gain:
-- $\mathbf{R}_k \to \mathbf{0}$ (observation is very accurate): $\mathbf{K}_k \to \mathbf{H}_k^{-1}$ → trust the observation almost entirely
+- $\mathbf{R}_k \to \mathbf{0}$ (small measurement noise): the update follows the measurement constraint more strongly in the observable subspace. The notation $\mathbf{H}_k^{-1}$ applies only when $\mathbf{H}_k$ is square and invertible
 - $\mathbf{P}_{k|k-1} \to \mathbf{0}$ (prediction is very accurate): $\mathbf{K}_k \to \mathbf{0}$ → ignore the observation and trust the prediction
-- The Kalman gain automatically determines the **optimal weighting** between the uncertainty of prediction and that of observation.
+- If the linear model and specified noise covariances are correct, the Kalman gain gives the conditional-mean weighting.
 
 **Innovation**:
 $$\tilde{\mathbf{y}}_k = \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1} \in \mathbb{R}^m$$
 
-The difference between the predicted observation and the actual one. If it is zero, the prediction was perfect.
+This is the difference between the predicted and actual observation. A zero innovation means that this measurement residual is zero, not that unobserved state components or model error vanish.
 
 **State update**:
 $$\boxed{\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde{\mathbf{y}}_k}$$
@@ -178,7 +178,7 @@ $$\boxed{\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde
 **Covariance update**:
 $$\boxed{\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}}$$
 
-This covariance update is numerically more stable when written in the Joseph form $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$. Even if $\mathbf{K}_k$ has numerical errors, the Joseph form guarantees that $\mathbf{P}_{k|k}$ remains symmetric and positive semi-definite.
+This covariance update is numerically more stable in Joseph form: $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$. If $\mathbf{P}_{k|k-1}$ and $\mathbf{R}_k$ are positive semidefinite, the expression preserves that algebraic structure; implementations may also symmetrize the result or use factorized solvers to limit roundoff.
 
 #### KF Optimality Theorem
 
@@ -187,7 +187,7 @@ This covariance update is numerically more stable when written in the Joseph for
 2. **MAP (Maximum A Posteriori) estimator**: in a Gaussian, mean equals mode, so MAP and MMSE coincide
 3. **BLUE (Best Linear Unbiased Estimator)**: even without the Gaussian assumption, it is the linear unbiased estimator with minimum variance
 
-Kalman's 1960 paper replaced Wiener's frequency-domain approach with a state-space, time-domain formulation, enabling natural extensions to time-varying and multivariate systems — an innovation of far-reaching consequences.
+Kalman's 1960 paper replaced Wiener's frequency-domain approach with a state-space, time-domain formulation that extends to time-varying and multivariate systems.
 
 #### Python Implementation
 
@@ -310,13 +310,13 @@ print(f"final position uncertainty (1 sigma): {np.sqrt(P[0,0]):.3f}")
 
 Real robotic systems are almost always nonlinear. The 3D→2D projection of a camera, the quaternion-based rotation of an IMU, LiDAR scan matching — all are nonlinear functions. The EKF is the most direct way to extend the Kalman filter to nonlinear systems.
 
-#### Core Idea: First-Order Taylor Expansion (Linearization)
+#### First-Order Taylor Expansion (Linearization)
 
 Nonlinear system model:
 $$\mathbf{x}_k = f(\mathbf{x}_{k-1}, \mathbf{u}_k) + \mathbf{w}_k$$
 $$\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k$$
 
-In this system, passing a Gaussian through a nonlinear function no longer yields a Gaussian. The EKF's key approximation is to **linearize the function about the current estimate via a first-order Taylor expansion**.
+In this system, passing a Gaussian through a nonlinear function no longer yields a Gaussian. The EKF **linearizes the function about the current estimate via a first-order Taylor expansion**.
 
 Linearization of the motion model (about the estimate $\hat{\mathbf{x}}_{k-1|k-1}$):
 
@@ -357,7 +357,7 @@ Observe that the innovation $\tilde{\mathbf{y}}_k$ also uses the nonlinear funct
 
 ### 4.2.3 Error-State Kalman Filter (ESKF)
 
-The ESKF (Error-State Kalman Filter) is the most widely used filter form in modern robotic sensor fusion systems. Nearly all major VIO/LIO systems — MSCKF, VINS-Mono, OpenVINS, FAST-LIO, and others — adopt the ESKF.
+The ESKF (Error-State Kalman Filter) is widely used in state estimation with an IMU. Filter-based VIO systems such as MSCKF and OpenVINS, and the FAST-LIO family, use error-state or closely related manifold-filter formulations. [VINS-Mono](https://doi.org/10.1109/TRO.2018.2853729), by contrast, is based on sliding-window nonlinear optimization rather than an ESKF.
 
 #### Why ESKF Instead of EKF
 
@@ -367,11 +367,11 @@ When estimating a robot state — especially one that includes 3D orientation �
 
 3D rotation lives on the SO(3) manifold, not $\mathbb{R}^n$. Representing it with a quaternion $\mathbf{q} \in \mathbb{H}$ imposes $\|\mathbf{q}\| = 1$; representing it with a rotation matrix $\mathbf{R} \in SO(3)$ imposes $\mathbf{R}^\top \mathbf{R} = \mathbf{I}$, $\det(\mathbf{R}) = 1$.
 
-In the EKF state update $\hat{\mathbf{x}} \leftarrow \hat{\mathbf{x}} + \mathbf{K} \tilde{\mathbf{y}}$, the "+" is Euclidean addition. Adding a vector to a quaternion breaks the unit norm. Re-normalizing after the update is a makeshift fix that is not theoretically correct and leads to consistency problems.
+In a naive EKF state update $\hat{\mathbf{x}} \leftarrow \hat{\mathbf{x}} + \mathbf{K} \tilde{\mathbf{y}}$, the "+" is Euclidean addition. Adding an increment directly to four quaternion components breaks the unit norm. A direct quaternion EKF can be designed with consistent normalization and covariance projection, but normalizing only the value after an additive update can mishandle uncertainty in the constrained direction.
 
 **Problem 2: The error state is "almost zero"**
 
-The error state $\delta\mathbf{x} = \mathbf{x} - \hat{\mathbf{x}}$ stays near zero by construction (it is reset every update). Therefore the first-order linearization is extremely accurate. In contrast, linearizing about the original state becomes inaccurate when motion is large.
+After an update, the error state $\delta\mathbf{x} = \mathbf{x} \boxminus \hat{\mathbf{x}}$ is injected into the nominal state and reset to zero. If the nominal trajectory remains close to the true state, the model can be linearized in a small tangent-space neighborhood. Resetting alone does not guarantee a small linearization error, so initialization, observability, and model error still matter.
 
 **Problem 3: Separation of slow-varying and fast-varying states**
 
@@ -383,7 +383,7 @@ The ESKF maintains two states simultaneously:
 
 1. **Nominal state** $\hat{\mathbf{x}}$: integrated through the nonlinear motion model without noise terms. It does not track uncertainty.
 
-2. **Error state** $\delta\mathbf{x}$: the difference between the nominal state and the true state. It is estimated with a Kalman filter. Since the error state is a "small value" by construction, linearization error is minimized.
+2. **Error state** $\delta\mathbf{x}$: the local difference between the nominal and true states, estimated by a Kalman filter. While the nominal state remains close, a first-order tangent-space approximation is useful; after injection, a reset Jacobian changes the covariance coordinates consistently.
 
 The true state is recovered by composition of the two:
 
@@ -409,7 +409,7 @@ $$\hat{\mathbf{x}} = \begin{bmatrix} {}^W\hat{\mathbf{p}} \\ {}^W\hat{\mathbf{v}
 **Error state** (15-dimensional — minimal parameterization of rotation):
 $$\delta\mathbf{x} = \begin{bmatrix} \delta\mathbf{p} \\ \delta\mathbf{v} \\ \delta\boldsymbol{\theta} \\ \delta\mathbf{b}_a \\ \delta\mathbf{b}_g \end{bmatrix} \in \mathbb{R}^{15}$$
 
-The key point: the error representation of the quaternion (4D) is the 3D vector $\delta\boldsymbol{\theta}$. Because of the unit-quaternion constraint the actual DoF is 3, and the ESKF naturally uses this minimal parameterization. Putting the quaternion directly into the state of an EKF introduces one redundant DoF in its 4D representation, which makes the covariance matrix singular.
+The quaternion's 4D error is represented by the 3D vector $\delta\boldsymbol{\theta}$. Because of the unit-quaternion constraint the actual DoF is 3, and the ESKF naturally uses this minimal parameterization. An EKF can keep all four quaternion components, but it must handle normalization and the constrained covariance direction consistently.
 
 #### ESKF Algorithm
 
@@ -537,13 +537,13 @@ The weights $w_i^{(m)}$ and $w_i^{(c)}$ are used for the mean and covariance res
 
 **Pros**:
 - No Jacobian computation. Big advantage for complex observation models (e.g., camera projection with distortion).
-- Captures nonlinearity up to second order exactly (EKF only up to first order).
+- Propagates deterministic sigma points through the nonlinear function, approximating curvature in the transformed mean and covariance. The formal order depends on the distribution, function, and sigma-point parameters.
 - Can be simpler to implement than the EKF (function calls replace Jacobian derivation).
 
 **Cons**:
 - Each of the $2n+1$ sigma points must be pushed through the nonlinear function, so the computational cost grows with the state dimension $n$.
 - Handling manifold states (e.g., SO(3)) requires replacing sigma-point generation and statistical aggregation with manifold operations, which is not clean.
-- Why the ESKF tends to be preferred over the UKF in practice: the ESKF already operates on the error state (a small value), so first-order linearization is accurate enough, manifolds are handled naturally, and the cost is lower.
+- ESKF formulations are common for IMU state estimation because they handle local manifold errors without propagating every sigma point. Which filter is more accurate depends on the model, initial error, and tuning.
 
 ### 4.2.5 Iterated Extended Kalman Filter (IEKF)
 
@@ -571,7 +571,7 @@ After convergence: $\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}^{(j+1)}$, $\mathbf
 
 The IEKF is effectively equivalent to performing **Gauss-Newton optimization** in the observation update step. This perspective is important for understanding the connection to factor-graph-based optimization that we establish later.
 
-Why FAST-LIO2 adopts the IEKF: the LiDAR point-to-plane/point-to-edge observation model is strongly nonlinear, and hundreds to thousands of points must be updated together. In such settings the IEKF's iterated linearization yields a considerably more accurate result than a single EKF update.
+FAST-LIO2 uses a manifold IEKF that repeatedly relinearizes many LiDAR point-to-plane residuals during the state update. This can account for residual nonlinearity beyond a single linearization, but the gain and required iteration count depend on the initial error, scene geometry, and stopping rule.
 
 ---
 
@@ -629,7 +629,7 @@ Main resampling strategies:
 
 **Multinomial resampling**: draw $N$ independent samples using the weights as probabilities. The most intuitive but has high variance.
 
-**Systematic resampling**: generate a single uniform random number $U_0 \sim \text{Uniform}(0, 1/N)$, then traverse the CDF with $U_i = U_0 + (i-1)/N$ to resample. Has the smallest variance and is the most used in practice.
+**Systematic resampling**: generate a single uniform random number $U_0 \sim \text{Uniform}(0, 1/N)$, then traverse the CDF with $U_i = U_0 + (i-1)/N$. It is inexpensive and often reduces variance relative to multinomial resampling, but it does not guarantee the minimum variance for every weight configuration.
 
 **Stratified resampling**: use independent uniform random numbers within each stratum. Intermediate between systematic and multinomial.
 
@@ -741,7 +741,7 @@ Given the robot trajectory, observations of each landmark become mutually indepe
 
 ### 4.3.5 Limitations of the Particle Filter and Its Current Role
 
-The greatest limitation of the PF is the **curse of dimensionality**. As the state-space dimension grows, the number of particles needed for a meaningful approximation grows exponentially. A typical VIO/LIO state vector is 15-dimensional or more, so a pure PF is impractical.
+A major limitation of the PF is the **curse of dimensionality**. In general high-dimensional problems, the particle count needed for a useful approximation can grow very rapidly. VIO and LIO states usually include attitude, velocity, and biases, so representing the full state with particles is often inefficient in real time unless a strong proposal or Rao–Blackwellization reduces the sampled dimension.
 
 For this reason, the PF plays a limited role in modern robotic systems:
 
@@ -763,7 +763,7 @@ $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$$
 **Smoothing**: uses all observations (including future ones) to estimate past states.
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:T}), \quad k < T$$
 
-A smoother leverages "future observations," so its estimate at the same time is always at least as accurate as the filter's. However, real-time estimation requires a filter; smoothers are used in batch (post-processing) or fixed-lag form.
+Under a correct probabilistic model and the same loss, conditioning on future observations can reduce a smoother's expected Bayes risk. This does not guarantee lower realized error on every trajectory or for every approximate optimizer. Real-time estimation still needs filtering, while smoothing is used in batch or fixed-lag form.
 
 ### 4.4.2 Fixed-Lag Smoother
 
@@ -771,9 +771,9 @@ A fixed-lag smoother uses observations up to the current time $k$ to estimate th
 
 $$p(\mathbf{x}_{k-L} \mid \mathbf{z}_{1:k})$$
 
-This is a compromise between filtering and full smoothing. Allowing a latency of $L$ yields a better estimate.
+This is a compromise between filtering and full smoothing. Allowing a latency of $L$ lets the estimator revisit a past state with additional observations.
 
-The sliding-window optimization systems of VINS-Mono, ORB-SLAM3, and so on are effectively fixed-lag smoothers. Keyframes within the window are optimized jointly, which is more accurate than simple filtering.
+The sliding-window optimization systems of VINS-Mono, ORB-SLAM3, and similar systems are close to fixed-lag smoothers. They can relinearize keyframes jointly inside the window, but an accuracy comparison with filtering must hold compute budget, model, and dataset constant.
 
 ### 4.4.3 Full Smoothing (Batch Optimization)
 
@@ -789,7 +789,7 @@ Under Gaussian noise assumptions, MAP becomes a Nonlinear Least Squares (NLS) pr
 
 ### 4.4.4 Why Modern SLAM Moved From Filtering To Optimization
 
-Until the early 2000s, EKF-SLAM was the mainstream of SLAM. Gradually, the field shifted to graph-based optimization (= batch smoothing). The reasons:
+Until the early 2000s, EKF-SLAM was the mainstream of SLAM. Gradually, the field shifted to graph-based optimization (= batch smoothing) for four reasons.
 
 **1. The linearization-point problem**
 
@@ -799,28 +799,28 @@ The EKF is "linearize once, and you're done." The Jacobian at time $k$ is comput
 
 **2. Consistency issues**
 
-EKF-SLAM tends to violate observability conditions. In SLAM, the first pose should be unobservable (and therefore fixed), but the EKF's linearization breaks this, making four unobservable directions observable and introducing inconsistency. The First-Estimate Jacobian (FEJ) alleviates this problem but does not fully resolve it.
+Without an external reference, SLAM has gauge freedoms: transforming the global frame can leave all observations unchanged. Their number differs among 2D SLAM, 3D SLAM, and visual-inertial estimation; VIO, for example, normally has four unobservable directions, three for global position and one for yaw about gravity. Implementations anchor the first pose or selected degrees of freedom to choose a gauge. If an EKF linearizes at changing estimates, it can nevertheless inject spurious information along these directions and become inconsistent. First-Estimate Jacobian (FEJ) and observability-constrained formulations are designed to preserve this null space more faithfully.
 
 **3. Scalability**
 
 In EKF-SLAM with $M$ landmarks, the covariance matrix has size $O((n + 3M)^2)$ and each update has cost $O((n+3M)^2)$. This becomes intractable as the map grows.
 
-In graph-based SLAM the information matrix (Hessian) is **sparse**. Each variable (pose, landmark) is connected only to the variables it directly observed, so most of the information matrix is zero. Exploiting this sparsity allows optimization in time near-linear in the number of variables.
+In graph-based SLAM the information matrix (Hessian) is **sparse**. Each variable is connected only to variables that share factors, so many matrix entries are zero. Exploiting this sparsity can reduce work relative to a dense solve, but actual complexity depends on graph topology, elimination ordering, and fill-in introduced by loop closures.
 
 **4. Natural handling of loop closures**
 
-In filter-based systems, handling a loop closure requires retaining the covariance information for past states, which dramatically increases the cost. In graph-based systems, a loop closure is simply a new factor (constraint) to add, and the whole graph is re-optimized.
+In filter-based systems, handling a loop closure requires retaining the covariance information for past states, which increases the computational cost. In graph-based systems, a loop closure is simply a new factor (constraint) to add, and the whole graph is re-optimized.
 
 | Aspect | Filtering (EKF) | Optimization (Graph) |
 |------|----------------|---------------------|
-| Linearization | Once, fixed | Can be repeatedly relinearized |
-| Past states | Marginalized out | All retained |
-| Loop closure | Difficult and costly | Natural via adding a factor |
-| Information-matrix structure | Dense | Sparse |
-| Cost per step ($M$ landmarks) | $O(M^2)$ | $O(M)$ (exploiting sparsity) |
-| Consistency | Requires FEJ and the like | Naturally mitigated by relinearization |
+| Linearization | A basic EKF linearizes once per update | Batch/smoothing methods can relinearize repeatedly |
+| Past states | A basic filter removes them, but state augmentation is possible | Full smoothing retains them; fixed-lag smoothing marginalizes them |
+| Loop closure | Requires retaining past state and correlations | Add a factor and update the affected region |
+| Matrix structure | Covariance is usually dense | Factor/Hessian sparsity can be exploited |
+| Cost | Depends on state and observation structure | Depends on graph topology, ordering, and fill-in |
+| Consistency | Requires care with linearization and observability | Relinearization alone is insufficient; gauge and marginalization still matter |
 
-That said, filter-based approaches have not disappeared entirely. [MSCKF (Mourikis & Roumeliotis, 2007)](https://ieeexplore.ieee.org/document/4209642) and OpenVINS are EKF-based yet exhibit competitive performance, and remain useful in environments with extremely limited compute (e.g., micro UAVs). FAST-LIO2's IEKF is also filter-based, yet combined with ikd-tree it achieves accuracy on par with optimization-based systems.
+Filter-based approaches remain in use. [MSCKF (Mourikis & Roumeliotis, 2007)](https://ieeexplore.ieee.org/document/4209642) and OpenVINS target bounded-compute settings, and FAST-LIO2 combines an IEKF with an ikd-tree. Accuracy comparisons between filtering and optimization require matched datasets, sensors, and compute budgets.
 
 ---
 
@@ -849,7 +849,7 @@ Each factor corresponds to a specific observation or piece of prior information:
 | GPS factor | $\mathbf{x}_k$ | Absolute-position observation |
 | Loop closure factor | $\mathbf{x}_i, \mathbf{x}_j$ | Loop-closure relative pose |
 
-The key strength of factor graphs is **modularity**. To add a new sensor, one defines the corresponding factor and adds it to the graph — existing factors need not change.
+Factor graphs are **modular**. Adding a sensor requires defining its factor and adding it to the graph; existing factors need not change.
 
 ### 4.5.2 MAP Inference = Nonlinear Least Squares
 
@@ -906,11 +906,11 @@ Each iteration solves a normal equation. Sparse linear systems are solved with *
 
 ### 4.5.4 Levenberg-Marquardt Method
 
-Gauss-Newton is a purely approximate second-order method, but with a bad initial estimate or strong nonlinearity it may diverge. The **Levenberg-Marquardt (LM)** method is a compromise between GN and gradient descent, adding a regularization term:
+Gauss-Newton drops second derivatives of the residuals and approximates the Hessian with $\mathbf{J}^\top\mathbf{J}$. It may diverge from a poor initial estimate or under strong nonlinearity. **Levenberg-Marquardt (LM)** adds a damping term that shifts behavior between GN-like and gradient-descent-like steps:
 
 $$(\mathbf{H} + \lambda \mathbf{I}) \Delta\mathbf{X} = -\mathbf{b}$$
 
-- Small $\lambda$ → closer to GN (fast, quadratic convergence)
+- Small $\lambda$ → closer to GN (fast near a well-conditioned solution)
 - Large $\lambda$ → closer to gradient descent (small step, safe)
 
 Strategy for $\lambda$: if the update decreases the cost, decrease $\lambda$ (GN mode); if it increases the cost, increase $\lambda$ (conservative mode).
@@ -947,7 +947,7 @@ $$\mathbf{J}_i = \frac{\partial \mathbf{r}_i}{\partial \boldsymbol{\xi}}\bigg|_{
 
 Running batch optimization from scratch at every keyframe takes unrealistically long. **iSAM2** ([Kaess et al., 2012](https://doi.org/10.1177/0278364911430419)) uses the Bayes tree data structure to perform optimization incrementally.
 
-Core ideas:
+iSAM2 uses four mechanisms:
 
 1. **Bayes tree**: a directed-tree representation of the elimination result of a factor graph. Each node stores the conditional density over a clique (subset of variables).
 
@@ -957,7 +957,7 @@ Core ideas:
 
 4. **Variable reordering**: when new variables/factors are added, no full reordering is performed; only the affected portion is locally reordered.
 
-iSAM2 is the core algorithm of the GTSAM library, serving as the backend of many modern SLAM systems such as LIO-SAM and VINS-Mono.
+GTSAM implements iSAM2, which serves as the backend of systems such as [LIO-SAM](https://arxiv.org/abs/2007.00258). VINS-Mono instead uses Ceres-based sliding-window optimization.
 
 > **Recent trends — continuous-time factor graph**: there is active research extending discrete keyframe-based factor graphs to **continuous time**. [Wong et al. (2024)](https://arxiv.org/abs/2402.06174) use a Gaussian Process motion prior to unify radar-inertial and LiDAR-inertial odometry in a continuous-time factor graph, and show that asynchronous sensor measurements can be handled naturally.
 
@@ -966,13 +966,13 @@ iSAM2 is the core algorithm of the GTSAM library, serving as the backend of many
 | Aspect | GTSAM | Ceres Solver | g2o |
 |------|-------|-------------|-----|
 | Developer | Georgia Tech ([Dellaert](https://gtsam.org/)) | Google ([Ceres](http://ceres-solver.org/)) | [Kümmerle et al.](https://doi.org/10.1109/ICRA.2011.5979949) |
-| Core philosophy | Factor graph + Bayes tree | General-purpose NLS solver | Graph optimization |
+| Design | Factor graph + Bayes tree | General-purpose NLS solver | Graph optimization |
 | Incremental | iSAM2 (native) | None (batch) | None (batch) |
 | Manifolds | Built-in (Rot2, Rot3, Pose2, Pose3, ...) | Local parameterization | Built-in |
 | IMU preintegration | Built-in (`PreintegratedImuMeasurements`) | User-defined | User-defined |
 | Automatic differentiation | Numerical differentiation available | Auto-diff (ceres::AutoDiffCostFunction) | None |
 | Language | C++ (Python bindings) | C++ | C++ |
-| Representative users | LIO-SAM, VINS-Mono | Cartographer, ORB-SLAM3 BA | Pose graphs in many SLAM systems |
+| Representative users | LIO-SAM | Cartographer, VINS-Mono | ORB-SLAM3 and pose graphs in many SLAM systems |
 | Learning curve | Just define factors | Define cost functions | Define vertices/edges |
 
 ```python
@@ -1060,7 +1060,7 @@ $$\Delta\mathbf{v}_{ij} \triangleq \mathbf{R}_i^\top (\mathbf{v}_j - \mathbf{v}_
 
 $$\Delta\mathbf{p}_{ij} \triangleq \mathbf{R}_i^\top (\mathbf{p}_j - \mathbf{p}_i - \mathbf{v}_i \Delta t_{ij} - \frac{1}{2}\mathbf{g}\Delta t_{ij}^2) = \sum_{k=i}^{j-1}\left[\Delta\mathbf{v}_{ik}\Delta t + \frac{1}{2}\Delta\mathbf{R}_{ik}(\tilde{\mathbf{a}}_k - \mathbf{b}_a^i)\Delta t^2\right] \in \mathbb{R}^3$$
 
-Key observation: **the right-hand sides depend only on the IMU measurements and the bias estimates, and are independent of the global pose $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ at keyframe $i$.** Therefore, when the keyframe pose changes during optimization, the right-hand sides do not need to be recomputed.
+**The right-hand sides depend only on the IMU measurements and the bias estimates, and are independent of the global pose $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ at keyframe $i$.** Therefore, when the keyframe pose changes during optimization, the right-hand sides do not need to be recomputed.
 
 #### Step 2: Recursive computation (on-manifold)
 
@@ -1095,7 +1095,7 @@ where $\text{Jr}(\boldsymbol{\phi})$ is the right Jacobian of SO(3):
 
 $$\text{Jr}(\boldsymbol{\phi}) = \mathbf{I} - \frac{1 - \cos\theta}{\theta^2}[\boldsymbol{\phi}]_\times + \frac{\theta - \sin\theta}{\theta^3}[\boldsymbol{\phi}]_\times^2, \quad \theta = \|\boldsymbol{\phi}\|$$
 
-When the bias change is small ($\|\delta\mathbf{b}\|$ is small), this first-order correction is sufficiently accurate. When the bias change is large, the preintegration is recomputed from scratch, but this rarely occurs in practice.
+When the bias change is small, a first-order correction can be used. If the corrected residual or bias change exceeds the implementation's validity threshold, recompute preintegration from the stored IMU samples.
 
 #### Step 4: Covariance propagation
 
@@ -1391,7 +1391,7 @@ The sliding-window approach retains only the most recent $N$ keyframes and remov
 
 ### 4.7.2 Schur Complement
 
-The mathematical core of marginalization is the **Schur complement**. Partition the information matrix (Hessian) $\mathbf{H}$ into variables to marginalize ($\mathbf{x}_m$) and variables to retain ($\mathbf{x}_r$). Write the normal equation as $\mathbf{H}\Delta\mathbf{x} = \mathbf{b}$ (redefining the $-\mathbf{b}$ of §4.5.3 as $\mathbf{b}$, i.e., $\mathbf{b} \triangleq -\mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$):
+Marginalization uses the **Schur complement**. Partition the information matrix (Hessian) $\mathbf{H}$ into variables to marginalize ($\mathbf{x}_m$) and variables to retain ($\mathbf{x}_r$). Write the normal equation as $\mathbf{H}\Delta\mathbf{x} = \mathbf{b}$ (redefining the $-\mathbf{b}$ of §4.5.3 as $\mathbf{b}$, i.e., $\mathbf{b} \triangleq -\mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$):
 
 $$\mathbf{H} \Delta\mathbf{x} = \mathbf{b}$$
 
@@ -1538,22 +1538,22 @@ Mitigations:
 
 ## Chapter 4 Summary
 
-State estimation theory is the mathematical foundation of sensor fusion. The key messages:
+The state estimation methods relate as follows:
 
-1. The **Bayesian Filtering Framework** is a prediction-update recursion that forms the common skeleton of every state estimation method. The Chapman-Kolmogorov equation and Bayes' rule are the theoretical underpinnings, but in nonlinear systems approximation is essential.
+1. The **Bayesian Filtering Framework** is the prediction-update recursion for sequential filters. The Chapman-Kolmogorov equation and Bayes' rule are its basis, while general nonlinear systems require approximate integration. Batch smoothing and factor graphs solve related probabilistic models with a different computational structure.
 
-2. The **Kalman Filter family** tracks the posterior via Gaussian approximation in terms of mean and covariance. The EKF linearizes to first order; the ESKF linearizes in the error state, handling manifold issues naturally; the UKF uses the sigma-point transform; and the IEKF uses iterated linearization to cope with strong nonlinearity. In modern robotics systems, the ESKF is effectively the standard.
+2. The **Kalman Filter family** tracks the posterior via Gaussian approximation in terms of mean and covariance. The EKF linearizes to first order; the ESKF linearizes in the error state, handling manifold issues naturally; the UKF uses the sigma-point transform; and the IEKF uses iterated linearization to cope with strong nonlinearity. ESKF-family formulations are widely used in IMU-based filters.
 
 3. The **particle filter** can handle multimodal distributions and strong nonlinearity, but the curse of dimensionality makes it unsuitable for high-dimensional problems. The RBPF (FastSLAM) partially alleviates this, and the PF is still used in 2D SLAM and global localization.
 
 4. The **shift from filtering to optimization** has become the mainstream of modern SLAM thanks to benefits such as relinearization, exploitation of sparsity, and natural handling of loop closures. That said, filter-based approaches (MSCKF, FAST-LIO2) remain competitive under specific conditions.
 
-5. The **factor graph** is a powerful framework that modularly composes probabilistic inference and reduces MAP to NLS. It is solved on the manifold with Gauss-Newton/LM, and iSAM2's incremental smoothing makes real-time processing possible.
+5. The **factor graph** modularly composes probabilistic inference and reduces MAP to NLS. Gauss-Newton or LM solves it on the manifold, while iSAM2 performs incremental smoothing in real time.
 
-6. **IMU preintegration** is the key technique for compressing high-rate IMU measurements into a factor between keyframes. The on-manifold derivation and first-order bias correction allow integration into the factor graph without re-integration.
+6. **IMU preintegration** compresses high-rate IMU measurements into a factor between keyframes. The on-manifold derivation avoids reintegration when global poses change; small bias changes use a first-order correction, while large changes require reintegration.
 
-7. **Marginalization** is the information-preservation mechanism of the sliding window. The Schur complement is the core operation, and FEJ is the key to maintaining consistency.
+7. **Marginalization** transfers linearized information from removed variables into a prior through the Schur complement. FEJ is one way to preserve unobservable directions and reduce inconsistency.
 
-This theory is the foundation for understanding the design and implementation of real systems in the VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8) chapters.
+The same machinery appears in VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8).
 
-> **2024-2025 research directions**: state estimation is evolving along three major axes. (1) **Symmetry-based filters**: the Equivariant Filter (EqF) and the Invariant EKF exploit the symmetry structure of Lie groups to structurally guarantee consistency and convergence. (2) **Continuous-time optimization**: continuous-time factor graphs with Gaussian Process motion priors are becoming a new paradigm for asynchronous multi-sensor fusion. (3) **Learning-based hybrids**: approaches such as [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289) that learn the Kalman gain or process model with RNNs/Transformers are active, though providing safety guarantees remains a challenge.
+> **2024-2025 research directions**: the Equivariant Filter and Invariant EKF exploit Lie-group symmetries to improve error dynamics, consistency, and convergence analysis for specific systems and assumptions. Continuous-time factor graphs with Gaussian-process motion priors support asynchronous multi-sensor fusion. Work such as [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289) learns a gain or part of the model; distribution shift and safety validation remain open.

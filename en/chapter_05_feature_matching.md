@@ -55,15 +55,15 @@ $$\min_{\mathbf{R}, \mathbf{t}} \sum_{i} \| \mathbf{q}_i - (\mathbf{R} \mathbf{p
 
 The closed-form solution to this optimization problem can be obtained via SVD (ICP, see Ch.7).
 
-### 5.1.3 Why Correspondence Is Central to Sensor Fusion
+### 5.1.3 The Role of Correspondence in Sensor Fusion
 
-In sensor fusion, correspondence is not merely preprocessing but **the bottleneck that determines the accuracy of the entire system**. A single incorrect correspondence (outlier) can completely ruin pose estimation, and if correspondences cannot be found (as in textureless environments) the system itself fails to operate. The remainder of this chapter traces the technical lineage of how this problem has been solved.
+Sensor-fusion accuracy depends heavily on correspondence quality. Incorrect correspondences (outliers) can destabilize pose estimation, while conditions with too few usable correspondences, such as texture-poor scenes, can make pose estimation impossible. The methods developed to address these failures range from traditional feature detection and description to learned matching.
 
 ---
 
 ## 5.2 Traditional Feature Detection & Description
 
-The traditional correspondence pipeline consists of three stages: **detect → describe → match**. This section covers the first two stages — where to find keypoints (detection) and how to represent those keypoints (description).
+The traditional correspondence pipeline consists of three stages: **detect → describe → match**. Detection selects keypoints, and description represents them for comparison.
 
 ### 5.2.1 Corner Detection: Harris → FAST → ORB
 
@@ -174,7 +174,7 @@ keypoints, descriptors = orb.detectAndCompute(img, None)
 
 #### SIFT (Scale-Invariant Feature Transform, 2004)
 
-SIFT, proposed by [Lowe (2004)](https://link.springer.com/article/10.1023/B:VISI.0000029664.99615.94), is a keypoint detection and description algorithm that is **invariant to scale, rotation, and illumination changes**. It was the de facto standard for feature matching for 20 years, and since the patent expired in 2020 it can be used freely.
+SIFT, proposed by [Lowe (2004)](https://link.springer.com/article/10.1023/B:VISI.0000029664.99615.94), is a keypoint detector and descriptor designed to be invariant to scale and in-plane rotation. Its normalized gradient descriptor is robust to a range of illumination changes and affine distortion. It has long served as a representative feature-matching baseline, and its US patent expired in 2020.
 
 **Stage 1 — Scale-Space Extrema Detection (DoG)**:
 
@@ -222,7 +222,7 @@ keypoints, descriptors = sift.detectAndCompute(img, None)
 
 #### SURF (Speeded-Up Robust Features, 2006)
 
-SURF was proposed by [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_32) to address the speed issue of SIFT. Key ideas:
+SURF was proposed by [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_32) to address the speed issue of SIFT. It reduces computation through three design choices:
 
 - Approximate LoG with box filters using the **integral image**. Any box filter size can be computed in O(1).
 - Use the **Hessian determinant** as the detection criterion (instead of DoG):
@@ -230,13 +230,13 @@ SURF was proposed by [Bay et al. (2006)](https://link.springer.com/chapter/10.10
 $$\det(\mathbf{H}) = D_{xx} D_{yy} - (0.9 \cdot D_{xy})^2$$
 
 - A 64-dimensional descriptor (half the dimensionality of SIFT's 128): sums and sums-of-absolute-values of Haar wavelet responses.
-- 3-7× faster than SIFT with comparable accuracy.
+- Designed to approximate Hessian responses efficiently with integral images and box filters. Speed and accuracy differences depend on implementation, image size, and hardware.
 
 Due to patent issues SURF is rarely used in recent practice; in real-time applications ORB is preferred, while for accuracy-critical applications SIFT or learning-based methods are preferred.
 
 ### 5.2.3 Binary Descriptors: BRIEF, ORB, BRISK
 
-Binary descriptors generate a 0/1 bit string by comparing the intensities of point pairs within a patch. Since matching is done with **Hamming distance**, they are tens of times faster than float descriptors.
+Binary descriptors generate a 0/1 bit string by comparing intensities at point pairs. Hamming distance can be implemented with XOR and popcount and is often cheaper than a floating-point distance, but the ratio depends on descriptor length, library, and hardware.
 
 | Descriptor | Bits | Features |
 |-----------|--------|------|
@@ -261,7 +261,7 @@ Harris (1988)     — Mathematical definition of corner detection
     ↓ need for scale invariance
 SIFT (2004)       — scale-space + 128D float descriptor (accurate but slow)
     ↓ speed improvement
-SURF (2006)       — integral image + 64D (3-7× faster, still float)
+SURF (2006)       — integral image + 64D (speed-oriented, still float)
     ↓ real-time demand
 FAST (2006)       — extreme-speed detection (no descriptor)
     ↓ unifying detection+description
@@ -278,7 +278,7 @@ After detecting keypoints and extracting descriptors, a matching stage is needed
 
 ### 5.3.1 Brute-Force Matching
 
-The simplest method. Every descriptor in image A is compared with every descriptor in image B, and the closest one is matched.
+It is the simplest method. Every descriptor in image A is compared with every descriptor in image B, and the closest one is matched.
 
 - Float descriptors (SIFT): L2 distance
 - Binary descriptors (ORB): Hamming distance
@@ -332,7 +332,7 @@ Even after the matching stage, **outliers (incorrect matches)** remain. Estimati
 
 #### RANSAC (Random Sample Consensus, 1981)
 
-A robust estimation paradigm proposed by [Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692):
+[Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692) perform robust estimation as follows:
 
 1. Randomly sample the minimum $n$ matches required for the model (e.g., fundamental matrix with 8, 7, or 5 points)
 2. Estimate the model from the sampled points
@@ -365,7 +365,7 @@ inlier_matches = [m for m, flag in zip(good_matches, mask.ravel()) if flag]
 
 Proposed by Chum & Matas. While RANSAC samples uniformly at random, PROSAC **sorts matches by quality (e.g., descriptor distance)** and progressively samples from the top.
 
-Intuition: better matches have higher probability of being inliers, so trying the model on the top matches first finds a good model more quickly. Tens of times faster convergence than RANSAC.
+If the ranking score correlates with inlier probability, trying high-ranked matches first can produce a valid hypothesis earlier. The gain depends on score calibration and the actual inlier ordering.
 
 #### MAGSAC / MAGSAC++ (2019/2020)
 
@@ -422,7 +422,7 @@ _, R, t, mask_pose = cv2.recoverPose(E, pts1, pts2, cameraMatrix=K)
 ```
 Least Squares (vulnerable to outliers)
     ↓ handling outliers
-RANSAC (1981)   — the first robust estimation paradigm
+RANSAC (1981)   — a landmark random-sampling paradigm for robust estimation
     ↓ exploiting prior information
 PROSAC (2005)   — progressive sampling based on match quality
     ↓ threshold automation
@@ -457,11 +457,11 @@ Here:
 
 **Intuition**: when two images are correctly aligned, knowing a pixel value in one image allows better prediction of the corresponding pixel in the other. That is, $I(X; Y)$ is maximized. When alignment drifts, the relationship between the two images weakens and $I(X; Y)$ decreases.
 
-Key property: MI measures **nonlinear statistical dependence** between two variables. This means it can capture relationships that a simple correlation coefficient cannot.
+MI measures **nonlinear statistical dependence** between two variables, so it can capture relationships that a simple correlation coefficient cannot.
 
 ### 5.4.2 MI-Based Multi-Modality Registration
 
-The true value of MI lies in its ability **to register sensor data across different modalities**. This is related to the fact that the method was originally developed for medical imaging to register CT-MRI.
+MI can **register sensor data across different modalities**. The method was originally developed in medical imaging for CT-MRI registration.
 
 Why does MI work across multiple modalities?
 
@@ -531,12 +531,12 @@ def compute_mi(img_a, img_b, bins=256):
     pxy = hist_2d / hist_2d.sum()
     px = pxy.sum(axis=1)
     py = pxy.sum(axis=0)
-    
+
     # MI = H(X) + H(Y) - H(X,Y)
     hx = -np.sum(px[px > 0] * np.log(px[px > 0]))
     hy = -np.sum(py[py > 0] * np.log(py[py > 0]))
     hxy = -np.sum(pxy[pxy > 0] * np.log(pxy[pxy > 0]))
-    
+
     return hx + hy - hxy
 
 def compute_nid(img_a, img_b, bins=256):
@@ -547,7 +547,7 @@ def compute_nid(img_a, img_b, bins=256):
     )
     pxy = hist_2d / hist_2d.sum()
     hxy = -np.sum(pxy[pxy > 0] * np.log(pxy[pxy > 0]))
-    
+
     return 1.0 - mi / hxy if hxy > 0 else 1.0
 ```
 
@@ -555,15 +555,15 @@ def compute_nid(img_a, img_b, bins=256):
 
 ## 5.5 Learning-Based Feature Detection & Description
 
-Traditional feature points rely on **low-level visual cues** such as intensity gradients, corners, and blobs. For this reason they are vulnerable to illumination changes, viewpoint changes, and weather changes. Deep learning has overcome this limitation by learning more robust feature representations from large amounts of data.
+Traditional feature points rely on **low-level visual cues** such as intensity gradients, corners, and blobs, which makes them vulnerable to illumination, viewpoint, and weather changes. Learning-based methods address some of these limitations by fitting more robust feature representations from data.
 
 ### 5.5.1 SuperPoint (2018): Self-Supervised Integration of Detection and Description
 
-[DeTone et al. (2018)](https://arxiv.org/abs/1712.07629)'s SuperPoint is the first practical deep learning pipeline to **unify keypoint detection and descriptor extraction into a single network**.
+[DeTone et al. (2018)](https://arxiv.org/abs/1712.07629)'s SuperPoint **computes keypoint locations and descriptors in one fully convolutional network** and trains them with self-supervised Homographic Adaptation.
 
-#### Homographic Adaptation: The Key Training Strategy
+#### Homographic Adaptation Training Strategy
 
-The most important technical contribution of SuperPoint is **a method for training a highly repeatable keypoint detector without labels**.
+SuperPoint provides **a way to train a highly repeatable keypoint detector without manual labels**.
 
 1. Apply 100+ random homographies to a single image
 2. Detect keypoints in each transformed image
@@ -581,12 +581,12 @@ Through this process, a highly repeatable keypoint detector is trained without m
 
 A VGG-style encoder (shared backbone) → branches into two decoder heads:
 
-**Interest Point Decoder**: 
+**Interest Point Decoder**:
 - Divide the input image into a grid of 8×8 cells
 - Perform a 65-channel (64 positions + 1 "no interest point") softmax in each cell
 - Generate a pixel-level keypoint heatmap by directly predicting the position within the cell
 
-**Descriptor Decoder**: 
+**Descriptor Decoder**:
 - Output a 256-dimensional descriptor map from the shared backbone's feature map
 - Sample at detected keypoint positions using bi-cubic interpolation
 - Apply L2 normalization
@@ -600,7 +600,7 @@ $$L_{desc} = \sum_{(i,j) \in \text{pos}} \max(0, m_p - \mathbf{d}_i^\top \mathbf
 
 Here, $m_p, m_n$ are the positive/negative margins.
 
-**Performance**: detection and description are performed jointly in a single forward pass. About 70 FPS on a 640×480 image (GPU).
+**Reported performance**: detection and description share one forward pass. The SuperPoint paper reports about 70 FPS for 640×480 input in the authors' GPU implementation; throughput must be remeasured for the current hardware and keypoint count.
 
 ```python
 import torch
@@ -624,7 +624,7 @@ with torch.no_grad():
 
 [D2-Net (Dusmanu et al., 2019)](https://arxiv.org/abs/1905.03561) is a method that integrates detection and description even more aggressively. Whereas SuperPoint still separates the detection head and the description head, D2-Net **performs detection and description simultaneously from the same feature map**.
 
-Key idea: using the intermediate feature map $\mathbf{F} \in \mathbb{R}^{H \times W \times C}$ of VGG16:
+D2-Net uses the intermediate VGG16 feature map $\mathbf{F} \in \mathbb{R}^{H \times W \times C}$ for both tasks:
 - **Detection**: take the maximum value along the channel axis at each position and apply spatial NMS to select keypoints
 - **Description**: use the $C$-dimensional vector at the same location as the descriptor
 
@@ -644,7 +644,7 @@ R2D2 predicts the two as separate confidence maps and multiplies them to determi
 
 [DISK (Tyszkiewicz et al., 2020)](https://arxiv.org/abs/2006.13566) trains keypoint detection from a **reinforcement learning** perspective. The detector is trained by rewarding successful matches and penalizing failed ones.
 
-Key differentiator: by directly optimizing matching accuracy, it takes one more step toward end-to-end optimization of detection and matching.
+DISK directly optimizes matching accuracy and learns detection and matching end to end.
 
 ### 5.5.5 Advantages Over Traditional Methods: Improved Illumination/Viewpoint Invariance
 
@@ -665,7 +665,7 @@ However, learning-based methods also have limitations: they depend on the traini
 
 ### 5.6.1 SuperGlue (2020): Attention-Based Matching
 
-[Sarlin et al. (2020)](https://arxiv.org/abs/1911.11763)'s SuperGlue recast keypoint matching as a learnable problem using **graph neural networks (GNN) and the attention mechanism**. It is the first production-grade system to replace traditional nearest-neighbor matching with learning-based matching.
+[Sarlin et al. (2020)](https://arxiv.org/abs/1911.11763)'s SuperGlue jointly solves keypoint matching and unmatched-point rejection with a **graph neural network, attention, and optimal transport**.
 
 #### Problem Definition: Partial Assignment
 
@@ -755,7 +755,7 @@ If SuperPoint learned detection+description, SuperGlue **learned the matching st
 - Keypoints deemed unmatchable are pruned in intermediate layers.
 - The sequence length of attention gradually decreases, lightening the computation of later layers.
 
-**Removing Sinkhorn**: 
+**Removing Sinkhorn**:
 Instead of optimal transport, matching is done with simple **dual-softmax + mutual nearest neighbor**. The iteration cost of Sinkhorn is eliminated entirely with virtually no performance degradation.
 
 $$P_{ij} = \text{softmax}_j(S_{ij}) \cdot \text{softmax}_i(S_{ij})$$
@@ -766,7 +766,7 @@ $$P_{ij} = \text{softmax}_j(S_{ij}) \cdot \text{softmax}_i(S_{ij})$$
 - Adaptive termination is activated only at inference.
 - Designed for general compatibility with various local feature detectors including SuperPoint, DISK, and ALIKED.
 
-**Performance**: at accuracy on par with SuperGlue, it is **3-5× faster**. On easy pairs, speedups of up to 10× or more are achieved.
+**Performance**: The LightGlue paper reports accuracy comparable to SuperGlue with an average **3–5×** speedup in its evaluation, and larger gains on easy image pairs. The actual ratio depends on keypoint count and hardware.
 
 ```python
 # LightGlue usage example (kornia / hloc)
@@ -794,15 +794,15 @@ SuperPoint detect+describe → SuperGlue attention matching → LightGlue effici
     (2018)                       (2020)                        (2023)
 ```
 
-The core narrative of this evolution: **each stage of the pipeline is replaced one by one with deep learning, while the three-stage serial structure itself is preserved**. The advantage of this structure is modularity and interpretability; the disadvantage is that a failure in the detection stage leads to failure of the entire pipeline. The next section's detector-free paradigm breaks this fundamental limitation.
+Even as deep learning replaced each stage of the pipeline, the three-stage serial structure remained. Its advantages are modularity and interpretability; its disadvantage is that a failure in detection causes the entire pipeline to fail. The detector-free methods in the next section remove that detection stage.
 
 ---
 
-## 5.7 Detector-Free Matching (Paradigm Shift)
+## 5.7 Detector-Free Matching
 
 ### 5.7.1 Why Detector-Free Is Needed
 
-The detect-then-match pipeline has the fundamental limitation that **matching is impossible if the detector fails to find keypoints**. This is critical in real-world environments such as:
+In a detect-then-match pipeline, **matching cannot proceed if the detector fails to find keypoints**. This problem is especially visible in the following environments:
 
 - **Textureless regions**: white walls, concrete floors, sky — weak gradients cause corner/blob detection to fail
 - **Repetitive patterns**: tiles, window grids — detection succeeds but descriptors are similar, leading to ambiguous matches
@@ -812,7 +812,7 @@ The detector-free approach eliminates the detection stage and **treats every pos
 
 ### 5.7.2 LoFTR (2021): Coarse-to-Fine Transformer Matching
 
-[Sun et al. (2021)](https://arxiv.org/abs/2104.00680)'s LoFTR is **a transformer-based architecture that performs dense matching between two images without a detector**, opening a new paradigm of detector-free matching.
+[Sun et al. (2021)](https://arxiv.org/abs/2104.00680)'s LoFTR is **a transformer-based architecture that performs dense matching between two images without a detector**.
 
 #### Architecture
 
@@ -867,7 +867,7 @@ with torch.no_grad():
         'image1': img1_tensor,
     }
     result = loftr(input_dict)
-    
+
     mkpts0 = result['keypoints0']     # (K, 2) — matched coordinates in image 0
     mkpts1 = result['keypoints1']     # (K, 2) — matched coordinates in image 1
     confidence = result['confidence'] # (K,) — match confidence
@@ -875,13 +875,13 @@ with torch.no_grad():
 
 #### Position in the Technical Lineage
 
-LoFTR is a **paradigm shift**. It breaks away from the detect-then-match pipeline that flowed from SuperPoint to SuperGlue and removes the detector entirely. The key insight is **that the transformer's attention can perform detection and matching simultaneously**. Since every position in one image communicates directly (via cross-attention) with every position in the other, matching is possible without a separate detection stage.
+LoFTR removes the detector from the detect-then-match pipeline used by SuperPoint and SuperGlue. Transformer attention performs detection and matching together. Since every position in one image communicates directly with every position in the other through cross-attention, matching no longer requires a separate detection stage.
 
 ### 5.7.3 QuadTree Attention: Making LoFTR Efficient
 
 LoFTR's coarse-level transformer flattens every location in the image into a sequence, so the sequence length grows rapidly as resolution increases. QuadTree Attention (Tang et al., 2022) addresses this.
 
-Key idea: perform attention hierarchically.
+Attention is organized hierarchically:
 
 1. Perform full attention at the coarsest resolution
 2. Select only the regions with high attention scores
@@ -894,22 +894,22 @@ This reduces complexity from $O(N^2)$ to $O(N \log N)$ while maintaining LoFTR-l
 
 ASpanFormer (Chen et al., 2022) addresses another limitation of LoFTR: **must every location have the same attention span?**
 
-Key idea: adaptively adjust the **attention span** per location.
+The **attention span** is adjusted independently at each location:
 
 - Texture-rich regions: precise matching with a narrow span
 - Texture-poor regions: context-aware matching with a wide span
 
 This mitigates the matching accuracy degradation LoFTR exhibited in textureless regions.
 
-### 5.7.5 RoMa (2024): Maturation of DINOv2 + Dense Matching
+### 5.7.5 RoMa (2024): DINOv2 + Dense Matching
 
-[Edstedt et al. (2024)](https://arxiv.org/abs/2305.15404)'s RoMa represents the **maturation** of detector-free matching. Through two key evolutions it substantially surpasses the LoFTR family.
+[Edstedt et al. (2024)](https://arxiv.org/abs/2305.15404)'s RoMa combines DINOv2 features with detector-free dense matching. Two design choices distinguish it from the LoFTR family.
 
 #### Leveraging a Foundation Model
 
 Unlike LoFTR, which was trained from scratch, RoMa **uses a pretrained DINOv2 ViT-Large as the feature extractor** (weights frozen).
 
-DINOv2 is a general-purpose visual feature learned by large-scale self-supervised learning, and it already contains rich semantic information. This is a philosophical shift: "leave feature learning to the general model and only learn the matching logic."
+DINOv2 provides general-purpose visual features learned through large-scale self-supervision. RoMa freezes those features and trains only the matching logic.
 
 #### Architecture
 
@@ -940,7 +940,7 @@ This approach is robust to outliers: even if there are incorrect ground-truth co
 
 #### Performance
 
-On the MegaDepth and ScanNet benchmarks it substantially surpasses LoFTR, ASpanFormer, and others. The performance improvement is especially pronounced under **wide baselines (large viewpoint changes)**.
+In the RoMa paper's relative-pose experiments, it reports higher AUC than the tested LoFTR- and ASpanFormer-family baselines on MegaDepth and ScanNet. The margin depends on the dataset and angular threshold; the paper also highlights a 36% relative improvement on WxBS, which includes large viewpoint and appearance changes.
 
 ```python
 # RoMa usage example
@@ -963,24 +963,24 @@ matches, certainty_scores = roma_model.sample(
 
 #### Position in the Technical Lineage
 
-RoMa embodies two key transitions:
+RoMa combines two design choices:
 
 1. **Leveraging a foundation model**: training from scratch → training only the matching logic on top of features from a large pretrained model
 2. **Probabilistic matching**: deterministic point prediction → probability distribution prediction that explicitly handles uncertain matches
 
-It combines RAFT's iterative refinement idea with LoFTR's detector-free mindset while introducing the powerful pretrained features of DINOv2 — a comprehensive advance.
+It combines RAFT's iterative refinement with LoFTR's detector-free design and pretrained DINOv2 features.
 
 ### 5.7.6 Recent Developments: 3D-Aware Dense Matching (2024-2025)
 
-In 2024-2025, a paradigm has emerged that goes beyond 2D matching to **directly predict 3D geometry while performing matching**.
+In 2024-2025, methods emerged that go beyond 2D matching to **directly predict 3D geometry while performing matching**.
 
 **DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132) is a method that directly regresses a 3D pointmap from an arbitrary image pair without any calibration or pose information. Whereas existing matching pipelines followed the order "2D matching → 3D reconstruction," DUSt3R reverses this to **directly predict the 3D structure itself and treat correspondences as a natural byproduct obtained in 3D space**.
 
-**MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756) adds a dense local feature head to DUSt3R, **substantially strengthening dense matching performance** along with 3D pointmap prediction. On the map-free localization benchmark it achieves a 30%p (absolute) VCRE AUC improvement over the previous best method.
+**MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756) adds a dense local-feature head to DUSt3R. Its authors report a 30-percentage-point VCRE AUC improvement over the previous compared method under the paper's map-free localization setup.
 
-**VGGT (Wang et al., 2025)**: [VGGT](https://arxiv.org/abs/2503.11651) (Visual Geometry Grounded Transformer) is the CVPR 2025 Best Paper, which **simultaneously infers camera parameters, pointmap, depth map, and 3D point tracks in a single feed-forward pass** from one or more images. With inference time under one second, it achieves accuracy exceeding existing methods that require post-processing optimization.
+**VGGT (Wang et al., 2025)**: [VGGT](https://arxiv.org/abs/2503.11651) (Visual Geometry Grounded Transformer) received the CVPR 2025 Best Paper award. It **simultaneously infers camera parameters, pointmaps, depth maps, and 3D point tracks in a single feed-forward pass** from one or more images. Under the paper's evaluation settings, it reports image reconstruction in under one second and higher results on several 3D tasks than the tested alternatives that use geometry-optimization post-processing.
 
-This trend dismantles the long-standing assumption that "matching is a 2D problem" and forms a new paradigm that **directly reasoning about 3D geometry ultimately produces more robust matching**.
+These methods reverse the usual order of first finding 2D correspondences and then reconstructing 3D. They infer 3D geometry directly and obtain correspondences from the result.
 
 ---
 
@@ -1031,19 +1031,19 @@ fpfh = o3d.pipelines.registration.compute_fpfh_feature(
 
 ### 5.8.2 3DMatch (2017): The Beginning of Learned 3D Descriptors
 
-[Zeng et al. (2017)](https://arxiv.org/abs/1603.08182)'s 3DMatch is the first system to **extract 3D matching descriptors through learning** on RGB-D data.
+[Zeng et al. (2017)](https://arxiv.org/abs/1603.08182)'s 3DMatch is an early influential system that learns a local volumetric descriptor from correspondences mined from RGB-D reconstructions.
 
 - **Training data**: correspondence pairs automatically generated from RGB-D reconstructions of 62 indoor scenes
 - **Architecture**: a 3D CNN with a 3D TDF (Truncated Distance Function) volume as input
 - **Output**: 512-dimensional local descriptor
 
-3DMatch is the starting point of learned 3D descriptors, and it also provided a standard benchmark called the **3DMatch Benchmark**, serving as the evaluation standard for subsequent research.
+3DMatch became a major reference point for learned 3D descriptors, and its accompanying **3DMatch Benchmark** became a widely used evaluation set in subsequent work.
 
 ### 5.8.3 FCGF (Fully Convolutional Geometric Features, 2019)
 
 [Choy et al. (2019)](https://arxiv.org/abs/1904.09793)'s FCGF uses **sparse convolution** to extract descriptors for all points in the entire point cloud in a single forward pass.
 
-While 3DMatch processes each keypoint's local volume individually, FCGF processes the entire point cloud at once, so it is **tens to hundreds of times faster**. With a 32-dimensional descriptor — more compact than 3DMatch's 512 dimensions — it achieved even higher accuracy.
+Where 3DMatch processes local volumes separately, FCGF computes features over the point cloud with sparse convolutions. The FCGF paper reports a large runtime reduction and strong registration results with 32-dimensional descriptors under its implementation, hardware, and benchmarks.
 
 ### 5.8.4 Predator (2021): Overlap-Aware 3D Matching
 
@@ -1083,11 +1083,11 @@ $$\text{Attn}_{ij} = \frac{\mathbf{q}_i^\top \mathbf{k}_j}{\sqrt{d}} + b(\text{P
 
 #### RANSAC-Free Transformation Estimation
 
-Because robust correspondences at the superpoint level achieve high inlier ratios, **the transformation can be estimated directly without RANSAC**. This yields a **100× speedup**.
+GeoTransformer selects superpoint correspondences and aggregates transformation hypotheses with local-to-global registration, so it can omit a separate external RANSAC stage. The paper reports a large runtime reduction under its implementation and comparison setup; the same ratio or success is not guaranteed on differently contaminated correspondences.
 
 #### Performance
 
-On the 3DLoMatch benchmark, the inlier ratio improves by 17-30%p and registration recall by over 7%p. In particular, large improvements over existing methods in the **low-overlap (10-30%)** regime.
+Under the paper's 3DLoMatch protocol, the reported gain over compared methods ranges from 17 to 30 percentage points in inlier ratio and exceeds 7 points in registration recall. These values are specific to that low-overlap benchmark and evaluation setup.
 
 ```python
 # GeoTransformer usage example
@@ -1115,7 +1115,7 @@ FPFH (2009)          — geometric angular histograms
 SHOT (2010)          — orientation histograms
     ↓ learning-based
 [Learned 3D Descriptors]
-3DMatch (2017)       — first learned 3D descriptor + benchmark
+3DMatch (2017)       — early learned 3D descriptor + benchmark
     ↓ efficiency
 FCGF (2019)          — sparse conv, processes entire point cloud at once
     ↓ overlap-aware
@@ -1156,7 +1156,7 @@ P2-Net (Yu et al., 2021): learns patch-to-point matching to infer direct corresp
 
 ### 5.9.3 Why Cross-Modal Is Difficult: The Representation Gap
 
-Why 2D-3D cross-modal matching is fundamentally difficult:
+Four differences make 2D-3D cross-modal matching difficult:
 
 1. **Representation heterogeneity**: 2D images are intensity/color values on a regular grid, while 3D point clouds are irregularly distributed coordinates + intensity. The data structures themselves are different.
 
@@ -1172,7 +1172,7 @@ Because of these difficulties, cross-modal correspondence is still a less mature
 
 ## 5.10 Dense Matching & Optical Flow
 
-The methods discussed so far have focused on **sparse correspondence**. This section covers **dense matching**, which finds correspondences for every pixel of an image.
+The methods above focus on **sparse correspondence**. **Dense matching** instead seeks a correspondence for every image pixel.
 
 ### 5.10.1 Classical Optical Flow: Lucas-Kanade, Horn-Schunck
 
@@ -1238,13 +1238,13 @@ Solving the Euler-Lagrange equations yields an iterative update formula. It prod
 
 #### FlowNet / FlowNet 2.0 (2015/2017)
 
-[Dosovitskiy et al. (2015)](https://arxiv.org/abs/1504.06852)'s FlowNet is the first deep learning method to **directly predict optical flow with a CNN**. An encoder-decoder structure that takes two images as input and outputs the flow field.
+[Dosovitskiy et al. (2015)](https://arxiv.org/abs/1504.06852)'s FlowNet is an early CNN system that predicts an optical-flow field directly with end-to-end supervised learning. Its encoder-decoder takes two images as input and outputs the flow field.
 
 [FlowNet 2.0 (Ilg et al., 2017)](https://arxiv.org/abs/1612.01925) stacks multiple FlowNets to substantially improve accuracy.
 
 #### RAFT (2020): A New Standard for Optical Flow
 
-[Teed & Deng (2020)](https://arxiv.org/abs/2003.12039)'s RAFT presents a new architectural paradigm of **4D correlation volume + iterative GRU update**, winning the ECCV 2020 Best Paper.
+[Teed & Deng (2020)](https://arxiv.org/abs/2003.12039)'s RAFT combines a **4D correlation volume with iterative GRU updates** and received the ECCV 2020 Best Paper award.
 
 **Architecture in 3 stages**:
 
@@ -1267,9 +1267,9 @@ At each iteration $k$:
 4. Predict the flow residual $\Delta \mathbf{f}$ from the hidden state
 5. Flow update: $\mathbf{f}^{k+1} = \mathbf{f}^k + \Delta \mathbf{f}$
 
-12 iterations at training, 12-32 at inference. It has the property that **increasing the number of iterations improves accuracy** (test-time adaptability).
+The original configuration uses 12 updates during training and 12–32 at inference. Extra iterations reduced error in some paper experiments, but improvement is not guaranteed after convergence; choose the count from latency and validation error.
 
-**All-Pairs vs. Coarse-to-Fine**: existing methods such as PWC-Net and FlowNet first estimate coarse flow at the pyramid and then progressively refine, so large displacements missed at the coarse level cannot be recovered. RAFT **keeps all correlations at full resolution at once**, so large displacements are not missed.
+**All-Pairs vs. Coarse-to-Fine**: coarse-to-fine methods can struggle to recover a correspondence missed at a coarse level. RAFT constructs all-pairs feature correlations and queries them at several scales during recurrent updates, preserving access to large-displacement candidates. It can still fail when the features or iterative update choose the wrong match.
 
 **Training**: an L1 loss with ground-truth flow is applied to the predictions at every iteration, with exponentially increasing weights on later iterations:
 
@@ -1297,7 +1297,7 @@ with torch.no_grad():
 
 #### UniMatch (2023)
 
-[Xu et al. (2023)](https://arxiv.org/abs/2211.05783)'s UniMatch handles **optical flow, stereo matching, and depth estimation in a single unified framework**. The key idea is that all three tasks reduce to the common problem of "dense correspondence between two observations."
+[Xu et al. (2023)](https://arxiv.org/abs/2211.05783)'s UniMatch handles **optical flow, stereo matching, and depth estimation in a single unified framework**. It formulates all three tasks as dense correspondence between two observations.
 
 ### 5.10.3 Dense Stereo: SGM → RAFT-Stereo → UniMatch
 
@@ -1305,7 +1305,7 @@ Stereo matching is the problem of estimating the **horizontal disparity** betwee
 
 #### SGM (Semi-Global Matching, Hirschmuller 2005)
 
-The representative of traditional dense stereo. Key ideas:
+SGM is a traditional dense-stereo method that estimates disparity in three steps:
 - Compute the matching cost for every disparity candidate at each pixel
 - Aggregate costs by 1D dynamic programming along 8 (or 16) directions
 - Select the minimum of the aggregated costs to determine the disparity
@@ -1338,7 +1338,7 @@ Horn-Schunck (1981)  — global optimization, per-pixel flow
     ↓ deep learning
 FlowNet (2015)       — CNN direct prediction
 [PWC-Net](https://arxiv.org/abs/1709.02371) (2018)       — cost volume + coarse-to-fine
-    ↓ paradigm shift
+    ↓ global correlation + iterative updates
 RAFT (2020)          — all-pairs correlation + iterative GRU
     ↓ transformer
 FlowFormer (2022)    — cost volume tokenization + transformer
@@ -1346,13 +1346,13 @@ FlowFormer (2022)    — cost volume tokenization + transformer
 UniMatch (2023)      — flow + stereo + depth unified
 ```
 
-RAFT's all-pairs correlation and iterative refinement ideas directly influenced not only dense matching but also **detector-free feature matching** (LoFTR, RoMa) and **learned SLAM** (DROID-SLAM).
+RAFT's all-pairs correlation and iterative refinement influenced dense matching, **detector-free feature matching** (LoFTR, RoMa), and **learned SLAM** (DROID-SLAM).
 
 ---
 
 ## Technical Lineage Summary
 
-We consolidate the flow of all technologies covered in this chapter into a single diagram:
+The diagram below connects the technical lineages covered in this chapter:
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1360,91 +1360,91 @@ We consolidate the flow of all technologies covered in this chapter into a singl
 ═══════════════════════════════════════════════════════════════════════════════
 
 [2D Detection & Description]
-                                                                              
-Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB (2011)             
-  corner detection    scale-space       extreme speed    FAST+BRIEF             
-  structure tensor    DoG + 128D        detection only   binary descriptor       
-                      float descriptor                                        
-         │                │                                                   
-         │   history of the accuracy vs. speed trade-off                      
-         ▼                ▼                                                   
-[Learning-Based Detection & Description]                                      
-                                                                              
-    SuperPoint (2018) ──→ D2-Net (2019) ──→ R2D2 (2019) ──→ DISK (2020)      
-      self-supervised      detect=describe    reliability      RL-based         
-      homographic adapt    joint feature map  + repeatability                  
-         │                                                                    
-         │                                                                    
-         ▼                                                                    
-[Learning-Based Matching — Pipeline Preserved]                                
-                                                                              
-    SuperGlue (2020) ──────────────→ LightGlue (2023)                        
-      GNN + cross-attention           adaptive depth/width                    
-      Sinkhorn optimal transport      dual-softmax (Sinkhorn removed)         
-      O(N²) × 9 layers                early exit, 3-5× faster                 
-                                                                              
-═══════════════════════ Paradigm Shift ═══════════════════════════════════       
-                                                                              
-[Detector-Free Matching — Pipeline Dissolved]                                 
-                                                                              
-    LoFTR (2021) ──→ QuadTree (2022) ──→ ASpanFormer (2022) ──→ RoMa (2024) 
-      transformer         O(N log N)        adaptive span          DINOv2     
-      coarse-to-fine       efficiency        texture-adaptive       probabilistic matching 
-      detector fully removed                                        foundation 
+
+Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB (2011)
+  corner detection    scale-space       extreme speed    FAST+BRIEF
+  structure tensor    DoG + 128D        detection only   binary descriptor
+                      float descriptor
+         │                │
+         │   history of the accuracy vs. speed trade-off
+         ▼                ▼
+[Learning-Based Detection & Description]
+
+    SuperPoint (2018) ──→ D2-Net (2019) ──→ R2D2 (2019) ──→ DISK (2020)
+      self-supervised      detect=describe    reliability      RL-based
+      homographic adapt    joint feature map  + repeatability
+         │
+         │
+         ▼
+[Learning-Based Matching — Pipeline Preserved]
+
+    SuperGlue (2020) ──────────────→ LightGlue (2023)
+      GNN + cross-attention           adaptive depth/width
+      Sinkhorn optimal transport      dual-softmax (Sinkhorn removed)
+      O(N²) × 9 layers                early exit, 3-5× faster
+
+═══════════════════════ Shift to Detector-Free Matching ═══════════════════
+
+[Detector-Free Matching]
+
+    LoFTR (2021) ──→ QuadTree (2022) ──→ ASpanFormer (2022) ──→ RoMa (2024)
+      transformer         O(N log N)        adaptive span          DINOv2
+      coarse-to-fine       efficiency        texture-adaptive       probabilistic matching
+      detector fully removed                                        foundation
                                                                     model leveraged
                                                                         │
 ═══════════════════════ 3D-Aware Shift ═══════════════════════════════════
                                                                         │
 [3D-Aware Dense Matching — Beyond 2D Matching]                          ▼
-                                                                              
-    DUSt3R (2024) ──→ MASt3R (2024) ──→ VGGT (2025, CVPR Best Paper)  
-      3D pointmap         dense local        feed-forward 3D inference 
-      direct regression   feature added      camera+depth+pointmap     
+
+    DUSt3R (2024) ──→ MASt3R (2024) ──→ VGGT (2025, CVPR Best Paper)
+      3D pointmap         dense local        feed-forward 3D inference
+      direct regression   feature added      camera+depth+pointmap
       matching = 3D byproduct  stronger matching  unified single-pass inference
 ═══════════════════════════════════════════════════════════════════════════════
 
-[Dense Matching & Optical Flow — Parallel Evolution]                          
-                                                                              
-    LK (1981) ──→ Horn-Schunck (1981) ──→ FlowNet (2015)                     
-      local window   global smoothness      CNN direct prediction              
-         │                                      │                             
-         ▼                                      ▼                             
+[Dense Matching & Optical Flow — Parallel Evolution]
+
+    LK (1981) ──→ Horn-Schunck (1981) ──→ FlowNet (2015)
+      local window   global smoothness      CNN direct prediction
+         │                                      │
+         ▼                                      ▼
     PWC-Net (2018) ──→ RAFT (2020) ──→ FlowFormer (2022) ──→ UniMatch (2023)
-      cost volume       4D all-pairs      transformer           flow+stereo   
+      cost volume       4D all-pairs      transformer           flow+stereo
       coarse-to-fine    iterative GRU     cost tokenization     +depth unified
-                            │                                                 
-                            │ RAFT's ideas propagate                           
-                            ├──→ LoFTR (all-pairs attention)                  
-                            ├──→ RoMa (iterative refinement)                  
-                            └──→ DROID-SLAM (correlation + DBA)               
-                                                                              
+                            │
+                            │ RAFT's ideas propagate
+                            ├──→ LoFTR (all-pairs attention)
+                            ├──→ RoMa (iterative refinement)
+                            └──→ DROID-SLAM (correlation + DBA)
+
 ═══════════════════════════════════════════════════════════════════════════════
 
-[3D-3D Correspondence — Independent Evolution]                                
-                                                                              
-    FPFH (2009) ──→ SHOT (2010) ──→ 3DMatch (2017) ──→ FCGF (2019)          
+[3D-3D Correspondence — Independent Evolution]
+
+    FPFH (2009) ──→ SHOT (2010) ──→ 3DMatch (2017) ──→ FCGF (2019)
       geometric histograms  orientation histograms  learned 3D descriptor  sparse conv
-                                                │                             
-                                                ▼                             
-                                         Predator (2021)                      
-                                           overlap-aware                      
-                                                │                             
-                                                ▼                             
-                                        GeoTransformer (2022)                 
-                                           geometric transformer              
-                                           RANSAC-free                        
-                                                                              
+                                                │
+                                                ▼
+                                         Predator (2021)
+                                           overlap-aware
+                                                │
+                                                ▼
+                                        GeoTransformer (2022)
+                                           geometric transformer
+                                           RANSAC-free
+
 ═══════════════════════════════════════════════════════════════════════════════
 
-[Cross-Modal — MI-Based Bypass Strategy]                                      
-                                                                              
-    MI (information theory) ──→ NMI ──→ NID (Koide et al. 2023)              
-      multi-modality              normalization  LiDAR-Camera calibration    
-      statistical dependence                                                  
-                                                                              
+[Cross-Modal — MI-Based Bypass Strategy]
+
+    MI (information theory) ──→ NMI ──→ NID (Koide et al. 2023)
+      multi-modality              normalization  LiDAR-Camera calibration
+      statistical dependence
+
 ═══════════════════════════════════════════════════════════════════════════════
 
-Key narratives:
+Summary:
   1. A flow that replaces the traditional three-stage pipeline
      (detect → describe → match) with deep learning one step at a time:
      SIFT → SuperPoint → SuperGlue → LightGlue
@@ -1452,17 +1452,17 @@ Key narratives:
   2. A flow that dismantles the pipeline itself and transitions to
      end-to-end dense matching: RAFT → LoFTR → RoMa
 
-  3. The rise of leveraging foundation models: using DINOv2 features as
-     the basis for matching — a paradigm shift of "leave feature learning
-     to the general model and only learn the matching logic."
+  3. Foundation models: fixing DINOv2 features as the basis for matching
+     and training the matching logic on top of them.
 
-  4. The emergence of 3D-aware matching (2024-2025): in the flow from
-     DUSt3R → MASt3R → VGGT, the reverse intuition of "directly inferring
-     3D lets matching follow naturally" — rather than "2D matching then
-     3D reconstruction" — is achieving great success.
+  4. The emergence of 3D-aware matching (2024-2025): DUSt3R → MASt3R →
+     VGGT reverse the usual order. They infer 3D structure directly and
+     derive correspondences from that structure, rather than matching in
+     2D before reconstruction.
 
-  The latter (2, 3, 4) is increasingly dominant, but the efficiency and
-  interpretability of the former (1) still hold practical value.
+  Approaches 2, 3, and 4 extend matching beyond a fixed detector-descriptor
+  pipeline, while approach 1 remains useful when efficiency and
+  interpretability matter.
 ```
 
-The matching techniques covered in this chapter are used in earnest from the next chapter onward. In Ch.6 we examine, through concrete systems, how these techniques are deployed in the frontend of Visual Odometry, and how the state estimation methods covered in Ch.4 are combined in the backend.
+Ch.6 places these matching methods in the frontend of Visual Odometry and connects them to the backend state-estimation methods from Ch.4.

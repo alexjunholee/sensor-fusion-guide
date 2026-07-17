@@ -20,16 +20,16 @@ In **visual loop closure detection**, the global descriptor of the current image
 
 1. **BoW-based (traditional)**: DBoW2 is used to compare the visual word histograms of ORB keypoints. ORB-SLAM3 uses this approach. Each keyframe is represented as a bag-of-words vector $\mathbf{v}_i$, and its similarity to the current frame $\mathbf{v}_q$ is computed as $s(\mathbf{v}_q, \mathbf{v}_i) = 1 - \frac{1}{2} \left| \frac{\mathbf{v}_q}{\|\mathbf{v}_q\|} - \frac{\mathbf{v}_i}{\|\mathbf{v}_i\|} \right|$ (L1-score).
 
-2. **Learning-based (modern)**: Global descriptors such as [NetVLAD](https://arxiv.org/abs/1511.07247) and [AnyLoc](https://arxiv.org/abs/2308.00688) are used. AnyLoc aggregates the dense features of [DINOv2](https://arxiv.org/abs/2304.07193) with VLAD, providing general-purpose operation without environment-specific training. Candidates are ranked by cosine similarity:
+2. **Learning-based**: global descriptors such as [NetVLAD](https://arxiv.org/abs/1511.07247) and [AnyLoc](https://arxiv.org/abs/2308.00688) are used. AnyLoc aggregates [DINOv2](https://arxiv.org/abs/2304.07193) dense features with VLAD and works across several domains without place-specific labels, but recall must be validated for a new sensor and environment. Candidates are ranked by cosine similarity:
 
 $$s(\mathbf{d}_q, \mathbf{d}_i) = \frac{\mathbf{d}_q^\top \mathbf{d}_i}{\|\mathbf{d}_q\| \|\mathbf{d}_i\|}$$
 
 In **LiDAR loop closure detection**, 3D point cloud descriptors are used:
 
 - **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: A descriptor that directly preserves spatial structure by recording the maximum height per bin/sector in a sensor-centered polar coordinate system. Efficient candidate search is possible through a two-stage search using a ring key and a sector key, and it is robust even to reverse revisits.
-- **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: Learning-based 3D place recognition methods that achieve higher recall than Scan Context in large-scale environments.
+- **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: learned 3D place-recognition methods. Their recall relative to Scan Context depends on dataset, sensor pattern, and training domain.
 
-**Temporal filtering**: Matching against recent frames is not loop closure but simply continuous tracking. Therefore, only keyframes that are sufficiently separated in time (e.g., at least 30 seconds apart) are considered as candidates.
+**Temporal filtering**: matching recent frames is usually continuous tracking, so adjacent keyframes are excluded. Tune the time or travel-distance gap to platform speed, keyframe rate, and revisit pattern. The 30-second value below is illustrative.
 
 ```python
 import numpy as np
@@ -88,7 +88,7 @@ A false positive loop closure is **catastrophic**. A single incorrect loop closu
 
 **Geometric verification methods**:
 
-1. **2D-2D: Essential matrix verification**: Feature point matching is performed between the current frame and the candidate keyframe, and the essential matrix $\mathbf{E}$ is estimated with RANSAC. If the number of inliers is sufficient (e.g., ≥ 20) and the inlier ratio is high (e.g., ≥ 50%), the loop closure is deemed valid.
+1. **2D-2D: Essential-matrix verification**: match features and estimate $\mathbf{E}$ with RANSAC. Check inlier count and ratio together with spatial coverage, pose plausibility, and repeated detection. The 20-inlier and 50% settings below are examples to tune for the detector and scene.
 
 $$\mathbf{p}_2^\top \mathbf{E} \mathbf{p}_1 = 0, \quad \mathbf{E} = [\mathbf{t}]_\times \mathbf{R}$$
 
@@ -215,13 +215,13 @@ A loop closure that passes verification is added to the pose graph as a new cons
 
 $$e_{ij} = \text{Log}(\mathbf{T}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j)$$
 
-Once this edge is added, the pose graph optimizer (§10.2) re-optimizes the entire graph and corrects the drift. In this process, not only the loop closure edge but also the odometry edges are adjusted, so that the error is distributed evenly over the full trajectory.
+Once this edge is added, the pose graph optimizer (§10.2) re-optimizes the entire graph and corrects the drift. It adjusts the loop-closure and odometry edges together, distributing the correction over the full trajectory.
 
 ---
 
 ## 10.2 Pose Graph Optimization
 
-Pose graph optimization is the core of the SLAM backend. It optimizes the global consistency of the entire pose trajectory while satisfying the relative constraints produced by the frontend (odometry, loop closure).
+Pose graph optimization improves the global consistency of the entire pose trajectory while satisfying the relative constraints produced by the frontend (odometry, loop closure).
 
 ### 10.2.1 SE(3) Pose Graph
 
@@ -236,7 +236,7 @@ Each edge $(i, j) \in \mathcal{E}$ has a measured relative transform $\tilde{\ma
 
 $$\mathbf{e}_{ij} = \text{Log}(\tilde{\mathbf{T}}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j) \in \mathbb{R}^6$$
 
-Here, $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$ is the mapping to the Lie algebra via the matrix logarithm. This 6-dimensional vector encodes the error in $($ 3 rotation + 3 translation $)$.
+Here, $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$ is the mapping to the Lie algebra via the matrix logarithm. This six-dimensional vector encodes three rotational and three translational error components.
 
 **Optimization objective**: Minimize the weighted sum of squared edge errors:
 
@@ -355,7 +355,7 @@ def pose_graph_cost(poses, edges, measurements, information_matrices):
 
 In practical SLAM systems, outlier measurements are unavoidable. Incorrect loop closures, sensor errors, dynamic objects, and more are the causes. The standard least squares cost function $\rho(x) = x^2$ is extremely sensitive to outliers — large errors dominate the cost and distort the whole solution.
 
-A **robust kernel** (M-estimator) limits the influence of large residuals and enables optimization that is robust to outliers:
+A **robust kernel** (M-estimator) limits the influence of large residuals and reduces sensitivity to outliers:
 
 | Kernel | $\rho(s)$ ($s = e^2$) | Characteristics |
 |--------|----------------------|------|
@@ -420,11 +420,11 @@ def robust_pose_graph_cost(poses, edges, measurements, info_matrices,
 
 ### 10.2.3 iSAM2: Incremental Smoothing and Mapping
 
-Most SLAM systems, rather than re-optimizing the entire graph in a batch fashion whenever a new keyframe is added, use an incremental approach that selectively updates only the affected parts. [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419) is the key algorithm for this incremental optimization.
+Most SLAM systems, rather than re-optimizing the entire graph in a batch fashion whenever a new keyframe is added, use an incremental approach that selectively updates only the affected parts. [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419) implements this incremental optimization.
 
-**Core idea**: When a new variable or measurement is added, precisely identify the range over which its influence propagates, and recompute only that part.
+When a new variable or measurement is added, iSAM2 identifies the range over which its influence propagates and recomputes only that part.
 
-**Bayes tree**: The core data structure of iSAM2. Variable elimination on a factor graph yields a clique tree, and the Bayes tree is this clique tree endowed with direction.
+**Bayes tree**: iSAM2 uses this data structure. Variable elimination on a factor graph yields a clique tree, and the Bayes tree is this clique tree endowed with direction.
 
 MAP estimation on a factor graph is decomposed as follows:
 
@@ -444,11 +444,11 @@ Here $\text{Sep}(x_i)$ is the separator of $x_i$ in the clique tree — that is,
 2. Redo the QR decomposition only for those cliques and their ancestors.
 3. Keep the rest of the tree unchanged.
 
-**Fluid relinearization**: In nonlinear optimization, only variables whose linearization point has drifted significantly from the current estimate are relinearized. This completely removes the periodic batch relinearization that was required in iSAM v1.
+**Fluid relinearization**: selectively relinearize variables whose estimate has moved beyond a threshold. Unlike iSAM v1, this does not require a scheduled full-batch relinearization, although a large loop closure can affect a broad part of the Bayes tree.
 
 **Variable reordering**: When a new variable is added, the full elimination order is not recomputed; only the affected part is reordered incrementally.
 
-**Practical impact**: iSAM2 is the core engine of the GTSAM library and is used in the backend of nearly every modern SLAM system, including LIO-SAM and ORB-SLAM3. Because it can complete optimization within bounded time even in large environments, it enables real-time SLAM.
+GTSAM provides iSAM2, and [LIO-SAM](https://arxiv.org/abs/2007.00258) uses it in the backend. ORB-SLAM3 instead performs nonlinear optimization with a modified version of g2o. By updating the affected part of the Bayes tree, iSAM2 avoids solving the full batch problem after every new factor.
 
 ```python
 class SimpleIncrementalOptimizer:
@@ -549,9 +549,9 @@ ORB-SLAM3's relocalization performs this procedure as follows:
 
 ### 10.3.2 Prior Map + Online Sensor
 
-In autonomous driving, it is common to localize in real time with live sensor data against a pre-built HD map. The key challenges are:
+In autonomous driving, it is common to localize in real time with live sensor data against a pre-built HD map. Three challenges follow:
 
-- **Discrepancies between the map and the current environment**: Over time, buildings change, vehicles park, and foliage grows. We must handle differences between the prior map and current observations.
+- **Discrepancies between the map and the current environment**: Over time, buildings change and foliage grows. We must handle differences between the prior map and current observations.
 - **Cross-modal matching**: The HD map may have been built with LiDAR while the current sensor is only a camera. Registration across heterogeneous sensors is required.
 - **No initial pose**: If the robot does not know where in the map it starts, place recognition must be performed against the entire map.
 
@@ -559,7 +559,7 @@ In autonomous driving, it is common to localize in real time with live sensor da
 
 MCL is a particle-filter-based global localization method. It represents the robot's possible poses as particles and updates particle weights according to sensor observations.
 
-**Algorithm**:
+MCL repeats four steps.
 
 1. **Initialization**: Distribute particles uniformly over the entire map (global uncertainty).
 2. **Prediction**: Move particles according to the robot's motion model:
@@ -568,7 +568,7 @@ $$x_t^{[k]} \sim p(x_t | u_t, x_{t-1}^{[k]})$$
 $$w_t^{[k]} = p(z_t | x_t^{[k]}, m)$$
 4. **Resampling**: Resample particles in proportion to their weights. Particles with high weights (close to the true location) are duplicated, and low-weight particles are eliminated.
 
-The key advantage of MCL is that it can represent multi-modal distributions. When the robot does not know which of several places it might be in, it can maintain several hypotheses simultaneously. As observations accumulate, the particles gradually converge to the correct location.
+MCL can represent multi-modal distributions. When the robot does not know which of several places it might be in, it can maintain several hypotheses simultaneously. As observations accumulate, the particles gradually converge to the correct location.
 
 **Example of LiDAR-based MCL**:
 
@@ -753,7 +753,7 @@ Once map anchoring provides an initial alignment, inter-session loop closure per
 
 ### 10.4.3 ORB-SLAM3 Multi-Map System
 
-The Atlas system of ORB-SLAM3 is a representative implementation of multi-session SLAM. The core mechanisms are as follows:
+The Atlas system of ORB-SLAM3 is a representative implementation of multi-session SLAM. It operates as follows:
 
 1. **Active map**: The map currently being tracked. When operating normally, keyframes and map points are added to this map.
 
@@ -872,7 +872,7 @@ When multiple robots explore simultaneously, each robot's map must be integrated
 - **Distributed optimization**: Robots must be able to merge maps autonomously without a central server. Kimera-Multi and Swarm-SLAM address this problem.
 - **Relative pose uncertainty**: Because the initial relative pose between robots is unknown, alignment must be achieved via inter-robot loop closures.
 
-The core idea of distributed pose graph optimization:
+Distributed pose graph optimization can be written as:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
@@ -882,11 +882,11 @@ Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally,
 
 ## 10.5 Recent Research (2024-2025)
 
-**[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)**: A robust backend that integrates **Graduated Non-Convexity (GNC)** into iSAM2 to remove outlier loop closures online in incremental SLAM. It operates robustly even with more than 90% outlier measurements and achieves, in real time, performance comparable to existing offline methods. [The theoretical foundation of GNC was presented by Yang et al. (2020)](https://arxiv.org/abs/1909.08605).
+**[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)** integrates [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605) into an incremental robust backend. The paper reports results above 90% outlier rate and comparisons with offline baselines under its synthetic and experimental setups; this is not a guarantee for other outlier structures or initializations.
 
 **[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)**: The next-generation version of the Kimera SLAM library, which replaces the backend's outlier rejection from PCM with GNC, significantly improving robustness. It has been validated on diverse platforms such as drones, quadruped robots, and autonomous vehicles, and includes comprehensive improvements for the practical deployment of metric-semantic SLAM.
 
-**[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)**: Extends PCM's pairwise consistency to group-k consistency, enabling stricter outlier detection. In multi-robot map merging, it further suppresses false positives relative to PCM.
+**[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)**: Extends PCM's pairwise consistency to group-k consistency and applies a stricter outlier test. In multi-robot map merging, it further suppresses false positives relative to PCM.
 
 ---
 

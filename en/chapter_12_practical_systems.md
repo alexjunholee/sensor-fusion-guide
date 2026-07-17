@@ -1,14 +1,14 @@
 # Ch.12 — Practical Systems & Benchmarks
 
-Ch.2-11 built the pieces: sensor modeling, state estimation, odometry, place recognition, and spatial representation. Real platforms combine these techniques into **systems**.
+Real platforms combine sensor modeling, state estimation, odometry, place recognition, and spatial representation into a single system.
 
-Sensor fusion architectures appear here on three representative platforms — autonomous driving, drones, and handheld mapping — along with benchmarks and tools for evaluating these systems.
+Representative platforms include autonomous driving, drones, and handheld mapping, and each system is evaluated with standard benchmarks and tools.
 
 ---
 
 ## 12.1 Autonomous Driving Perception Stack
 
-Autonomous driving is the domain where sensor fusion is applied most aggressively. Because safety requirements are a matter of life and death, the system must remain operational even under single-sensor failures (redundancy). Combining multiple sensors is not optional — it is mandatory.
+An autonomous-driving safety design must detect single-sensor failures and limit risk. Whether the vehicle continues or transitions to a minimal-risk condition depends on its ODD and safety case; multiple sensors can provide redundancy and cross-checks.
 
 ### 12.1.1 Sensor Suite Configuration Examples
 
@@ -19,20 +19,19 @@ Autonomous driving is the domain where sensor fusion is applied most aggressivel
 - 6 × radar (long-range velocity measurement)
 - IMU, GNSS, wheel encoder
 
-**Typical configuration based on the [nuScenes](https://arxiv.org/abs/1903.11027) dataset**:
-- 1 × spinning LiDAR (32 or 64 channels)
+**[nuScenes](https://arxiv.org/abs/1903.11027) collection vehicle**:
+- 1 × 32-beam spinning LiDAR
 - 6 × surround cameras (360° coverage)
 - 5 × radar
 - IMU, GNSS
 
-**Tesla (Vision-only approach)**:
-- 360° coverage using only 8 × cameras (LiDAR/radar removed)
-- 3D perception via neural-network-based depth estimation
-- An extremely aggressive approach that remains controversial in the industry
+**Camera-centric production example**:
+- A system may center perception on multiple surround cameras and neural models.
+- Installed sensors and radar use vary by vehicle generation, market, and date, so do not generalize an entire manufacturer as one fixed "vision-only" configuration.
 
 ### 12.1.2 Production-Level Fusion Pipeline
 
-A typical sensor fusion pipeline in a production autonomous driving system:
+A production autonomous-driving system typically uses the following sensor fusion pipeline:
 
 ```
 Sensor synchronization (HW trigger + PTP)
@@ -57,9 +56,9 @@ Sensor synchronization (HW trigger + PTP)
 
 **Late Fusion vs Deep Fusion**:
 
-- **Late fusion (traditional)**: Each sensor independently detects 3D bounding boxes, which are then combined via NMS (Non-Maximum Suppression). Advantages: modularity, ease of debugging. Disadvantages: difficult to exploit cross-sensor complementarity.
+- **Late fusion**: Each sensor independently detects 3D bounding boxes, which are then combined via NMS (Non-Maximum Suppression). It is modular and easy to debug, but has difficulty exploiting cross-sensor complementarity.
 
-- **Deep fusion (modern)**: Features from multiple sensors are combined directly in BEV (Bird's Eye View) space. Representative systems include [BEVFusion](https://arxiv.org/abs/2205.13542) (MIT/Nvidia) and TransFusion. Advantages: the network learns to exploit complementary cross-sensor information. Disadvantages: end-to-end training requires large-scale labeled data.
+- **Deep fusion**: Features from multiple sensors are combined directly in BEV (Bird's Eye View) space. Representative systems include [BEVFusion](https://arxiv.org/abs/2205.13542) (MIT/Nvidia) and TransFusion. The network learns to exploit complementary cross-sensor information, but end-to-end training requires large-scale labeled data.
 
 ```python
 # BEV Fusion conceptual diagram (pseudo-code)
@@ -107,7 +106,7 @@ Autonomous driving localization is typically organized in two stages:
 
 1. **Global localization**: GNSS (RTK or PPP) provides an initial position on the map. In urban environments, multipath can cause errors of several meters, so GNSS alone is insufficient.
 
-2. **Map-relative localization**: The current LiDAR scan is registered to an HD map (a pre-built LiDAR point cloud map) using NDT/ICP, achieving cm-level accuracy. This also works where GNSS is blocked, such as in tunnels.
+2. **Map-relative localization**: register the current LiDAR scan to an HD point-cloud map with NDT or ICP. With adequate map accuracy, overlap, geometry, and initialization, this constrains position where GNSS is weak; centimeter-level error must be demonstrated under the actual map and protocol.
 
 Factor-graph-based integration:
 $$\mathbf{x}^* = \arg\min \underbrace{f_{\text{IMU}}}_{\text{prediction}} + \underbrace{f_{\text{LiDAR}}}_{\text{map matching}} + \underbrace{f_{\text{GNSS}}}_{\text{global anchor}} + \underbrace{f_{\text{wheel}}}_{\text{velocity}}$$
@@ -120,36 +119,36 @@ Sensor fusion for drones operates under substantially different constraints than
 
 ### 12.2.1 Visual-Inertial-Centric Systems
 
-The most common sensor combination on drones is **camera + IMU**. Reasons:
+**Camera + IMU** is a common sensor combination on drones. Reasons:
 
 - **Weight/size constraints**: Small drones cannot easily carry a LiDAR (though this is changing with compact solid-state LiDARs such as the Livox Mid-360).
 - **Power constraints**: Cameras and IMUs consume little power.
 - **Vibration**: Propeller vibration adds noise to IMU data. Vibration-isolating mounts and software filtering are required.
 
-Representative VIO systems for drones:
+Representative VIO systems used on drones include the following:
 - **VINS-Mono/Fusion**: tightly-coupled optimization-based. Can be integrated with PX4.
 - **MSCKF/OpenVINS**: filter-based. Low computational cost makes it suitable for embedded boards.
 - **Basalt**: visual-inertial mapping with non-linear factor recovery.
 
 ### 12.2.2 GPS-Denied Navigation
 
-A core challenge for drones is autonomous flight in GPS-denied environments — indoors, tunnels, under forest canopy, and in electronic-warfare conditions.
+Autonomous flight in GPS-denied environments — indoors, tunnels, under forest canopy, and in electronic-warfare conditions — remains a challenge for drones.
 
-**Solution approaches**:
+The available approaches depend on whether prior infrastructure is available:
 
-1. **VIO alone**: Stable in the short term but accumulates drift. Suitable for missions of a few minutes.
+1. **VIO alone**: drift accumulates, so allowable mission duration follows from motion, texture, calibration, loop closure, and the error budget.
 2. **VIO + terrain matching**: Match current camera observations against a pre-built terrain/building map. A prior map is required.
 3. **VIO + UWB**: Install UWB anchors in the environment and use ranging measurements to correct drift. Prior infrastructure is required.
-4. **VIO + barometer**: Use a barometer as an auxiliary sensor for altitude estimation, correcting VIO's z-axis drift.
+4. **VIO + barometer**: pressure change provides a relative-altitude cue. Weather, temperature, and prop wash introduce bias, so it does not remove absolute z drift by itself.
 
 ### 12.2.3 Real-Time Constraints
 
-Drones perform high-speed flight (5-15 m/s) and aggressive attitude changes (flips, sharp turns). The corresponding sensor fusion requirements:
+Set a drone's sensor rates and latency budget from maximum angular rate and acceleration, control bandwidth, exposure, estimator delay, and communication delay.
 
-- **IMU rate**: 200-1000 Hz. Must adequately capture pose changes during high-speed motion.
-- **Camera exposure**: Short exposure times are needed to reduce motion blur, which trades off against increased noise in low light.
-- **Processing latency**: State estimation results must be delivered to the controller within 30 ms. Longer delays cause control instability.
-- **Point-LIO**: An ultra-low-latency LIO that processes points individually without waiting for scan completion. Especially advantageous for high-agility drone maneuvers.
+- **IMU rate**: high enough to limit aliasing and integration error under the specified motion.
+- **Camera exposure**: short enough for the allowed image motion, balanced against low-light noise.
+- **Processing latency**: an end-to-end bound derived from closed-loop stability analysis and flight testing; 30 ms is not universal.
+- **Point-LIO**: An LIO that reduces latency by processing points individually without waiting for scan completion. It can be used for high-agility drone maneuvers.
 
 ```python
 class DroneVIOConfig:
@@ -216,7 +215,7 @@ Examples of commercial handheld mapping devices:
 - **NavVis VLX**: Backpack-mounted. Four cameras + LiDAR. Specialized for indoor mapping.
 - **GeoSLAM ZEB**: Handheld mobile mapping. A 2D LiDAR is rotated manually to produce 3D scans.
 
-Common pipeline across these devices:
+These devices generally use the following pipeline:
 
 ```
 LiDAR + IMU → LIO (FAST-LIO2 or similar)
@@ -232,14 +231,14 @@ Post-processing (cloud cleanup, mesh generation)
 
 ### 12.3.2 Survey-Grade Mapping
 
-Key requirements for survey-grade mapping:
+Survey mapping begins with the contract specification and validation procedure:
 
-- **Absolute accuracy**: Within a few cm relative to GNSS. This is achieved by placing GCPs (Ground Control Points) and aligning in post-processing.
-- **Relative accuracy**: Internal consistency of the map. Loop closure and global optimization are essential.
-- **Point density**: Density of at least 1 cm spacing on walls, with downsampling in post-processing.
+- **Absolute accuracy**: specify horizontal and vertical error and confidence, then validate against independent checkpoints. Use GNSS, total station, or GCPs as site conditions require.
+- **Relative accuracy**: Internal consistency of the map. Loop closure and global optimization establish this consistency.
+- **Point density**: specify spacing and completeness from object size and deliverable. A 1 cm value may be a project requirement, not a universal survey standard.
 - **Color quality**: Accurate HDR color mapping. Camera-LiDAR time synchronization and extrinsic calibration must be precise.
 
-Practical issues in sensor fusion:
+Deployed sensor fusion systems must address the following problems:
 
 1. **Degenerate environments**: Long corridors, empty rooms, and other environments lacking geometric features. Drift that occurs in LiDAR-only systems is compensated by cameras or IMU. Multi-modal systems such as R3LIVE and FAST-LIVO2 are effective.
 
@@ -257,30 +256,30 @@ Fair comparison of sensor fusion systems requires standardized datasets and eval
 
 | Dataset | Year | Environment | Sensors | Features |
 |---------|------|-------------|---------|----------|
-| **[KITTI](https://doi.org/10.1177/0278364913491297)** | 2012 | Outdoor (autonomous driving) | Stereo, LiDAR, GPS/IMU | The original SLAM/VO benchmark. 11 training + 11 test sequences |
-| **[EuRoC](https://doi.org/10.1177/0278364915620033)** | 2016 | Indoor (MAV) | Stereo, IMU | The standard VIO benchmark. Machine Hall + Vicon Room |
-| **[TUM-RGBD](https://doi.org/10.1109/IROS.2012.6385773)** | 2012 | Indoor | RGB-D | Canonical visual SLAM benchmark. Kinect v1 |
+| **[KITTI](https://doi.org/10.1177/0278364913491297)** | 2012 | Outdoor (autonomous driving) | Stereo, LiDAR, GPS/IMU | 11 training + 11 test sequences for odometry evaluation |
+| **[EuRoC](https://doi.org/10.1177/0278364915620033)** | 2016 | Indoor (MAV) | Stereo, IMU | VIO sequences in Machine Hall + Vicon Room |
+| **[TUM-RGBD](https://doi.org/10.1109/IROS.2012.6385773)** | 2012 | Indoor | RGB-D | Kinect v1 visual-SLAM sequences and evaluation tools |
 | **TUM-VI** | 2018 | Indoor + outdoor | Stereo, IMU | VIO benchmark. Diverse motion patterns |
-| **[Hilti](https://arxiv.org/abs/2109.11316)** | 2021- | Construction sites | LiDAR, Camera, IMU | Industrial-environment-specific. Challenging conditions |
+| **[Hilti](https://arxiv.org/abs/2109.11316)** | 2021–2023 challenge editions | Construction sites | LiDAR, Camera, IMU | Industrial-environment-specific. Challenging conditions |
 | **[HeLiPR](https://arxiv.org/abs/2309.14590)** | 2023 | Outdoor (urban) | Heterogeneous LiDAR, Camera, IMU, GNSS | For heterogeneous LiDAR fusion research. Ouster+Velodyne+Livox+Aeva |
 | **[nuScenes](https://arxiv.org/abs/1903.11027)** | 2020 | Outdoor (autonomous driving) | Camera, LiDAR, Radar, GPS/IMU | 1000 scenes, 23-class 3D annotations, 360° surround sensors |
 | **Newer College** | 2020 | Outdoor + indoor | LiDAR, Camera, IMU | Oxford University campus. Multi-session |
 
 Characteristics and uses of each dataset:
 
-**KITTI** — Released in 2012 and therefore long in the tooth, it nonetheless remains the standard benchmark for autonomous driving SLAM. It provides a Velodyne 64-channel LiDAR, stereo cameras, and GPS/IMU. Limitations: the sensors are dated, sequences are relatively short, and ground truth is GPS/INS-based, so it may not be accurate at the cm level.
+**KITTI** — Released in 2012, it remains a long-standing reference benchmark for autonomous-driving odometry and SLAM. It provides a Velodyne 64-channel LiDAR, stereo cameras, and GPS/IMU. Its sensors are dated, its sequences are relatively short, and its GPS/INS-based ground truth does not guarantee centimeter-level accuracy in every segment.
 
-**EuRoC** — Stereo camera + IMU data captured on a drone (MAV). It is the de facto standard benchmark for VIO systems. Ground truth is provided by Vicon motion capture (sub-mm accuracy) or a Leica laser tracker (mm accuracy). The 11 sequences are classified as easy → medium → difficult.
+**EuRoC** — Stereo camera + IMU data captured on a drone (MAV). It is a widely used VIO benchmark. Depending on the sequence, ground truth was recorded with a Vicon motion-capture system or a Leica laser tracker. The 11 sequences are classified as easy → medium → difficult.
 
-**Hilti** — Evaluates SLAM in the challenging environment of construction sites (dust, vibration, repetitive structure). Since 2021, an annual SLAM challenge has been held that exposes the limits of state-of-the-art systems.
+**Hilti** — Evaluates SLAM in challenging construction-site environments with dust, vibration, and repetitive structures. Public sources document challenge editions in 2021, 2022, and 2023; the sensor suites and evaluation rules differ by edition.
 
-**HeLiPR** — A recent dataset released in 2023. Its defining feature is that different types of LiDAR (spinning, solid-state, FMCW) are mounted simultaneously. It supports the emerging research direction of heterogeneous LiDAR fusion.
+**HeLiPR** — Released in 2023, it mounts different types of LiDAR (spinning, solid-state, FMCW) simultaneously. It is used for research on heterogeneous LiDAR fusion.
 
 **Newer College** — Collected by visiting the Oxford University campus multiple times, this dataset is well suited to multi-session SLAM and long-term mapping research. Captured with a handheld LiDAR, it contains challenging motion patterns.
 
 **Recent benchmark trends (2024-2025)**:
 
-- **[Hilti-Oxford](https://arxiv.org/abs/2208.09825)** (2022): A construction-environment SLAM benchmark that provides mm-level-accurate ground truth. An annual SLAM challenge has been held since 2022.
+- **[Hilti-Oxford](https://arxiv.org/abs/2208.09825)** (2022): A construction-environment SLAM benchmark with millimeter-level ground truth used for the 2022 challenge.
 - **[Boreas](https://arxiv.org/abs/2203.10168)** (Burnett et al. 2023): An autonomous driving dataset collected by repeatedly driving the same route over a year. It includes LiDAR, radar, and cameras and captures all four seasons as well as adverse weather conditions.
 - **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (Huai et al., IJRR 2025): A large-scale benchmark for evaluating 4D radar SLAM that systematically compares 4D radar odometry/SLAM across diverse environments and platforms.
 
@@ -435,7 +434,7 @@ def umeyama_alignment(source, target, with_scale=True):
 
 ### 12.4.3 Difficulties of Fair Comparison
 
-Caveats when interpreting benchmark results:
+The following caveats apply when interpreting benchmark results:
 
 1. **Parameter tuning**: The same algorithm can perform very differently depending on its parameters. Tuning for a specific dataset reduces generality.
 
@@ -451,7 +450,7 @@ Caveats when interpreting benchmark results:
 
 ## 12.5 Open-Source Tool Guide
 
-We summarize open-source tools commonly used in sensor fusion research and practice.
+Sensor fusion research and practice commonly use the following open-source tools.
 
 ### 12.5.1 Optimization Libraries
 
@@ -535,7 +534,7 @@ def simple_pose_graph_gtsam():
 **Ceres Solver**:
 - A nonlinear least squares optimization library developed by Google
 - C++ only (Python bindings are limited)
-- Automatic differentiation support is a core strength
+- Supports automatic differentiation
 - Used by VINS-Mono, ORB-SLAM, and others
 - Defines the optimization problem directly, without a factor graph abstraction
 
@@ -561,7 +560,7 @@ Comparison of the three libraries:
 - Camera-IMU, Camera-Camera, and multi-IMU calibration
 - Continuous-time B-spline trajectory-based
 - Uses an AprilGrid target
-- The de facto standard, though installation is tricky (ROS dependency)
+- Widely used for camera-IMU calibration, though installation is tricky (ROS dependency)
 
 **OpenCalib** (2023):
 - Unified calibration across the full autonomous driving sensor stack
@@ -692,4 +691,4 @@ def compare_systems(gt_file, system_files, system_names):
 
 ---
 
-The practical systems and benchmarks covered in this chapter show how the theory of Ch.2-11 is applied in real products and research. The final chapter addresses **research frontiers** — foundation models, event cameras, 4D radar, and end-to-end SLAM — that are not yet mature but may reshape the field's future.
+The sensor-fusion methods covered here reach products and research through these systems and benchmarks. Foundation models, event cameras, 4D radar, and end-to-end SLAM remain active **research frontiers**.

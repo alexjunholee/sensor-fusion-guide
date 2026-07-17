@@ -1,14 +1,14 @@
 # Ch.2 — Sensor Modeling
 
-In Ch.1 we examined the taxonomy of sensor fusion and its design principles. We now turn in earnest to defining, in mathematical terms, how each sensor "sees" the world. Sensor observation models are substituted directly into the measurement function $h(\mathbf{x})$ of the Kalman filter and factor graph formulations covered in Ch.4, so the equations of this chapter form the foundation for every algorithm that follows.
+How a sensor "sees" the world is defined by its mathematical observation model. Ch.4 uses these models directly as the measurement function $h(\mathbf{x})$ in Kalman filters and factor graphs.
 
-> If robotics-practice Ch.2 introduced sensors at an overview level, this chapter focuses on **noise models and mathematical observation models**. To design a sensor fusion algorithm, we must know precisely not only "what a sensor measures" but also "what mathematical relationship the measurement bears to the underlying physical quantity" and "how the error is distributed."
+> Going one level beyond the overview in robotics-practice Ch.2, the focus here is on **noise models and mathematical observation models**. A fusion algorithm needs the mathematical relationship between a measurement and its physical quantity, along with the error distribution.
 
 ---
 
 ## 2.1 Camera Observation Model
 
-A camera is a sensor that projects points of the 3D world onto a 2D image plane. Modeling this projection mathematically is the crux of the camera observation model.
+A camera projects points of the 3D world onto a 2D image plane. The camera observation model expresses this projection mathematically.
 
 ### 2.1.1 Pinhole Camera Model
 
@@ -36,11 +36,11 @@ Denoting the projection function as $\pi(\cdot)$:
 
 $$\mathbf{p} = \pi(\mathbf{P}_c) = \begin{bmatrix} f_x \frac{X_c}{Z_c} + c_x \\ f_y \frac{Y_c}{Z_c} + c_y \end{bmatrix}$$
 
-The Jacobian of this nonlinear projection function plays a central role in state estimation:
+State estimation uses the Jacobian of this nonlinear projection function directly:
 
 $$\frac{\partial \pi}{\partial \mathbf{P}_c} = \begin{bmatrix} \frac{f_x}{Z_c} & 0 & -\frac{f_x X_c}{Z_c^2} \\ 0 & \frac{f_y}{Z_c} & -\frac{f_y Y_c}{Z_c^2} \end{bmatrix}$$
 
-This $2 \times 3$ Jacobian is used directly to linearize the observation model in EKF-based VIO, and it is also the key building block of the residual Jacobian in nonlinear optimization.
+This $2 \times 3$ Jacobian linearizes the observation model in EKF-based VIO and forms the residual Jacobian in nonlinear optimization.
 
 ### 2.1.2 Lens Distortion Model
 
@@ -48,7 +48,7 @@ Real camera lenses introduce distortion that deviates from the ideal projection 
 
 #### Radial-Tangential Distortion (Brown-Conrady Model)
 
-This is the most widely used distortion model and is OpenCV's default.
+This is a common distortion model supported by OpenCV and often used with pinhole cameras in SLAM and VIO. Fisheye or omnidirectional models can be more appropriate for wide-FoV lenses.
 
 For normalized image coordinates $\mathbf{p}_n = [x_n, y_n]^\top = [X_c/Z_c, \, Y_c/Z_c]^\top$:
 
@@ -173,7 +173,7 @@ def project_fisheye(P_c, K, fisheye_coeffs):
 
 ### 2.1.3 Reprojection Error
 
-The reprojection error is the core cost function of nearly every algorithm that uses camera observations in sensor fusion.
+The reprojection error is the cost function used by nearly every sensor fusion algorithm that incorporates camera observations.
 
 For a 3D landmark $\mathbf{P}_w$, the reprojection error is the difference between the predicted image coordinate $\hat{\mathbf{p}}$ obtained by projecting $\mathbf{P}_w$ under the camera pose $\mathbf{T}_{cw} = [\mathbf{R}|\mathbf{t}]$, and the actually observed feature point $\mathbf{p}_{\text{obs}}$:
 
@@ -305,7 +305,7 @@ where $\mathbf{T}(t_i)$ is the LiDAR pose at time $t_i$.
 
 **Correction methods:**
 
-1. **IMU-based interpolation**: interpolate the pose change over the scan duration using high-frequency IMU measurements. This is the most common approach and is used in LIO-SAM, FAST-LIO2, and others.
+1. **IMU-based interpolation**: interpolate the pose change over the scan duration using high-frequency IMU measurements. LIO systems including LIO-SAM and FAST-LIO2 use this approach.
 2. **Previous-frame odometry based**: apply a constant-velocity model with the velocity estimated in the immediately preceding frame.
 3. **Continuous-time methods**: model the trajectory as a continuous function with, e.g., B-splines, and evaluate the pose at each point's time. [CT-ICP (Dellenbach et al., 2022)](https://arxiv.org/abs/2109.12979) is a representative example.
 
@@ -365,13 +365,13 @@ The impact of this difference on fusion algorithms:
 | Feature extraction | Scan-line-based feasible | No scan-line structure |
 | Suitable algorithms | LOAM, LeGO-LOAM | FAST-LIO/LIO2 (point-wise processing) |
 
-FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829) are particularly strong on solid-state LiDAR because their iterated EKF structure does not depend on scan-line structure and instead **processes individual points sequentially**. In contrast, LOAM's edge/planar feature extraction presupposes scan-line structure and is hard to apply directly to solid-state sensors. More recently, [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035) extends this structure to sequentially fuse three sensors — LiDAR, inertial, and visual — within the same iterated EKF, using a direct method to process both LiDAR points and images without separate feature extraction.
+FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829) suit solid-state LiDAR because their iterated EKF structure does not depend on scan lines and instead **processes individual points sequentially**. In contrast, LOAM's edge/planar feature extraction presupposes scan-line structure and is hard to apply directly to solid-state sensors. More recently, [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035) extends this structure to sequentially fuse three sensors — LiDAR, inertial, and visual — within the same iterated EKF, using a direct method to process both LiDAR points and images without separate feature extraction.
 
 ---
 
 ## 2.3 IMU Model
 
-An IMU (Inertial Measurement Unit) consists of a 3-axis accelerometer and a 3-axis gyroscope. In sensor fusion the IMU is the core sensor of virtually every system: it provides high-frequency observations (100 Hz to 1 kHz) that interpolate between camera or LiDAR frames, and it contributes to initialization and scale observability. This section treats IMU error models in detail.
+An IMU (Inertial Measurement Unit) consists of a 3-axis accelerometer and a 3-axis gyroscope. Its high-frequency observations (100 Hz to 1 kHz) interpolate between camera or LiDAR frames and provide the observability needed for initialization and scale estimation. Fusion also needs an error model for these measurements.
 
 ### 2.3.1 Gyroscope Error Model
 
@@ -392,10 +392,11 @@ where $\mathbf{n}_{bg} \sim \mathcal{N}(\mathbf{0}, \sigma_{bg}^2 \mathbf{I})$ i
 
 $$\mathbf{b}_{g,k+1} = \mathbf{b}_{g,k} + \sigma_{bg} \sqrt{\Delta t} \cdot \mathbf{w}_k, \quad \mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
 
-Typical parameters for a MEMS-grade gyroscope:
-- Measurement noise density: $\sigma_g \approx 0.004\,\text{rad/s}/\sqrt{\text{Hz}}$ (about $0.2\,°/\text{s}/\sqrt{\text{Hz}}$)
-- In-run bias stability: $\sigma_{bg} \approx 10\text{–}100\,°/\text{hr}$
-- Bias random walk: $\sigma_{bg} \approx 0.0002\,\text{rad/s}^2/\sqrt{\text{Hz}}$
+Set gyroscope noise parameters for the named device and its operating conditions.
+
+- **White-noise density**: estimate it from both the device datasheet and the $-1/2$ slope region of the Allan deviation. Check that the units and continuous-time density convention match the implementation's discrete covariance conversion.
+- **In-run bias stability**: identify the nearly flat region of an Allan deviation computed from a sufficiently long static recording. Temperature, mounting stress, vibration, and recording duration all affect it, so do not copy a single datasheet value uncritically.
+- **Bias-random-walk driving noise**: estimate it from the positive long-term slope. Keep measurement noise $\sigma_g$ distinct from bias driving noise $\sigma_{bg}$, and document the conversion from continuous-time density to discrete-time covariance.
 
 ### 2.3.2 Accelerometer Error Model
 
@@ -416,10 +417,11 @@ Meaning of each term:
 
 $$\dot{\mathbf{b}}_a = \mathbf{n}_{ba}, \quad \mathbf{n}_{ba} \sim \mathcal{N}(\mathbf{0}, \sigma_{ba}^2 \mathbf{I})$$
 
-Typical parameters for a MEMS-grade accelerometer:
-- Measurement noise density: $\sigma_a \approx 0.04\,\text{m/s}^2/\sqrt{\text{Hz}}$ (about $4\,\text{mg}/\sqrt{\text{Hz}}$)
-- Bias stability: $\sigma_{ba} \approx 0.01\text{–}0.1\,\text{mg}$
-- Bias random walk: $\sigma_{ba} \approx 0.001\,\text{m/s}^3/\sqrt{\text{Hz}}$
+Apply the same parameter-selection procedure to the accelerometer.
+
+- **White-noise density**: use both the device datasheet and the $-1/2$ slope region of the Allan deviation, and state the conversion among $\text{m/s}^2/\sqrt{\text{Hz}}$, $\text{mg}/\sqrt{\text{Hz}}$, and VRW.
+- **In-run bias stability**: inspect the nearly flat Allan region and variance across repeated static and temperature tests. Prevent gravity-projection error and mounting-orientation changes from being absorbed into the bias estimate.
+- **Bias-random-walk driving noise**: estimate $\sigma_{ba}$ from the corresponding long-term slope and convert it to the discrete covariance for the filter's sampling interval.
 
 ### 2.3.3 Allan Variance
 
@@ -439,7 +441,7 @@ On a log-log plot, the slope of the Allan deviation $\sigma(\tau)$ identifies th
 | $0$ | Bias instability | Flicker noise; the minimum is the bias stability |
 | $+1/2$ | Rate random walk (RRW) | Bias random walk $\mathbf{n}_{bg}, \mathbf{n}_{ba}$ |
 
-**How to read a datasheet.** Extracting the key parameters needed for sensor fusion from an IMU datasheet:
+**How to read a datasheet.** The parameters needed for sensor fusion can be extracted from an IMU datasheet as follows:
 
 1. **Angular random walk (ARW)**: units $°/\sqrt{\text{hr}}$ or $\text{rad/s}/\sqrt{\text{Hz}}$. Read the value at $\tau = 1\,\text{s}$ on the Allan deviation plot, or read from the slope-$-1/2$ region. This corresponds to $\sigma_g$.
 2. **Velocity random walk (VRW)**: units $\text{m/s}/\sqrt{\text{hr}}$ or $\text{m/s}^2/\sqrt{\text{Hz}}$. The white-noise density of the accelerometer. This corresponds to $\sigma_a$.
@@ -569,7 +571,7 @@ $$\mathbf{v}_{k+1} = \mathbf{v}_k + (\bar{\mathbf{a}} + \mathbf{g}) \Delta t$$
 
 $$\mathbf{p}_{k+1} = \mathbf{p}_k + \mathbf{v}_k \Delta t + \frac{1}{2}(\bar{\mathbf{a}} + \mathbf{g}) \Delta t^2$$
 
-This midpoint integration is the default scheme used in VINS-Mono, FAST-LIO2, and similar systems. Higher-order fourth-order Runge-Kutta (RK4) integration is also possible, but midpoint integration is sufficient at typical IMU rates (200 to 400 Hz).
+Midpoint integration is common in VIO implementations such as VINS-Mono. The propagation equations and discretization used by each system, including FAST-LIO2, should be checked in its implementation. A high IMU rate does not remove integration error under large angular acceleration or sampling jitter, so choose among midpoint, RK4, and preintegration using the target motion and error budget.
 
 ```python
 import numpy as np
@@ -650,25 +652,27 @@ def imu_strapdown(gyro_data, accel_data, dt, R0, v0, p0, bg, ba, gravity):
     return Rs, vs, ps
 ```
 
-**Numerical meaning of drift.** Consider how quickly the strapdown integration above diverges when the bias is not corrected. For an accelerometer bias of $b_a = 0.01\,\text{m/s}^2$ (about $1\,\text{mg}$, typical for MEMS):
+**Numerical meaning of drift.** A simple assumption illustrates how error accumulates when the strapdown integration above does not correct bias. For this example, assume a constant accelerometer bias of $b_a = 0.01\,\text{m/s}^2$ (about $1\,\text{mg}$).
 
 - Position error after 1 s: $\frac{1}{2} \times 0.01 \times 1^2 = 0.005\,\text{m}$ (5 mm)
 - After 10 s: $\frac{1}{2} \times 0.01 \times 100 = 0.5\,\text{m}$
 - After 60 s: $\frac{1}{2} \times 0.01 \times 3600 = 18\,\text{m}$
 
-This is why standalone inertial navigation is infeasible, and why we must continually estimate and correct the bias through sensor fusion. In VIO/LIO systems the biases $\mathbf{b}_g, \mathbf{b}_a$ are **included as part of the state vector** and are updated continuously from the observations of other sensors. Research on deep-learning-based inertial odometry has also been active. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659) strengthens the observability of IMU features and reports an accuracy improvement of more than 50 % over prior learning-based inertial odometry in drone settings.
+This example shows that position error in an unaided, low-cost MEMS inertial estimate can quickly exceed a mission budget even over a short interval. The useful duration depends on IMU performance, thermal environment, motion, initialization, and the mission's error budget. Higher-performance INS units can operate unaided for longer, but drift still accumulates. VIO/LIO systems **include** the biases $\mathbf{b}_g, \mathbf{b}_a$ **in the state vector** and update them from observations by other sensors. Research on deep-learning-based inertial odometry has also been active. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659) strengthens the observability of IMU features and reports an accuracy improvement of more than 50 % over prior learning-based inertial odometry in drone settings.
 
 ### 2.3.5 IMU Grade Classification
 
-IMUs are broadly divided into three grades by performance. The grade chosen for a sensor fusion system determines the frequency and type of external-sensor aiding required.
+Labels such as navigation grade, tactical grade, industrial, and consumer do not have uniform boundaries across vendors or fields. MEMS also names a fabrication technology rather than one exclusive performance grade. Select a device from its named specifications and tests on the target platform instead of relying on a grade label or fixed price table.
 
-| Grade | ARW | Bias stability (gyro) | Price | Standalone navigation time | Examples |
-|------|-----|----------------------|-------|-------------|------|
-| Navigation grade | $< 0.002°/\sqrt{\text{hr}}$ | $< 0.01°/\text{hr}$ | $>$ \$10k | hours | HG1700, LN-200 |
-| Tactical grade | $0.05\text{–}0.5°/\sqrt{\text{hr}}$ | $0.1\text{–}10°/\text{hr}$ | \$1k–10k | minutes | STIM300, ADIS16490 |
-| MEMS | $0.1\text{–}1°/\sqrt{\text{hr}}$ | $1\text{–}100°/\text{hr}$ | $<$ \$100 | seconds | BMI088, ICM-42688 |
+| Selection criterion | What to inspect | Validation evidence | Design impact |
+|----------|------------|----------|----------|
+| White noise | Gyro/accelerometer noise density and ARW/VRW units | Device datasheet + Allan test | Short-term propagation error |
+| Bias | In-run stability, random walk, temperature coefficient | Repeated static/temperature tests + Allan test | Unaided drift and aiding rate |
+| Dynamic range | Range, bandwidth, saturation, and clipping | Target motion/vibration profile | Observation loss during aggressive motion |
+| Timing | Output rate, timestamps, and clock/trigger support | Latency and jitter measurements | Temporal calibration and fusion consistency |
+| Environmental tolerance | Temperature, vibration, shock, and mounting stress | Vendor qualification + target-platform test | Repeatability and long-term stability |
 
-Robotics and autonomous driving use MEMS-grade IMUs almost exclusively, which makes tight fusion with cameras, LiDAR, and other sensors essential.
+Determine the external sensors and aiding rate by inserting these measurements into the mission error budget. Because price depends on date and volume, compare current quotes together with the required calibration and synchronization costs.
 
 ---
 
@@ -696,20 +700,20 @@ Meaning of each term:
 
 ### 2.4.2 Carrier Phase Observation Model
 
-Carrier phase observations are far more precise than pseudoranges (millimeter level). The L1 carrier (about 1575.42 MHz) has a wavelength of roughly 19 cm, and resolving the phase to only 1 % yields a range precision of roughly 2 mm.
+Fractional carrier-phase observations can have millimeter-scale noise, much smaller than pseudorange noise. That does not imply millimeter positioning accuracy by itself. The L1 carrier (about 1575.42 MHz) has a wavelength of roughly 19 cm, and integer ambiguity, cycle slips, multipath, and atmospheric errors must also be resolved or modeled.
 
 $$\Phi^s = r^s + c \cdot \delta t_r - c \cdot \delta t^s + \lambda N^s - I^s + T^s + \epsilon_\Phi$$
 
 where:
 - $\lambda$: carrier wavelength
-- $N^s$: **integer ambiguity** — the integer number of full wavelengths between receiver and satellite. An unknown integer whose accurate resolution is the crux of RTK/PPP.
+- $N^s$: **integer ambiguity** — the integer number of full wavelengths between receiver and satellite. RTK/PPP must resolve this unknown integer accurately.
 - $\epsilon_\Phi \approx 1\text{–}5\,\text{mm}$: carrier-phase noise (about 1/100 of the pseudorange noise)
 
-A notable point is that the ionospheric delay enters with the opposite sign from the pseudorange (group velocity vs phase velocity). This allows the ionospheric delay to be canceled with dual-frequency observations.
+The ionospheric delay enters with the opposite sign from the pseudorange (group velocity versus phase velocity). Dual-frequency combinations can estimate or mitigate the first-order ionospheric term, while higher-order terms and other error sources remain.
 
 ### 2.4.3 RTK (Real-Time Kinematic)
 
-RTK is a technique that uses **differencing** observations against a nearby (within a few km) base station to eliminate common errors (satellite clock, ionosphere, troposphere) and resolve the carrier-phase integer ambiguities in real time, achieving **centimeter-level** positioning.
+RTK uses **differenced** observations from a base station or correction network to reduce common errors and resolve carrier-phase integer ambiguities in real time. Atmospheric-error correlation weakens with baseline length; centimeter-class results require a fixed ambiguity solution and favorable signal and correction quality.
 
 **Double differencing.** The double difference between rover and base for satellite $s$ and reference satellite $r$:
 
@@ -730,7 +734,7 @@ PPP is a technique that achieves centimeter-level positioning with a single rece
 | Precision (after convergence) | $\sim 2\,\text{cm}$ | $\sim 5\,\text{cm}$ |
 | Coverage | Near the base station | Global |
 
-**Using GNSS in sensor fusion.** Because GNSS provides absolute position, combining it with VIO/LIO can completely eliminate long-term drift. [LIO-SAM (Shan et al., 2020)](https://arxiv.org/abs/2007.00258) is a representative example that adds a GNSS factor directly to the factor graph. Key considerations when incorporating GNSS observations into fusion:
+**Using GNSS in sensor fusion.** Global position observations from GNSS can bound or correct long-term VIO/LIO drift. Drift and bias can remain during outages or under multipath, frame-alignment, lever-arm, and time-offset errors. [LIO-SAM (Shan et al., 2020)](https://arxiv.org/abs/2007.00258) is a representative system that can add qualified GNSS measurements to its factor graph. Three checks apply when incorporating GNSS observations into fusion:
 
 1. **Coordinate frame transformation**: GNSS is output in WGS84 (latitude, longitude, ellipsoidal height), while robotics systems use a local frame such as ENU (East-North-Up) or NED (North-East-Down). A transformation is required.
 2. **Use of covariance**: The DOP (Dilution of Precision) values or position covariances output by the GNSS receiver should be used as the observation covariance in the fusion system.
@@ -801,7 +805,7 @@ def geodetic_to_enu(lat, lon, alt, lat0, lon0, alt0):
 
 ## 2.5 Radar Model
 
-Radar is an active sensor that uses radio waves. Its key advantage is reliable operation in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade. It also has the unique property of measuring relative **velocity directly** via the Doppler effect. Radar has become more important in autonomous driving.
+Radar is an active sensor that uses radio waves. It operates reliably in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade, and measures relative **velocity directly** via the Doppler effect.
 
 ### 2.5.1 FMCW Radar Principles
 
@@ -841,7 +845,7 @@ where $f_d$ is the Doppler frequency and $\lambda$ is the carrier wavelength. Fo
 
 Traditional automotive radar provides three-dimensional information — range, velocity, and azimuth — with very poor vertical resolution. **4D imaging radar** is a next-generation radar that provides four dimensions — range, Doppler, azimuth, and **elevation** — at high resolution.
 
-The key to 4D imaging radar is implementing a large virtual antenna array with MIMO (Multiple Input Multiple Output) technology. For example, 12 transmit antennas × 16 receive antennas = 192 virtual antennas, which achieves sufficient angular resolution both horizontally and vertically.
+4D imaging radar implements a large virtual antenna array with MIMO (Multiple Input Multiple Output) technology. For example, 12 transmit antennas × 16 receive antennas = 192 virtual antennas, which achieves sufficient angular resolution both horizontally and vertically.
 
 **4D Radar vs LiDAR:**
 
@@ -863,7 +867,7 @@ $$v_r^{(i)} = -\mathbf{e}^{(i)\top} \mathbf{v}_{\text{ego}}$$
 where $\mathbf{e}^{(i)}$ is the unit vector toward the $i$-th reflector and $\mathbf{v}_{\text{ego}}$ is the ego-velocity. Observations from multiple reflectors allow $\mathbf{v}_{\text{ego}}$ to be estimated by least squares.
 
 2. **Dynamic-object detection**: Moving objects are identified from the discrepancy between the predicted Doppler for the static environment and the actual observation.
-3. **Adverse-weather backup**: When rain or fog causes cameras and LiDAR to fail, radar functions as the only exteroceptive sensor.
+3. **Adverse-weather backup**: When rain or fog weakens camera and LiDAR observations, radar provides an independent exteroceptive measurement. Performance still depends on precipitation, frequency band, antenna, and signal-processing settings.
 
 ```python
 import numpy as np
@@ -901,7 +905,7 @@ def estimate_ego_velocity(bearings, doppler_velocities):
     return v_ego
 ```
 
-Radar's direct velocity measurement is information that other sensors cannot easily provide, and this is why radar is increasingly emerging as a core sensor in the multi-sensor fusion architectures covered in Ch.8.
+Radar measures velocity directly, information that other sensors cannot easily provide. This property is increasing its use in the multi-sensor fusion architectures covered in Ch.8.
 
 ---
 
@@ -963,7 +967,7 @@ Near sea level, a pressure change of about $8.5\,\text{Pa}$ corresponds to an al
 
 ### 2.6.3 Magnetometer
 
-A magnetometer measures the 3-axis magnetic field vector. From the Earth's magnetic field we can extract an absolute **yaw heading**.
+A magnetometer measures the 3-axis magnetic field vector. When roll/pitch compensation and hard/soft-iron calibration are valid and local magnetic disturbance is small, it can provide a heading relative to the geomagnetic field. True-north heading also requires the local magnetic declination.
 
 **Observation model.** The magnetometer reading is:
 
@@ -999,9 +1003,9 @@ where:
 - $t_{\text{reply}}$: processing time at the responding node
 - $n_d$: range noise, typically $\sigma_d \approx 5\text{–}30\,\text{cm}$ in LOS environments
 
-**NLOS (Non-Line-of-Sight) problem.** UWB achieves high precision when a direct line of sight (LOS) is available, but when the signal passes through walls or obstacles (NLOS), it is delayed and reports a range larger than the true one. NLOS detection and mitigation is the central challenge of UWB-based positioning.
+**NLOS (Non-Line-of-Sight) problem.** UWB achieves high precision when a direct line of sight (LOS) is available, but when the signal passes through walls or obstacles (NLOS), it is delayed and reports a range larger than the true one. UWB-based positioning must detect NLOS and reduce its effects.
 
-**Role in sensor fusion.** By pre-installing UWB anchors in the environment, one can estimate an absolute position by trilaterating the ranges to each anchor. This can substitute for GNSS indoors, and combined with VIO it corrects long-term drift.
+**Role in sensor fusion.** Preinstalled UWB anchors allow range-based position estimation in the anchor frame. The result becomes a global absolute position only if the anchor coordinates are surveyed into that global frame. Combined with VIO, UWB can bound drift where anchor geometry and NLOS conditions are adequate.
 
 **Observation equations (trilateration):**
 
@@ -1048,19 +1052,19 @@ def uwb_trilateration(anchor_positions, ranges):
 
 ## 2.7 Sensor Modeling Summary
 
-We summarize the observation models and key characteristics of the sensors covered in this chapter.
+The table summarizes each sensor's observation model and main characteristics.
 
-| Sensor | Observation | Observation model | Main noise sources | Typical noise level |
+| Sensor | Observation | Observation model | Main noise sources | Validation basis |
 |------|--------|----------|-------------|------------------|
-| Camera | 2D image coordinates | $\pi(\mathbf{T} \cdot \mathbf{P})$ (pinhole + distortion) | Detection noise, distortion residual | $0.5\text{–}2$ pixels |
-| LiDAR | 3D point $(r, \alpha, \omega)$ | Range-bearing | Range noise, beam divergence, mixed pixel | $1\text{–}5\,\text{cm}$ |
-| IMU (gyro) | Angular velocity $\boldsymbol{\omega}$ | $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$ | Bias, random walk | ARW $\sim 0.1\text{–}1°/\sqrt{\text{hr}}$ |
-| IMU (accel) | Specific force $\mathbf{a}$ | $\tilde{\mathbf{a}} = \mathbf{R}(\mathbf{a}-\mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$ | Bias, random walk | VRW $\sim 0.02\text{–}0.2\,\text{m/s}/\sqrt{\text{hr}}$ |
-| GNSS | Pseudorange $\rho$ | $\rho = r + c\delta t_r + I + T + \epsilon$ | Multipath, ionosphere, troposphere | $1\text{–}5\,\text{m}$ (SPP) |
-| Radar | Range, Doppler, bearing | FMCW beat frequency | Clutter, multipath | $\Delta R \sim 4\,\text{cm}$, $v \sim 0.1\,\text{m/s}$ |
-| Wheel odom. | Rotation count | $\Delta s = r \Delta\theta$ | Slip | $1\text{–}5\%$ of travel distance |
-| Barometer | Pressure $P$ | $h = f(P)$ | Weather change | $0.1\text{–}0.5\,\text{m}$ (short term) |
-| Magnetometer | Magnetic field $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | Hard/soft iron | $1\text{–}5°$ (after calibration) |
-| UWB | Range $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | $5\text{–}30\,\text{cm}$ (LOS) |
+| Camera | 2D image coordinates | $\pi(\mathbf{T} \cdot \mathbf{P})$ (pinhole + distortion) | Detection noise, distortion residual | Target detector and reprojection residuals on held-out images |
+| LiDAR | 3D point $(r, \alpha, \omega)$ | Range-bearing | Range noise, beam divergence, mixed pixel | Device datasheet + residual tests by range, surface, and incidence angle |
+| IMU (gyro) | Angular velocity $\boldsymbol{\omega}$ | $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$ | Bias, random walk | Device datasheet + Allan, temperature, and vibration tests |
+| IMU (accel) | Specific force $\mathbf{a}$ | $\tilde{\mathbf{a}} = \mathbf{R}(\mathbf{a}-\mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$ | Bias, random walk | Device datasheet + Allan, temperature, and vibration tests |
+| GNSS | Pseudorange $\rho$ | $\rho = r + c\delta t_r + I + T + \epsilon$ | Multipath, ionosphere, troposphere | Target-environment logs by receiver and correction status |
+| Radar | Range, Doppler, bearing | FMCW beat frequency | Clutter, multipath | Device range/velocity/angular resolution + tests by target, RCS, and weather |
+| Wheel odom. | Rotation count | $\Delta s = r \Delta\theta$ | Slip | Repeated trajectories by surface, load, and slip condition |
+| Barometer | Pressure $P$ | $h = f(P)$ | Weather change | Repeated static, temperature, and weather-condition measurements |
+| Magnetometer | Magnetic field $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | Hard/soft iron | Calibration residual + magnetic-interference test at the operating site |
+| UWB | Range $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | Per-anchor LOS/NLOS range residuals |
 
 Accurately understanding each sensor's observation model is the first step of sensor fusion. Using sensors together requires **calibration**, the process of determining the geometric and temporal relationships between them. No matter how accurate the observation models, fusion performance degrades substantially if the relative sensor positions and time synchronization are inaccurate.

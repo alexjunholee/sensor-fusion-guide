@@ -1,8 +1,8 @@
 # Ch.11 — Spatial Representations
 
-In Ch.6-10 we covered the process of estimating the robot's trajectory from sensor data and securing global consistency through loop closure. What remains is the **map** — the byproduct and final goal of that process, and the form in which the robot remembers and uses the world.
+A robot estimates its trajectory from sensor data, establishes global consistency through loop closure, and records the result as a **map**. The map is the form in which the robot remembers and uses the world.
 
-The ultimate output of sensor fusion is a **map** — a spatial representation of the environment. What a SLAM system estimates is not only the robot's trajectory but also the structure of the environment observed along that trajectory. The way in which the environment is represented determines what the robot can do: path planning requires free/occupied information, visual rendering requires texture information, and human interaction requires semantic information.
+A **map** is a spatial representation of the environment. A SLAM system estimates the robot's trajectory together with the structure observed along it. The representation determines which tasks the robot can perform: path planning requires free/occupied information, visual rendering requires texture, and human interaction requires semantics.
 
 The starting point is metric maps (quantitative geometric maps), followed by mesh, neural representation, semantic map, and long-term maintenance.
 
@@ -10,7 +10,7 @@ The starting point is metric maps (quantitative geometric maps), followed by mes
 
 ## 11.1 Metric Maps
 
-A metric map represents the geometric structure of the environment in quantitative coordinates. It is the most basic form and is still the most widely used.
+A metric map represents the geometric structure of the environment in quantitative coordinates. It is widely used because it connects directly to localization and planning, although the appropriate representation depends on the task and sensors.
 
 ### 11.1.1 Occupancy Grid (2D/3D)
 
@@ -24,7 +24,7 @@ Using the log-odds representation turns multiplication into addition, making com
 
 $$l(m_i) = \log\frac{p(m_i)}{1 - p(m_i)}$$
 
-**Problem**: representing a 3D environment requires a 3D occupancy grid. Representing an $L \times W \times H$ space at resolution $r$ requires $(L/r)(W/r)(H/r)$ cells. For instance, representing a 100 m $\times$ 100 m $\times$ 10 m space at 5 cm resolution requires about $8 \times 10^9$ cells, roughly 32 GB of memory. This is impractical.
+**Problem**: a dense 3D grid over an $L \times W \times H$ space at resolution $r$ requires $(L/r)(W/r)(H/r)$ cells. A 100 m $\times$ 100 m $\times$ 10 m volume at 5 cm contains $2000 \times 2000 \times 200 = 8 \times 10^8$ cells. One float per cell is about 3.2 GB before weights, semantics, and data-structure overhead.
 
 ```python
 import numpy as np
@@ -119,13 +119,13 @@ class OccupancyGrid2D:
 
 To address the memory problem of uniform grids, various adaptive data structures have been proposed.
 
-**[OctoMap](https://doi.org/10.1007/s10514-012-9321-0)** (Hornung et al. 2013): an octree-based probabilistic 3D occupancy map. Space is recursively subdivided into octants, and regions that are entirely occupied or entirely free stop subdividing early (pruning). Through this, empty space is represented with large units and only regions near fine structure are represented with small units, saving memory.
+**[OctoMap](https://doi.org/10.1007/s10514-012-9321-0)** (Hornung et al. 2013): an octree-based probabilistic 3D occupancy map. Space is recursively subdivided into octants, while regions that are entirely occupied or entirely free stop subdividing early (pruning). Large cells represent empty space, and small cells are reserved for fine structure, reducing memory use.
 
-Key properties:
+OctoMap has the following properties:
 - **Probabilistic update**: uses the same log-odds update as an occupancy grid.
 - **Adaptive resolution**: automatically adjusts from the finest resolution (e.g., 2 cm, leaf node) to the coarsest resolution (e.g., several m, near the root).
-- **Memory efficiency**: a 64 m$^3$ space can be represented at 1 cm resolution in about 60 MB (hundreds of times smaller than a uniform grid).
-- **Limitations**: the cost of tree rebalancing on dynamic insertion/deletion, and slow nearest-neighbor (kNN) search.
+- **Memory efficiency**: refining near observed boundaries can use less memory than a dense grid when large regions are free or unknown. The ratio depends on occupancy structure and tree overhead.
+- **Limitations**: pointer and tree overhead remain. It supports occupancy queries but does not replace a kNN or surface-registration index, and removing dynamic objects requires an inverse sensor update and temporal policy.
 
 ```python
 class SimpleOctreeNode:
@@ -207,11 +207,11 @@ class SimpleOctreeNode:
             self.is_leaf = True
 ```
 
-**OpenVDB**: a sparse volumetric data structure originating from the film VFX industry. Based on a hash map, it stores only activated voxels, making it highly efficient when only a tiny fraction of voxels in a large space are occupied. It is faster to traverse than OctoMap, but the user must implement probabilistic updates directly.
+**OpenVDB**: a sparse volumetric structure from film VFX. It uses a fixed-depth, wide hierarchical tree with tile/value compression to omit background regions. Its structure and API differ from OctoMap, so traversal speed cannot be ranked universally; an application must define probabilistic occupancy updates.
 
 **ikd-tree** (FAST-LIO2): an incremental k-d tree that performs point insertion and deletion in $O(\log n)$ and supports dynamic rebalancing. Used as the map data structure in FAST-LIO2, it adds LiDAR points to the map in real time while efficiently performing nearest-neighbor (kNN) search.
 
-Core operations of ikd-tree:
+An ikd-tree provides three operations:
 - **Insertion**: insert a new point into the k-d tree. Partial rebalancing occurs when the imbalance exceeds a threshold.
 - **Deletion**: remove old points outside a certain range via lazy deletion.
 - **kNN search**: find the nearest map points to an observed point and use them for point-to-plane registration.
@@ -235,7 +235,7 @@ A surfel (surface element) is a disk-shaped surface primitive that augments a po
 - $r \in \mathbb{R}^+$: radius
 - $c$: color/confidence
 
-**[ElasticFusion](https://doi.org/10.15607/RSS.2015.XI.001)** (Whelan et al. 2015): a dense SLAM system that builds a surfel map in real time from an RGB-D sensor. The core ideas are:
+**[ElasticFusion](https://doi.org/10.15607/RSS.2015.XI.001)** (Whelan et al. 2015) is a dense SLAM system that builds a surfel map in real time from an RGB-D sensor. It uses three processes:
 
 1. Frame-to-model tracking: register the current frame against a rendering of the surfel map.
 2. Map deformation: upon loop closure, non-rigidly deform the entire surfel map via an embedded deformation graph.
@@ -472,32 +472,32 @@ class TSDFVolume:
 
 **[Voxblox](https://arxiv.org/abs/1611.03631)** (Oleynikova et al. 2017) is a TSDF-based real-time 3D reconstruction system that efficiently computes the **ESDF (Euclidean Signed Distance Field)** essential for path planning.
 
-Core pipeline:
+Voxblox operates in three stages:
 
 1. **TSDF integration**: integrate RGB-D or depth point clouds into the TSDF in a projective manner.
 2. **Mesh extraction**: extract a mesh from the TSDF incrementally via Marching Cubes. Reprocess only changed voxel blocks.
 3. **ESDF computation**: compute the ESDF from the TSDF. The ESDF stores the Euclidean distance from each voxel to the nearest obstacle.
 
-Why ESDF matters: in path planning the robot must maintain a safety distance from obstacles, and having an ESDF allows querying the distance from an arbitrary point to the nearest obstacle in $O(1)$. It also provides gradient information, so the direction to avoid obstacles is immediately available.
+Path planning must maintain a safe distance between the robot and obstacles. An ESDF allows the distance from an arbitrary point to the nearest obstacle to be queried in $O(1)$. It also provides gradient information from which the avoidance direction can be obtained directly.
 
 ### 11.2.3 Poisson Surface Reconstruction
 
 Poisson reconstruction is a method that generates a watertight mesh from an oriented point cloud (position + normals).
 
-**Core idea**: interpret the normal vectors as a gradient field, take the divergence of this gradient, and solve the Poisson equation:
+Poisson reconstruction interprets the normal vectors as a gradient field, takes the divergence of this gradient, and solves the Poisson equation:
 
 $$\nabla^2 \chi = \nabla \cdot \mathbf{V}$$
 
 Here $\mathbf{V}$ is the normal vector field, and $\chi$ is the indicator function (1 inside the surface, 0 outside). This PDE is solved efficiently on an octree, and an iso-surface is extracted.
 
-Advantages: robust to noise, produces a watertight mesh, and works well even when the input points have non-uniform density. Disadvantages: suited to offline processing; for real-time SLAM, TSDF-based methods are preferred.
+Poisson reconstruction solves for a global implicit function and can close a surface, but depends on oriented-normal quality and depth or screening settings; it may also seal openings that should remain open. Its cost makes it common in post-processing, whereas TSDF meshing fits systems that need incremental depth integration.
 
 ### 11.2.4 Real-Time Mesh Generation
 
-Modern approaches to real-time mesh generation in SLAM systems:
+SLAM systems can mesh an incremental TSDF or pass an online point/surfel map to a separate surface-reconstruction stage:
 
 1. **Voxblox incremental meshing**: re-run Marching Cubes only on voxel blocks whose TSDF has been updated. Real time is achievable because the entire volume is not reprocessed.
-2. **FAST-LIVO2 mesh**: attach camera colors to LiDAR points to generate a colored mesh in real time. Post-process from the unified voxel map via Poisson or Ball Pivoting.
+2. **FAST-LIVO2 colored point map + post-processing**: FAST-LIVO2 uses camera intensity for visual updates and can output a colored point map; its online output should not be described as a mesh. If a mesh is needed, inspect normals and density in the exported point map before a separate Poisson or Ball-Pivoting reconstruction.
 
 ---
 
@@ -524,15 +524,15 @@ Here $T(t) = \exp\left(-\int_{t_n}^{t} \sigma(\mathbf{r}(s)) ds\right)$ is the a
 1. **Tracking**: optimize the camera pose of the current frame against the existing neural map (photometric loss + depth loss).
 2. **Mapping**: at the estimated pose, update the neural network weights. While learning newly observed regions, the representation of previously observed regions must remain consistent.
 
-**[iMAP](https://arxiv.org/abs/2103.12352)** (Sucar et al. 2021): the first neural implicit SLAM. It represents the scene with a single MLP. For real-time performance, it uses keyframe-based learning and an active sampling strategy.
+**[iMAP](https://arxiv.org/abs/2103.12352)** (Sucar et al. 2021) was an early system to use a single MLP as the sole scene representation in real-time handheld RGB-D SLAM. The paper reports 10 Hz tracking and 2 Hz global-map updates using a keyframe structure and information-guided pixel sampling.
 
 Limitations:
 - **Training speed**: MLP training is slow, constraining real-time mapping.
 - **Forgetting**: learning new regions degrades the representation of previously seen regions (catastrophic forgetting).
 - **Scalability**: the capacity limit of a single MLP in large-scale environments.
 
-Directions of improvement:
-- **Instant-NGP**: hash-grid-based feature encoding accelerates training by tens of times. NeRF-SLAM variants leveraging this have emerged.
+Recent variants use the following components:
+- **Instant-NGP**: multi-resolution hash-grid feature encoding accelerates neural scene training and rendering. NeRF-SLAM variants leveraging it have emerged.
 - **Multi-resolution hash grid**: partition space into hash tables at multiple resolutions, storing and querying local features efficiently.
 
 **[NICE-SLAM](https://arxiv.org/abs/2112.12130)** (Zhu et al. 2022): a dense SLAM system that addresses iMAP's scalability problem by introducing a hierarchical feature grid and a pre-trained geometry decoder. It operates stably even in large-scale indoor environments and was presented at CVPR 2022.
@@ -546,7 +546,7 @@ Directions of improvement:
 - Opacity $\alpha \in [0, 1]$
 - Color (spherical harmonics coefficients)
 
-Rendering is performed by splatting — projecting 3D Gaussians onto the image plane and alpha-blending them in depth order — which is tens of times faster than NeRF's ray marching.
+Rendering is performed by splatting — projecting 3D Gaussians onto the image plane and alpha-blending them in depth order. With explicit primitives and rasterization, the original 3DGS paper reports real-time rendering under its scenes, resolutions, and hardware setup.
 
 **[3DGS-SLAM](https://arxiv.org/abs/2312.06741)** (Matsuki et al. 2024): uses 3DGS as the SLAM representation:
 
@@ -565,13 +565,13 @@ Rendering is performed by splatting — projecting 3D Gaussians onto the image p
 | Memory | Fixed (model size) | Variable (proportional to number of Gaussians) |
 | Loop closure handling | Hard (weight deformation) | Relatively easy (Gaussian transformation) |
 
-Limits remain. Neither method yet surpasses traditional map representations (TSDF, surfel) in accuracy and real-time performance across all situations. In large-scale environments, dynamic scenes, and long-term SLAM, traditional methods remain more stable. In rendering quality, neural representations are much stronger, and this gap is narrowing.
+The tradeoff between neural maps and TSDF or surfel maps depends on the sensor, scene scale, dynamic objects, long-term consistency, and rendering requirements. Neural representations can optimize novel-view rendering jointly with mapping, but memory growth and loop correction must be evaluated separately for large-scale or long-running systems.
 
-**Recent major advances (2024-2025)**:
+**Recent systems (2024-2025)**:
 
-- **[SplaTAM](https://arxiv.org/abs/2312.02126)** (Keetha et al. CVPR 2024): tracks and maps 3D Gaussians in real time from an RGB-D camera, and with silhouette-mask-based structured map expansion achieves more than 2x improvement over prior methods in camera pose estimation and novel-view synthesis.
-- **[MonoGS](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024 Highlight): the first monocular 3DGS SLAM, performing accurate tracking, mapping, and high-quality rendering in an integrated pipeline at 3fps with only a monocular camera. It resolves the ambiguity of monocular 3D reconstruction with geometric verification and regularization.
-- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): a system that integrates a 3D reconstruction foundation model (MASt3R) into SLAM, recovering globally-consistent dense geometry at 15fps without camera-model assumptions.
+- **[SplaTAM](https://arxiv.org/abs/2312.02126)** (Keetha et al. CVPR 2024): performs online tracking and mapping of 3D Gaussians from an RGB-D camera and expands the map using a silhouette mask. Depending on the metric and scene, the paper reports improvements of up to 2x in camera pose, map construction, and novel-view synthesis.
+- **[MonoGS](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024 Highlight): uses 3D Gaussians as the sole 3D representation for integrated monocular tracking, mapping, and rendering. The paper reports operation at 3 fps and uses geometric verification and regularization to address monocular reconstruction ambiguities.
+- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): integrates the MASt3R 3D-reconstruction foundation model into SLAM. The paper reports dense SLAM without a predefined camera model and throughput of 15 fps.
 
 ```python
 import numpy as np
@@ -705,13 +705,13 @@ def render_gaussians(gaussians, T_world_to_cam, K, image_size):
 
 ## 11.4 Semantic Maps
 
-A geometric map answers only the "where" of "where is what." A semantic map also answers the "what" — whether this is a wall, a door, a chair, or a person. For the robot to achieve human-level environmental understanding, semantic information is essential.
+A geometric map answers only the "where" of "where is what." A semantic map also answers the "what" — whether this is a wall, a door, a chair, or a person. A robot needs semantic information to distinguish the objects and categories in its environment.
 
 ### 11.4.1 Object-Level Maps
 
-The most intuitive semantic map recognizes the objects in an environment and registers their positions and sizes in the map.
+An object-level map recognizes the objects in an environment and registers their positions and sizes in the map.
 
-Pipeline:
+An object-level map is built in four stages:
 1. **2D detection/segmentation**: detect objects in camera images (YOLO, Mask R-CNN, SAM, etc.).
 2. **3D lifting**: back-project 2D detections into 3D space using depth information and the camera pose.
 3. **Data association**: link the same object observed across multiple frames (tracking + re-identification).
@@ -799,7 +799,7 @@ class ObjectMap:
 
 An object-level map only recognizes individual objects. But humans understand environments as hierarchical relations: "this room has a table, on top of which is a cup, and this room is a living room." A **3D Scene Graph** is such a hierarchical, relational environmental representation.
 
-**[Hydra](https://arxiv.org/abs/2201.13360)** (Hughes et al. 2022) is the first system to build a 3D scene graph incrementally in real time. It consists of five layers:
+**[Hydra](https://arxiv.org/abs/2201.13360)** (Hughes et al. 2022) is an early public system that incrementally builds several layers of a 3D scene graph online and jointly corrects them after loop closure. It consists of five layers:
 
 | Layer | Contents | Construction method |
 |-------|------|-----------|
@@ -809,7 +809,7 @@ An object-level map only recognizes individual objects. But humans understand en
 | 4 | Rooms | Community detection on the place graph |
 | 5 | Buildings | Higher-level grouping of rooms |
 
-**Construction of the Places layer**: this layer is the most original part of Hydra.
+**Construction of the Places layer**: Hydra builds this layer as follows.
 
 1. Compute the ESDF from the TSDF.
 2. Incrementally extract the GVD from the ESDF. Vertices of the GVD are points maximally far from obstacles — i.e., good points for the robot to pass through.
@@ -834,13 +834,9 @@ An object-level map only recognizes individual objects. But humans understand en
 
 Traditional semantic mapping operates only over a predefined class set (e.g., COCO's 80 classes). **Open-vocabulary semantic mapping** enables searching the map with arbitrary text queries.
 
-Core techniques:
+The system extracts CLIP/DINO features from each observation (an image or patch) and stores them at the corresponding 3D location. When the user queries "red fire extinguisher," the system encodes the text with the CLIP text encoder, compares it with the map's visual features using cosine similarity, and returns the corresponding location.
 
-1. **CLIP/DINO feature embedding**: extract features from a vision-language model for each observation (image or image patch).
-2. **Feature -> 3D map**: store the extracted features at the corresponding 3D location (attached to a point cloud or voxel).
-3. **Text query**: when the user queries, say, "red fire extinguisher," encode the text with the CLIP text encoder, compute similarity against the map's visual features, and return the corresponding location.
-
-Impact of this approach: the robot can recognize and locate objects it was not trained on in advance. It works even for "things never seen before." This is essential in unpredictable environments such as household robots and exploration robots.
+The robot can therefore locate objects on which it was not trained in advance. This is useful for household and exploration robots operating in unpredictable environments.
 
 ```python
 class OpenVocabSemanticMap:
@@ -969,11 +965,11 @@ def detect_changes(occupancy_map, current_scan, robot_pose, threshold=0.3):
     return new_objects, removed_objects
 ```
 
-**Semantic change detection**: detect not only geometric changes but also changes in an object's class or state. For example, "chair moved" or "door opened/closed."
+**Semantic change detection**: detect changes in an object's class or state in addition to geometric changes. Examples include "chair moved" and "door opened/closed."
 
 ### 11.5.2 Map Maintenance: Retention Strategies
 
-In long-term operation, we cannot store all observations of the map indefinitely. Which information do we keep and which do we discard?
+Long-term operation cannot retain every observation indefinitely, so map maintenance needs criteria for keeping and discarding information.
 
 **Strategy 1: Recency weighting**: assign higher weights to recent observations and gradually decay the influence of older ones. A scheme that decays the TSDF weight over time.
 
@@ -1084,4 +1080,4 @@ class DynamicMapManager:
 
 ---
 
-Spatial representations span point-based representations (OctoMap), continuous surfaces (TSDF/Mesh), neural representations (NeRF/3DGS), and semantic hierarchies (Scene Graph). Each representation is suited to different downstream tasks, and modern systems trend toward combining them hierarchically. Real platforms then have to integrate these algorithms and representations in autonomous driving, drones, and handheld systems, and evaluate their performance.
+Spatial representations include volumetric occupancy such as OctoMap, point and surfel maps, continuous surfaces such as TSDF and meshes, neural representations such as NeRF and 3DGS, and semantic scene graphs. Each has different query, error, and memory tradeoffs, so combine and evaluate them for the platform's sensors and downstream tasks.

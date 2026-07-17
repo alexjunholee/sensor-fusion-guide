@@ -1,10 +1,10 @@
 # Ch.7 — LiDAR Odometry & LiDAR-Inertial Odometry
 
-In Ch.6 we covered camera(+IMU)-based Visual Odometry. The same ego-motion estimation problem changes shape when solved from the LiDAR side.
+The same ego-motion estimation problem changes shape when LiDAR replaces the camera(+IMU).
 
-LiDAR is a sensor that complements the camera. While the camera provides rich texture information but is sensitive to illumination and cannot recover absolute range, LiDAR delivers illumination-invariant, precise 3D range measurements. LiDAR Odometry (LO) estimates ego-motion from LiDAR alone, and LiDAR-Inertial Odometry (LIO) couples LiDAR with an IMU. Their internal structure is the focus here.
+LiDAR complements the camera. A camera provides rich texture but is sensitive to visible-light illumination, and monocular geometry alone does not determine absolute range. LiDAR measures 3D range with less sensitivity to visible-light changes, but rain, fog, reflectivity, and multipath can still affect it. LiDAR Odometry (LO) estimates ego-motion from LiDAR alone, and LiDAR-Inertial Odometry (LIO) couples LiDAR with an IMU.
 
-The central problem in LiDAR odometry is **point cloud registration** — finding the rigid-body transformation $\mathbf{T} \in SE(3)$ between two consecutive scans. Despite its seeming simplicity, this problem in practice involves a variety of challenges: data association (correspondence), noise modeling, computational efficiency, and motion distortion compensation.
+LiDAR odometry uses **point cloud registration** to find the rigid-body transformation $\mathbf{T} \in SE(3)$ between two consecutive scans. The process involves data association (correspondence), noise modeling, computational efficiency, and motion distortion compensation.
 
 ---
 
@@ -70,7 +70,7 @@ and from the eigendecomposition $\mathbf{C} = \mathbf{V}\boldsymbol{\Lambda}\mat
 
 GICP ([Segal et al., 2009](https://doi.org/10.15607/RSS.2009.V.021)) unifies point-to-point, point-to-plane, and plane-to-plane ICP into a single probabilistic framework.
 
-The key idea: each point is modeled as carrying a covariance $\mathbf{C}_i$ that reflects the uncertainty of the local surface. The cost function is
+Each point is modeled as carrying a covariance $\mathbf{C}_i$ that reflects the uncertainty of the local surface. The cost function is
 
 $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i (\mathbf{T} \cdot \mathbf{p}_i - \mathbf{q}_{c(i)})^T (\mathbf{C}_i^{\mathcal{Q}} + \mathbf{R}\mathbf{C}_i^{\mathcal{P}}\mathbf{R}^T)^{-1} (\mathbf{T} \cdot \mathbf{p}_i - \mathbf{q}_{c(i)})$$
 
@@ -81,7 +81,7 @@ where $\mathbf{C}_i^{\mathcal{P}}, \mathbf{C}_i^{\mathcal{Q}}$ are the local sur
 - In this case GICP automatically becomes plane-to-plane registration.
 - When $\mathbf{C}^{\mathcal{P}} = \mathbf{0}$ it reduces to point-to-plane, and when $\mathbf{C}^{\mathcal{P}} = \mathbf{C}^{\mathcal{Q}} = \mathbf{I}$ it reduces to point-to-point.
 
-GICP is theoretically the most general ICP framework, and in practice it delivers the most accurate results across a wide range of environments.
+GICP places point-to-point and point-to-plane ICP in a covariance-based probabilistic framework. Its paper reports better accuracy and robustness to correspondence errors than those two baselines in the tested data, but practical results still depend on initialization, overlap, sampling, and outlier handling.
 
 ```python
 # GICP core iteration pseudocode
@@ -180,9 +180,7 @@ Practical ways to supply an initial guess:
 
 LOAM ([Zhang & Singh, 2014](https://doi.org/10.15607/RSS.2014.X.007)) is the reference point of LiDAR odometry. It held a top position on the KITTI odometry benchmark for a long time and became the foundation of many follow-up systems such as LeGO-LOAM, LIO-SAM, and A-LOAM.
 
-**Key idea: feature extraction + two-stage architecture**
-
-LOAM's core insights are twofold:
+LOAM combines two elements:
 1. Extracting geometric features (edge, planar) from a LiDAR scan enables accurate registration using far fewer points than the full point cloud.
 2. Separating fast odometry from slow mapping achieves real-time operation and high accuracy at the same time.
 
@@ -232,7 +230,7 @@ The mapping module is slower than the odometry module but more accurate. The map
 
 **Motion Distortion Compensation**
 
-A spinning LiDAR takes about 100 ms to complete a single scan. During that time the robot is moving, so the points in a scan are acquired at different instants. Without compensating for this motion distortion, registration accuracy suffers significantly.
+A spinning LiDAR's scan duration is the reciprocal of its rotation rate: at 10 Hz, for example, it is about 100 ms. The platform moves during that interval, so points have different acquisition times. Distortion scales with scan duration and motion and should be corrected using timestamps and a trajectory estimate.
 
 Compensation method: If the pose change $\mathbf{T}_{s \to e}$ between the scan start $t_s$ and scan end $t_e$ is known, we estimate the intermediate pose at each point's timestamp $t_k$ by constant-velocity interpolation:
 
@@ -348,11 +346,11 @@ class LOAM:
 
 LeGO-LOAM ([Shan & Englot, 2018](https://doi.org/10.1109/IROS.2018.8594299)) adds ground segmentation to LOAM and trims the computation to achieve real-time operation even on embedded systems such as the Jetson TX2.
 
-**Key additions in LeGO-LOAM**:
+LeGO-LOAM adds four elements:
 
 1. **Ground segmentation**: The point cloud is converted to a range image, and ground points are separated from non-ground points. A point is classified as ground if the slope between adjacent beams is below 10°. Ground points are used as planar features, and edge features are extracted from non-ground points.
 
-2. **Point cloud segmentation**: On the non-ground points, range-image-based clustering is performed. Clusters below a certain size are discarded as noise. This preprocessing significantly improves feature quality compared to LOAM.
+2. **Point cloud segmentation**: On the non-ground points, range-image-based clustering is performed. Clusters below a certain size are discarded as noise. LeGO-LOAM uses this preprocessing to select non-ground features in ground-vehicle environments.
 
 3. **Two-stage LM optimization**: Whereas LOAM optimizes all 6-DoF at once, LeGO-LOAM first estimates $[t_z, \theta_{\text{roll}}, \theta_{\text{pitch}}]$ from ground planar features and then $[t_x, t_y, \theta_{\text{yaw}}]$ from edge features. This decomposition improves convergence speed and stability.
 
@@ -360,13 +358,13 @@ LeGO-LOAM ([Shan & Englot, 2018](https://doi.org/10.1109/IROS.2018.8594299)) add
 
 ### 7.2.3 Why the LOAM Family Has Endured
 
-Over ten years have passed since LOAM was published in 2014, yet the LOAM-family ideas remain the mainstream of LiDAR odometry. The reasons:
+Over ten years have passed since LOAM was published in 2014, yet the LOAM-family ideas remain the mainstream of LiDAR odometry. Four properties account for this longevity.
 
 1. **Geometric clarity**: Edge and planar features correspond to physically meaningful geometric primitives. This structured-environment assumption fits most man-made environments well.
 
 2. **Computational efficiency**: Using hundreds to thousands of feature points instead of the full point cloud (tens to hundreds of thousands of points) makes the system fast.
 
-3. **Extensibility**: IMU (LIO-SAM), GPU (KISS-ICP), camera (LVI-SAM), and other modules can be plugged into the base framework.
+3. **Extensibility**: A LiDAR frontend can be combined with an IMU (LIO-SAM) or camera (LVI-SAM). KISS-ICP belongs to a different lineage: it is a deliberately simple LiDAR-only ICP system, not a GPU module added to LOAM.
 
 4. **Robustness**: The edge/planar classification acts as a kind of outlier filter — points belonging to noise or dynamic objects do not show consistent curvature patterns and are naturally excluded.
 
@@ -384,7 +382,7 @@ LIO-SAM ([Shan et al., 2020](https://arxiv.org/abs/2007.00258)) is a LIO system 
 
 **Factor-graph-based integration**
 
-The core innovation of LIO-SAM is modeling the various sensor measurements as factors of a factor graph:
+LIO-SAM models the various sensor measurements as factors of a factor graph:
 
 1. **IMU Preintegration Factor**: On-manifold preintegration from Forster et al. (2017) expresses the IMU constraint between consecutive keyframes. This factor provides constraints on the relative rotation, velocity, and position between two keyframes, along with bias estimation.
 
@@ -483,8 +481,6 @@ class LIOSAM:
 
 FAST-LIO2 ([Xu et al., 2022](https://doi.org/10.1109/TRO.2022.3141855)) takes a completely different approach from the LOAM family. It eliminates feature extraction and is a direct LiDAR-inertial odometry that registers raw LiDAR points directly to the map.
 
-**Three core innovations**:
-
 **1. Direct point registration (no feature extraction)**
 
 Unlike LOAM, which extracts edge/planar features, FAST-LIO2 uses every raw point directly. For each point $\mathbf{p}_k$ it finds the closest plane in the map and minimizes the point-to-plane distance:
@@ -500,7 +496,7 @@ Why eliminate feature extraction?
 
 **2. ikd-Tree (Incremental k-d Tree)**
 
-The second key innovation of FAST-LIO2 is the map data structure. A conventional kd-tree is static and inefficient for point insertion/deletion. The ikd-Tree supports:
+The second change in FAST-LIO2 is its map data structure. A conventional kd-tree is static and inefficient for point insertion/deletion. The ikd-Tree supports:
 
 - **Point insertion**: insert a new point in $O(\log N)$ time.
 - **Point deletion**: efficient removal of points outside the map region via lazy deletion.
@@ -522,7 +518,7 @@ where $k$ is the iteration index, $\hat{\mathbf{x}}^{-}$ is the prediction, and 
 Kalman gain:
 $$\mathbf{K}^{(k)} = \mathbf{P}^{-} (\mathbf{H}^{(k)})^T (\mathbf{H}^{(k)} \mathbf{P}^{-} (\mathbf{H}^{(k)})^T + \mathbf{R})^{-1}$$
 
-IEKF typically converges in 3-5 iterations. It achieves an effect similar to Gauss-Newton optimization while retaining the filter's advantage of naturally propagating uncertainty (covariance).
+Set IEKF iterations from residual reduction or state-increment criteria. FAST-LIO-family configurations often use a small number, but the count depends on initialization and scene geometry. The update uses Gauss-Newton-related iterative linearization while also propagating covariance.
 
 **State vector**:
 
@@ -530,7 +526,7 @@ $$\mathbf{x} = [{}^G\mathbf{R}_I, {}^G\mathbf{p}_I, {}^G\mathbf{v}_I, \mathbf{b}
 
 In addition to the rotation ${}^G\mathbf{R}_I$, position ${}^G\mathbf{p}_I$, velocity ${}^G\mathbf{v}_I$, gyro bias $\mathbf{b}_g$, and accelerometer bias $\mathbf{b}_a$, the state also includes the LiDAR-IMU extrinsics ${}^I\mathbf{R}_L, {}^I\mathbf{p}_L$ and the gravity vector $\mathbf{g}$. In other words, the extrinsic calibration and the gravity direction are also estimated online.
 
-**Performance of FAST-LIO2**: Up to 100 Hz odometry + mapping is achieved in outdoor environments. It runs on multi-line spinning LiDARs, solid-state LiDARs (Livox), UAV/handheld platforms, and Intel/ARM processors alike.
+**Reported FAST-LIO2 performance**: the paper reports odometry and mapping rates up to 100 Hz under the authors' hardware and data and evaluates multi-line spinning and solid-state LiDARs across several platforms and processors. Remeasure throughput for the current point count, CPU, and map size.
 
 ```cpp
 // FAST-LIO2 IEKF update pseudocode (C++)
@@ -610,19 +606,17 @@ void FASTLIO2::iterated_ekf_update(const PointCloud& scan, State& x, MatrixXd& P
 
 Faster-LIO replaces the ikd-Tree of FAST-LIO2 with an incremental voxel structure to achieve even faster processing.
 
-The key change: instead of a kd-tree, a hash-map-based voxel structure is used. A plane is maintained within each voxel, and the plane parameters are updated incrementally whenever a point is added. The $O(\log N)$ kd-tree search is replaced by $O(1)$ hash access, boosting speed.
+Instead of a kd-tree, the method uses a hash-map-based voxel structure. A plane is maintained within each voxel, and the plane parameters are updated incrementally whenever a point is added. The $O(\log N)$ kd-tree search is replaced by $O(1)$ hash access.
 
 ### 7.3.4 Point-LIO
 
 Point-LIO ([He et al., 2023](https://doi.org/10.1002/aisy.202200459)) is an extreme extension of the FAST-LIO series. It updates the state at the granularity of **individual points** rather than scans.
 
-**Why per-point processing?**
-
 Conventional LIO treats an entire scan (~100 ms) as a single observation. During that interval, motion distortion is corrected by constant-velocity interpolation, but under fast/high-angular-rate motion the constant-velocity assumption breaks down.
 
-Point-LIO performs an EKF update as soon as each point arrives (on the order of $\sim$μs). Using the IMU's high-rate (~1 kHz) measurements together with the LiDAR point timestamps, it uses the IMU state that exactly corresponds to each point.
+Point-LIO propagates the state in point-timestamp order and performs point-wise updates. High-rate IMU measurements and LiDAR timestamps provide an estimate at each observation time, improving temporal resolution over a single scan-level motion assumption; it is still an estimate affected by IMU noise, bias, and synchronization error.
 
-**Mathematical core**: Point-LIO's state propagation model, over the short interval between IMU measurements, discretizes
+Point-LIO discretizes the following continuous model over the short interval between IMU measurements:
 
 $$\frac{d}{dt}\mathbf{R} = \mathbf{R}[\boldsymbol{\omega}]_\times, \quad \frac{d}{dt}\mathbf{v} = \mathbf{R}\mathbf{a} + \mathbf{g}, \quad \frac{d}{dt}\mathbf{p} = \mathbf{v}$$
 
@@ -630,7 +624,7 @@ Whenever a point arrives, it performs state propagation followed by a single-poi
 
 Advantages: Accurate odometry even under extremely fast motion (hundreds of degrees per second of rotation). Motion distortion compensation happens implicitly (each point is already processed with the correct per-timestamp state).
 
-Disadvantages: The number of updates scales with the number of points, increasing the computational burden. It is about 2-3 times slower than FAST-LIO2.
+Disadvantages: update work grows with the point count. The runtime ratio to FAST-LIO2 reported by Point-LIO is specific to that paper's data, hardware, and configuration, so profile the current implementation.
 
 ### 7.3.5 COIN-LIO
 
@@ -666,11 +660,11 @@ A more general continuous-time approach represents the trajectory with a B-splin
 
 $$\mathbf{T}(t) = \prod_{i=0}^{k} \text{Exp}\left(B_i(t) \cdot \text{Log}(\mathbf{T}_{i-1}^{-1}\mathbf{T}_i)\right)$$
 
-where $B_i(t)$ is a B-spline basis function. Cubic B-splines are commonly used and guarantee $C^2$ continuity.
+where $B_i(t)$ is a B-spline basis function. A cubic B-spline is $C^2$ across ordinary interior knots; repeated knots and boundary choices can reduce continuity.
 
 Advantages of a B-spline trajectory:
 1. **Query at arbitrary times**: At any time $t$, the pose, velocity, and acceleration can be obtained via differentiation. This enables natural handling of asynchronous sensor data.
-2. **Smooth trajectory**: A physically plausible smooth trajectory is guaranteed.
+2. **Smooth trajectory**: continuity is controlled by the spline degree. Smoothness alone does not guarantee dynamic feasibility.
 3. **Local control**: Thanks to the locality of B-splines, modifying one control point does not affect the entire trajectory.
 
 Disadvantages:
@@ -683,7 +677,7 @@ The camera-IMU calibration in Kalibr (see Ch.3) also uses a B-spline trajectory 
 
 ## 7.5 Solid-State LiDAR Specifics
 
-Solid-state LiDARs (e.g., the Livox series) have a fundamentally different scan pattern from spinning LiDARs.
+Solid-state LiDARs (e.g., the Livox series) use non-repetitive scan patterns rather than the repeated scan lines of spinning LiDARs.
 
 **Spinning vs solid-state**:
 
@@ -710,7 +704,7 @@ FAST-LIO/FAST-LIO2 work well on solid-state LiDARs for three reasons:
 2. **Leverages the non-repetitive scan**: A solid-state LiDAR gradually fills the FoV more densely over time. FAST-LIO2's ikd-Tree map naturally accommodates this progressive densification, so map quality improves over time.
 3. **Compensates for the narrow FoV**: A narrow FoV means less information per scan, but tight coupling with the IMU compensates for this.
 
-The Livox series has spread in drones, handheld devices, and small robots thanks to its strong price/performance, and the FAST-LIO2 + Livox combination is currently one of the most popular LIO configurations.
+Livox sensors appear frequently in public work on drones, handheld devices, and small robots because of their non-repetitive scan pattern and compact form factor. FAST-LIO2 supports that pattern, so public examples and datasets using the pair are easy to find. Actual selection should compare field of view, range, time synchronization, point distribution, and the target platform in addition to price.
 
 ---
 
@@ -720,18 +714,18 @@ The Livox series has spread in drones, handheld devices, and small robots thanks
 
 Learning-based LiDAR odometry trains a network that takes a pair of point clouds as input and predicts the relative pose.
 
-Representative approaches:
+Representative approaches include the following:
 - **LO-Net** (Li et al., 2019): Converts a LiDAR scan to a 2D range image and uses a CNN to extract features and predict the pose. Normal estimation and mask prediction are added as auxiliary tasks to encourage geometric understanding.
 - **DeepLO** (Cho et al., 2020): Predicts the pose by processing 3D point clouds directly using a PointNet backbone.
 - **PWCLO-Net** (Wang et al., 2021): Applies the Pyramid, Warping, and Cost-volume architecture to LiDAR odometry.
 
 ### 7.6.2 Current Limitations
 
-Learning-based LiDAR odometry still lags significantly behind classical methods. The reasons:
+Learning-based LiDAR odometry still lags behind classical methods for four reasons:
 
 1. **Characteristics of LiDAR data**: Unlike images, point clouds are unstructured, sparse, and unordered. CNNs cannot process them naturally.
 
-2. **Geometry is already sufficient**: Geometric methods such as ICP/GICP/NDT are already very accurate. The reasons learning shines in the camera domain — illumination changes, lack of texture, and other issues that are hard to solve with geometry alone — do not apply to LiDAR.
+2. **Strong geometric baselines**: ICP, GICP, and NDT work without training when overlap and structure are adequate. They can still fail in repetitive geometry, dynamic scenes, precipitation or dust, and sparse low-overlap scans; learning is therefore used selectively for correspondence, dynamic-point rejection, or uncertainty.
 
 3. **Lack of data**: Large-scale LiDAR odometry training data is much scarcer than image data.
 
@@ -746,25 +740,25 @@ Today, learning is more effective as auxiliary components than as LiDAR odometry
 
 ## 7.7 Recent Trends (2023-2024)
 
-Beyond the systems discussed above, several recent studies in LiDAR odometry are worth noting.
+LiDAR odometry systems published in 2023-2024 include the following.
 
-**[KISS-ICP (Vizzo et al., 2023)](https://arxiv.org/abs/2209.15397)**: Shows that point-to-point ICP, combined only with adaptive thresholding, a robust kernel, and simple motion compensation, can achieve SOTA-level performance. The key is generality — it operates without tuning, regardless of the sensor type (automotive, UAV, handheld). The work reaffirms the "power of simplicity" in LiDAR odometry.
+**[KISS-ICP (Vizzo et al., 2023)](https://arxiv.org/abs/2209.15397)**: Combines point-to-point ICP with adaptive thresholding, a robust kernel, and motion compensation. The paper reports competitive accuracy with one common configuration across automotive, UAV, and handheld datasets, emphasizing reduced dataset-specific parameter tuning.
 
-**[MAD-ICP (Ferrari et al., 2024)](https://arxiv.org/abs/2405.05828)**: Uses a PCA-based kd-tree to extract the structural information of the point cloud and applies it to point-to-plane registration. It emphasizes the importance of the data-matching strategy itself and matches the performance of domain-specific methods across a variety of LiDAR sensors.
+**[MAD-ICP (Ferrari et al., 2024)](https://arxiv.org/abs/2405.05828)**: Uses a PCA-based kd-tree to extract the structural information of the point cloud and applies it to point-to-plane registration. It focuses on the data-matching strategy and matches the performance of domain-specific methods across a variety of LiDAR sensors.
 
-**[iG-LIO (Chen et al., 2024)](https://github.com/zijiechenrobotics/ig_lio)**: A system that integrates incremental GICP into a tightly coupled LIO. A voxel-based surface covariance estimator (VSCE) improves the efficiency of GICP's covariance computation, and an incremental voxel map reduces the nearest-neighbor search cost. It is more efficient than Faster-LIO while retaining SOTA-level accuracy.
+**[iG-LIO (Chen et al., 2024)](https://github.com/zijiechenrobotics/ig_lio)**: Integrates incremental GICP into a tightly coupled LIO. A voxel-based surface covariance estimator (VSCE) reduces the cost of GICP covariance computation, and an incremental voxel map reduces nearest-neighbor search cost. Its paper and public implementation compare computation and accuracy with Faster-LIO on the selected benchmarks.
 
 ---
 
 ## Chapter 7 Summary
 
-| System | Approach | Estimation | Sensors | Key feature |
+| System | Approach | Estimation | Sensors | Feature |
 |--------|------|-----------|------|-----------|
-| ICP/GICP/NDT | Registration | Iterative optimization | LiDAR only | Fundamental building block |
+| ICP/GICP/NDT | Registration | Iterative optimization | LiDAR only | Basic building block |
 | LOAM | Feature-based | LM optimization | LiDAR only | Edge/planar feature, two-stage architecture |
 | LeGO-LOAM | Feature-based | LM optimization | LiDAR only | Ground segmentation, lightweight |
 | LIO-SAM | Feature-based | Factor graph (iSAM2) | LiDAR + IMU + GPS | Modular multi-sensor integration |
-| FAST-LIO2 | Direct | IEKF | LiDAR + IMU | No feature extraction, ikd-Tree, 100 Hz |
+| FAST-LIO2 | Direct | IEKF | LiDAR + IMU | No feature extraction, ikd-Tree, paper reports up to 100 Hz |
 | Point-LIO | Direct | Point-wise EKF | LiDAR + IMU | Per-point update, fast motion |
 | COIN-LIO | Direct + intensity | IEKF | LiDAR + IMU + camera (intensity) | Intensity-based degeneration mitigation |
 | CT-ICP | Direct | Optimization | LiDAR only | Continuous-time motion model, no IMU needed |
@@ -772,8 +766,6 @@ Beyond the systems discussed above, several recent studies in LiDAR odometry are
 | MAD-ICP | Direct (P2Plane) | Iterative optimization | LiDAR only | PCA-based structural extraction, data-matching focus |
 | iG-LIO | Direct (GICP) | IEKF | LiDAR + IMU | Incremental GICP, voxel covariance estimation |
 
-**The big picture of LiDAR odometry**:
-
-The LOAM (2014) → LeGO-LOAM (2018) → LIO-SAM (2020) lineage evolved in the direction of **feature-based + factor graph**. The FAST-LIO (2021) → FAST-LIO2 (2022) → Point-LIO (2023) lineage evolved in the direction of **direct + Kalman filter**. The two lineages represent different design philosophies, yet their practical performance is converging to similar levels.
+The LOAM (2014) → LeGO-LOAM (2018) → LIO-SAM (2020) lineage illustrates **feature-based + factor graph** design. FAST-LIO (2021) → FAST-LIO2 (2022) → Point-LIO (2023) illustrates **direct + Kalman filter** design. Relative accuracy and runtime depend on the sensor pattern, motion, map scale, hardware, and benchmark protocol.
 
 The feature-based approach is strong in structured environments (buildings, cities), and the direct approach is strong in unstructured environments (forests, caves) and on solid-state LiDARs. Multi-sensor fusion architectures integrate these two sensor modalities (camera + LiDAR) together with an IMU.

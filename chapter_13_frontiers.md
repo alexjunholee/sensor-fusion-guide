@@ -1,28 +1,28 @@
 # Ch.13 — Frontiers & Emerging Directions
 
-Ch.2-12에서 센서 퓨전의 확립된 이론과 실전 시스템을 체계적으로 다루었다. 마지막에는 아직 안정되지 않은 방향들이 남는다.
+센서 퓨전에는 확립된 이론과 실전 시스템뿐 아니라, 아직 검증이 진행 중인 연구 방향도 있다.
 
-센서 퓨전 분야에는 아직 완전히 성숙하지 않았지만, 향후 몇 년간 방향을 바꿀 수 있는 연구 프런티어가 남아 있다. Foundation model의 공간 지능(spatial AI)으로의 확장, end-to-end 학습 SLAM, scene graph 기반의 환경 이해, cross-modal representation, 그리고 event camera와 4D radar라는 새로운 센서 모달리티의 퓨전이 그 주제다.
+Foundation model의 공간 지능(spatial AI)으로의 확장, end-to-end 학습 SLAM, scene graph 기반의 환경 이해, cross-modal representation, event camera와 4D radar의 퓨전이 여기에 포함된다.
 
 ---
 
 ## 13.1 Foundation Models for Spatial AI
 
-Foundation model — 대규모 데이터로 사전학습된 범용 모델 (DINOv2, CLIP, SAM, GPT-4V 등) — 이 센서 퓨전과 SLAM 파이프라인에 빠르게 유입되고 있다. 이 모델들은 특정 태스크를 위해 학습되지 않았음에도, 풍부한 시각적/의미론적 표현을 제공하여 전통 파이프라인의 여러 모듈을 대체하거나 강화한다.
+Foundation model — 대규모 데이터로 사전학습된 범용 모델(DINOv2, CLIP, SAM 등) — 의 표현을 센서 퓨전과 SLAM pipeline에 사용하는 연구가 이어지고 있다. 이 모델의 feature를 retrieval·matching·semantic prior에 넣을 수 있지만, geometry와 uncertainty 처리를 자동으로 대신하는 것은 아니다.
 
 ### 13.1.1 DINOv2/CLIP Feature를 SLAM에 활용
 
-**DINOv2의 시각 특징**: [DINOv2](https://arxiv.org/abs/2304.07193) (Oquab et al. 2023)는 자기지도학습(self-supervised learning)으로 훈련된 ViT로, 픽셀 수준의 dense feature를 제공한다. 이 feature는:
+**DINOv2의 시각 특징**: [DINOv2](https://arxiv.org/abs/2304.07193)는 자기지도학습(self-supervised learning)으로 훈련된 ViT다. Image patch마다 얻은 token을 dense feature처럼 사용할 수 있으며, downstream 실험에서는 다음 정보가 관찰된다.
 
-- 조명·계절이 달라도 (주간/야간, 여름/겨울) 같은 장소에서 유사한 feature를 생성한다.
-- 같은 종류의 객체(예: 모든 "의자")에 유사한 feature를 부여하는 의미론적 인식 능력이 있다.
-- 기하학적 구조(모서리, 평면 등)도 feature에 반영된다.
+- 일부 조명·계절 변화에서 같은 장소의 대응을 찾는 데 유용한 feature가 나타난다.
+- 객체 category와 장면 semantics가 feature similarity에 반영될 수 있다.
+- Patch-level structure가 correspondence·segmentation 같은 downstream task에 활용된다.
 
 **AnyLoc의 접근**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023)은 DINOv2의 dense feature를 VLAD로 집계하여 글로벌 장소 디스크립터를 생성한다. 이 디스크립터는:
 
-- 도심, 실내, 항공, 수중, 지하 등 다양한 환경에서 VPR 전용 학습 없이 동작한다.
-- 기존 학습 기반 VPR (NetVLAD, CosPlace 등)을 다양한 도메인에서 능가한다.
-- DINOv2의 31번째 레이어 value facet의 dense feature가 CLS 토큰보다 23% 더 좋은 성능을 보인다.
+- 도심, 실내, 항공, 수중, 지하를 포함한 논문 benchmark에서 VPR 전용 fine-tuning 없이 평가됐다.
+- 원 논문의 여러 dataset에서 비교한 NetVLAD·CosPlace 계열보다 높은 recall을 보고했지만, 모든 환경에 대한 보장은 아니다.
+- 31번째 layer의 value-facet dense feature가 CLS token보다 평균 23% 높은 결과를 보였다는 논문 내 ablation을 제시한다.
 
 ```python
 import numpy as np
@@ -111,65 +111,65 @@ class FoundationModelFeatureExtractor:
 
 **SLAM 파이프라인에서의 활용 지점**:
 
-| 파이프라인 모듈 | 전통 방법 | FM 대체/강화 |
+| 파이프라인 모듈 | 전통 방법 | 학습 feature를 넣는 예 |
 |---------------|-----------|-------------|
 | Feature detection | FAST, ORB | SuperPoint + DINOv2 hybrid |
 | Feature matching | BF + ratio test | SuperGlue/LightGlue, LoFTR |
 | Place recognition | DBoW2, Scan Context | AnyLoc (DINOv2 + VLAD) |
 | Semantic segmentation | 전용 모델 학습 | [SAM](https://arxiv.org/abs/2304.02643), open-vocab segmentation |
-| Depth estimation | Stereo matching | [Depth Anything](https://arxiv.org/abs/2401.10891) (monocular) |
-| Loop closure verification | Geometric only | FM descriptor consistency |
+| Depth estimation | Stereo matching | [Depth Anything](https://arxiv.org/abs/2401.10891)의 relative-depth prior |
+| Loop closure candidate | DBoW2, Scan Context | FM descriptor similarity 후 geometric verification |
 
 ### 13.1.2 Open-Vocabulary 3D Understanding
 
 CLIP의 vision-language alignment을 3D 맵에 확장하면, 로봇이 자연어로 환경을 이해하고 탐색할 수 있다.
 
-**작동 방식**:
+이 시스템은 다음과 같이 동작한다.
 
 1. SLAM으로 3D 맵(point cloud, mesh, 3DGS)을 구축한다.
 2. 각 관측 이미지의 각 영역에 대해 CLIP visual feature를 추출한다.
 3. 2D feature를 3D 맵의 대응 위치에 역투영하여 부착한다.
 4. 사용자가 "소화기를 찾아"라고 하면, CLIP text encoder로 텍스트를 인코딩하고, 3D 맵에서 가장 높은 유사도를 가진 위치를 반환한다.
 
-**ConceptFusion, LERF, OpenScene**: 이러한 접근의 대표적 시스템들. 사전 정의된 클래스 집합 없이, 임의의 텍스트 질의로 3D 공간을 탐색할 수 있다.
+**ConceptFusion, LERF, OpenScene**은 이러한 접근의 대표적 시스템이다. 사전 정의된 클래스 집합 없이 임의의 텍스트 질의로 3D 공간을 탐색할 수 있다.
 
 **현재의 한계**:
 - CLIP feature의 공간적 해상도가 낮다 (패치 단위). 작은 객체의 정확한 위치 파악이 어렵다.
 - 3D 일관성 보장이 어렵다 — 같은 객체가 다른 시점에서 다른 feature를 가질 수 있다.
 - Computational cost: 모든 이미지에서 FM feature를 추출하는 것은 비용이 크다.
 
-### 13.1.3 FM이 전통 파이프라인을 얼마나 대체할 수 있는가
+### 13.1.3 모듈별 근거와 경계
 
-현재 상황(2025~2026년)에서의 솔직한 평가:
+Foundation-model integration의 근거 수준은 task와 benchmark마다 다르다. 다음 구분은 대체 순위가 아니라, 어떤 주장을 검증해야 하는지 보여준다.
 
-**이미 대체가 진행 중인 영역**:
-- **Visual place recognition**: AnyLoc이 DBoW2를 대부분의 환경에서 능가. 특히 조건 변화(주야간, 계절)가 있는 경우 격차가 크다.
-- **Feature matching**: LoFTR, RoMa가 전통적 detect-describe-match를 대체하는 추세. Textureless 환경에서 특히 강점.
-- **Monocular depth**: [Depth Anything](https://arxiv.org/abs/2401.10891)이 단안 카메라의 metric depth를 합리적 수준으로 추정. 보조 센서로 활용 가능.
+**논문 benchmark에서 활용 근거가 있는 영역**:
+- **Visual place recognition**: AnyLoc은 DINOv2+VLAD를 여러 domain에서 평가해 강한 recall을 보고했다. DBoW2와 입력 feature·학습 조건·계산량이 달라 보편적 대체 관계로 해석하지 않고, 목표 환경에서 false-positive rate와 latency를 함께 비교한다.
+- **Feature matching**: LoFTR·RoMa는 texture와 viewpoint가 어려운 benchmark에서 강한 결과를 보고한다. Classical sparse feature는 compute budget, calibration, repeatability 조건에 따라 여전히 유효한 선택지다.
+- **Monocular depth**: [Depth Anything](https://arxiv.org/abs/2401.10891)의 기본 출력은 relative depth다. Metric scale이 필요한 fusion에서는 metric-depth용 fine-tuning이나 다른 sensor constraint가 필요하며, 출력 uncertainty도 따로 다뤄야 한다.
 
-**아직 대체가 어려운 영역**:
-- **LiDAR odometry**: 전통 방법(ICP, LOAM, FAST-LIO2)이 여전히 압도적. 학습 기반 LiDAR odometry는 일반화와 정확도 모두에서 뒤처진다.
-- **IMU integration**: 물리 모델 기반 preintegration이 학습으로 대체할 수 없는 정확도와 이론적 보장을 제공한다.
-- **Backend optimization**: factor graph, iSAM2 같은 최적화 프레임워크는 FM으로 대체할 대상이 아니다. 오히려 FM의 출력을 factor로 통합하는 것이 올바른 방향이다.
+**별도의 estimator가 계속 필요한 영역**:
+- **LiDAR odometry**: ICP·LOAM·FAST-LIO2 같은 geometry-based 방법과 learned method의 비교 결과는 sensor와 dataset에 따라 달라진다. Learned feature나 correspondence를 넣더라도 motion model과 registration 검증은 남는다.
+- **IMU integration**: Preintegration은 kinematics와 noise model을 factor에 압축한다. Learned bias·noise correction을 결합할 수 있지만, 그것이 preintegration의 관측 모델과 uncertainty propagation을 자동으로 대체하지는 않는다.
+- **Backend optimization**: Factor graph와 iSAM2는 관측을 결합하는 estimator다. FM output을 factor로 넣으려면 covariance, outlier, correlation을 명시해야 한다.
 
-**하이브리드 접근이 가장 유망**: 전통 파이프라인의 구조적 엄밀함을 유지하되, FM이 제공하는 강건한 feature/semantic 정보를 모듈별로 주입하는 것이 현재 가장 실용적인 방향이다.
+따라서 실용적인 기본형은 기존 estimator의 geometry·uncertainty 구조를 유지하고, learned feature·semantic prior를 검증 가능한 module로 넣는 hybrid다.
 
-**최근 주요 발전 (2024~2025)**:
+**최근 시스템 (2024~2025)**:
 
-- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): 3D reconstruction foundation model(MASt3R)로부터 학습된 기하학적 prior를 SLAM에 직접 통합하여, 카메라 모델 가정 없이 15fps에서 globally-consistent dense SLAM을 달성했다.
-- **[Depth Anything V2](https://arxiv.org/abs/2406.09414)** (Yang et al. NeurIPS 2024): 합성 데이터로 teacher를 학습하고 대규모 pseudo-label로 student를 훈련하는 전략으로, monocular depth estimation의 정확도와 강건성을 크게 향상시켰다. 센서 퓨전에서 depth prior로 활용 가능하다.
+- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): MASt3R의 learned geometry를 SLAM에 통합하며, 원 논문은 미리 정한 camera model 없이 dense SLAM을 15 fps로 처리한 결과를 보고한다.
+- **[Depth Anything V2](https://arxiv.org/abs/2406.09414)** (Yang et al. NeurIPS 2024): Synthetic-data teacher와 large-scale pseudo-label student 학습을 사용한다. 원 논문 benchmark 결과를 depth prior 후보로 볼 수 있지만, fusion에는 scale·uncertainty 검증이 추가로 필요하다.
 
 ---
 
 ## 13.2 End-to-End Learned SLAM
 
-전통 SLAM은 모듈형 파이프라인 (feature extraction → matching → motion estimation → mapping → loop closure → optimization)으로 구성된다. End-to-end 학습은 이 전체 파이프라인을 하나의 미분 가능한 시스템으로 만들어, 입력(이미지/센서)에서 출력(pose, map)까지 직접 학습하는 것을 목표로 한다.
+전통 SLAM은 모듈형 파이프라인(feature extraction → matching → motion estimation → mapping → loop closure → optimization)으로 구성된다. End-to-end 학습은 전체 파이프라인을 하나의 미분 가능한 시스템으로 만들고, 입력(이미지/센서)에서 출력(pose, map)까지 직접 학습한다.
 
 ### 13.2.1 현재의 대표 시스템
 
-**[DROID-SLAM](https://arxiv.org/abs/2108.10869)** (Teed & Deng 2021): 현재 가장 성공적인 학습 기반 SLAM 시스템.
+**[DROID-SLAM](https://arxiv.org/abs/2108.10869)** (Teed & Deng 2021)은 학습 기반 visual SLAM의 대표적인 공개 시스템이다.
 
-핵심 아키텍처:
+DROID-SLAM은 다음 구조로 이루어진다.
 
 1. **RAFT 기반 반복 업데이트 연산자**: Convolutional GRU가 correlation volume에서 추출한 특징으로 optical flow를 반복적으로 보정한다. 이 flow 보정이 correspondence를 정제하는 역할을 한다.
 
@@ -181,20 +181,20 @@ Schur complement로 pose만 먼저 풀 수 있다:
 
 $$(\mathbf{H}_{pp} - \mathbf{H}_{pd} \mathbf{H}_{dd}^{-1} \mathbf{H}_{dp}) \Delta \boldsymbol{\xi} = \mathbf{b}_p - \mathbf{H}_{pd} \mathbf{H}_{dd}^{-1} \mathbf{b}_d$$
 
-$\mathbf{H}_{dd}$는 대각 행렬이므로(각 depth는 독립) 역행렬이 $O(1)$이다. 이 구조가 전통 BA와 동일한 효율성을 학습 시스템 안에서 달성하는 방식이다.
+$\mathbf{H}_{dd}$는 대각 행렬이므로 각 대각 원소의 역은 $O(1)$에 구할 수 있고, 전체 depth block 처리는 depth 변수 수에 선형이다. 이 구조는 Schur complement를 효율적으로 계산하는 데 쓰인다.
 
 3. **프레임 그래프 기반 루프 클로저**: co-visibility 기반으로 프레임 그래프를 동적 구축. 재방문 시 장거리 에지를 추가하여 implicit loop closure 수행.
 
-4. **단일 모델로 monocular/stereo/RGB-D 지원**: 합성 데이터(TartanAir)만으로 학습 후, 4개 벤치마크에서 SOTA.
+4. **단일 모델로 monocular/stereo/RGB-D 지원**: 합성 데이터(TartanAir)로 학습한 한 모델을 세 입력 형태에 적용한다. 원 논문은 네 benchmark의 선택한 metric에서 기존 baseline보다 높은 정확도와 적은 catastrophic failure를 보고한다.
 
-**DROID-SLAM의 성과와 의미**:
+**DROID-SLAM이 보고한 결과**:
 - TartanAir에서 이전 최고 대비 오차 62% 감소
 - EuRoC monocular에서 82% 감소
-- 학습 기반 SLAM이 처음으로 전통 시스템을 체계적으로 능가
+- 이 수치는 원 논문의 특정 split·metric·baseline에 대한 상대 비교
 
 ### 13.2.2 Differentiable SLAM Components
 
-완전한 end-to-end가 아니더라도, SLAM 파이프라인의 개별 컴포넌트를 미분 가능하게 만드는 연구가 활발하다:
+완전한 end-to-end가 아니더라도, SLAM 파이프라인의 개별 컴포넌트를 미분 가능하게 만들 수 있다.
 
 **미분 가능 렌더링**: NeRF, 3DGS 자체가 미분 가능 렌더링 시스템이다. SLAM에서 pose estimation을 photometric loss의 역전파로 수행할 수 있다.
 
@@ -204,32 +204,32 @@ $$\hat{\mathbf{T}}^* = \arg\min_{\hat{\mathbf{T}}} \| I_{\text{real}} - \text{Re
 
 **미분 가능 ICP**: 전통 ICP의 nearest neighbor search와 SVD를 미분 가능하게 만들어, 포인트 클라우드 정합을 학습 루프에 포함시킬 수 있다.
 
-**미분 가능 pose graph optimization**: iSAM2 같은 최적화를 미분 가능하게 만들면, 프론트엔드(feature extraction, matching)를 백엔드 오차 신호로 학습시킬 수 있다. "최적화 결과가 나쁘면 → feature extractor를 개선하라"는 end-to-end 학습 신호.
+**미분 가능 pose graph optimization**: iSAM2 같은 최적화를 미분 가능하게 만들면, 프론트엔드(feature extraction, matching)를 백엔드 오차 신호로 학습시킬 수 있다. 최적화 결과의 오차가 feature extractor의 학습 신호가 된다.
 
 ### 13.2.3 현재의 한계와 가능성
 
 **한계**:
-- **일반화**: 학습 데이터에 없는 환경에서의 성능 저하. DROID-SLAM은 합성 데이터로 학습하여 어느 정도 일반화하지만, LiDAR가 주도하는 대규모 실외 환경에서는 아직 전통 시스템에 미치지 못한다.
-- **이론적 보장 부재**: 전통 최적화는 수렴성, 일관성 등의 이론적 보장이 있다. 학습 기반 시스템은 이러한 보장이 없어 안전 중요(safety-critical) 응용에 적용하기 어렵다.
-- **Computational cost**: 학습 기반 시스템은 대부분 GPU가 필요하다. 임베디드 환경에서의 실시간 동작이 도전적.
+- **일반화**: 학습 분포 밖의 camera, motion, 조명, 동적 장면에서 성능이 달라질 수 있다. DROID-SLAM의 원 논문은 synthetic-to-real generalization을 평가하지만 모든 환경과 sensor modality를 포괄하지는 않는다.
+- **검증 범위**: 전통적 pipeline은 residual과 각 module을 따로 검사하기 쉽지만, 학습된 update operator의 거동은 training distribution과 평가 protocol에 더 강하게 묶인다. 어느 쪽도 일반적인 비선형 SLAM 문제에서 전역 수렴이나 일관성을 자동으로 보장하지 않는다.
+- **Computational cost**: 학습 기반 시스템은 대부분 GPU가 필요해 임베디드 환경에서 실시간으로 동작하기 어렵다.
 - **Interpretability**: 실패 시 원인 분석이 어렵다. 전통 시스템은 "어느 모듈에서 실패했는가"를 추적할 수 있지만, end-to-end 시스템은 블랙박스에 가깝다.
 
 **가능성**:
-- FM의 발전으로 feature extraction과 matching의 품질이 계속 향상.
-- 미분 가능 최적화 기법의 성숙으로, 전통 구조를 유지하면서 학습의 이점을 취하는 하이브리드 접근이 현실적.
-- Multi-task learning: pose estimation, depth estimation, semantic segmentation을 동시에 학습하여 상호 보완.
+- FM이 발전하면서 feature extraction과 matching의 품질도 향상되고 있다.
+- 미분 가능 최적화 기법이 발전하면서 전통 구조 안에 학습 기반 모듈을 결합할 수 있다.
+- Multi-task learning은 pose estimation, depth estimation, semantic segmentation을 함께 학습하여 서로 보완한다.
 
 ---
 
 ## 13.3 Spatial Memory & Scene Graphs
 
-로봇이 "공간을 기억하고 이해한다"는 것은 단순히 포인트 클라우드를 저장하는 것 이상이다. 인간은 "주방에 냉장고가 있고, 그 안에 우유가 있었다"는 식의 계층적, 관계적, 시간적 공간 기억을 가진다. 이 섹션은 이러한 고수준 공간 기억 시스템의 연구 프런티어를 다룬다.
+공간 기억은 포인트 클라우드뿐 아니라 계층적·관계적·시간적 정보도 포함한다. 인간은 "주방에 냉장고가 있고, 그 안에 우유가 있었다"는 식으로 공간을 기억한다. 고수준 공간 기억 시스템은 이 구조를 로봇의 맵에 적용한다.
 
 ### 13.3.1 Persistent Spatial Memory
 
 전통 SLAM 맵은 "현재 이 순간의 환경 상태"를 반영한다. Persistent spatial memory는 시간에 따른 환경의 변화 이력까지 포함하는 장기 공간 기억이다.
 
-**핵심 과제**:
+Persistent spatial memory는 세 과제를 다룬다.
 
 1. **Episodic spatial memory**: "지난주 화요일에 여기에 상자가 있었다"와 같은 시간-장소-사건 연결.
 2. **Semantic persistence**: 영구적 요소(벽, 건물)와 일시적 요소(사람, 차량)를 구분하여 장기 맵의 안정성 유지.
@@ -346,7 +346,7 @@ class PersistentSpatialMemory:
 
 ### 13.3.2 Scene Graph 기반 환경 이해
 
-Ch.11에서 [Hydra](https://arxiv.org/abs/2201.13360)의 3D Scene Graph를 다루었다. 여기서는 scene graph가 열어주는 미래 방향을 탐색한다.
+[Hydra](https://arxiv.org/abs/2201.13360)의 3D Scene Graph는 다음과 같은 확장을 지원한다.
 
 **Scene Graph + Language**: Scene graph에 자연어 인터페이스를 결합하면, 로봇에게 "거실 소파 옆의 테이블 위에 있는 리모콘을 가져와"라는 자연어 명령을 이해시킬 수 있다. 이 명령은 scene graph의 계층적 탐색으로 변환된다:
 
@@ -357,7 +357,7 @@ Ch.11에서 [Hydra](https://arxiv.org/abs/2201.13360)의 3D Scene Graph를 다�
 
 **Scene Graph + LLM**: GPT-4 같은 LLM이 scene graph를 입력으로 받아 고수준 추론을 수행한다. "이 방에 사람이 넘어지면 가장 가까운 전화기는 어디에 있는가?" 같은 질의에 답할 수 있다.
 
-**동적 Scene Graph**: Hydra의 현재 구현은 정적 환경을 가정한다. 동적 scene graph는 사람, 차량 등 움직이는 에이전트를 노드로 포함하고, 그들의 관계를 실시간으로 갱신한다. 이는 사회적 내비게이션(social navigation), 인간-로봇 상호작용(HRI)의 핵심이다.
+**동적 Scene Graph**: Hydra의 현재 구현은 정적 환경을 가정한다. 동적 scene graph는 사람, 차량 등 움직이는 에이전트를 노드로 포함하고, 그들의 관계를 실시간으로 갱신한다. 사회적 내비게이션(social navigation)과 인간-로봇 상호작용(HRI)에 이 정보를 사용할 수 있다.
 
 ### 13.3.3 시계열 공간 기억 관리
 
@@ -373,13 +373,13 @@ Ch.11에서 [Hydra](https://arxiv.org/abs/2201.13360)의 3D Scene Graph를 다�
 
 ## 13.4 Cross-Modal Representation
 
-센서 퓨전의 핵심 도전 중 하나는 이종 센서의 관측을 **공통 표현 공간**에서 비교하는 것이다. LiDAR 포인트 클라우드와 카메라 이미지는 완전히 다른 데이터 형태이지만, 같은 물리적 환경을 관측한다. Cross-modal representation은 이 "표현 격차(representation gap)"를 해소하는 연구 방향이다.
+센서 퓨전의 과제 중 하나는 이종 센서의 관측을 **공통 표현 공간**에서 비교하는 것이다. LiDAR 포인트 클라우드와 카메라 이미지는 서로 다른 데이터 형태이지만 같은 물리적 환경을 관측한다. Cross-modal representation은 이 "표현 격차(representation gap)"를 줄인다.
 
 ### 13.4.1 이종 센서 간 표현 정렬 문제
 
-**왜 어려운가**:
+세 가지 차이가 표현 정렬을 어렵게 한다.
 
-- **차원 불일치**: LiDAR는 3D 포인트, 카메라는 2D 이미지, radar는 range-Doppler map. 데이터 형태가 본질적으로 다르다.
+- **차원 불일치**: LiDAR는 3D 포인트, 카메라는 2D 이미지, radar는 range-Doppler map을 반환한다. 데이터 형태가 서로 다르다.
 - **정보 비대칭**: LiDAR는 정확한 거리 정보를 제공하지만 텍스처가 없다. 카메라는 풍부한 텍스처를 제공하지만 절대 거리 정보가 없다.
 - **센서 특유의 아티팩트**: LiDAR의 motion distortion, 카메라의 rolling shutter, radar의 speckle noise 등 각 센서 고유의 노이즈 패턴이 다르다.
 
@@ -397,9 +397,9 @@ $$\mathcal{L}_{\text{contrastive}} = -\log \frac{\exp(\text{sim}(f_L(\mathbf{x}_
 
 ### 13.4.3 Knowledge Distillation
 
-한 모달리티(teacher)의 풍부한 정보를 다른 모달리티(student)로 전달하는 방법.
+한 모달리티(teacher)의 풍부한 정보를 다른 모달리티(student)로 전달하는 방법이다.
 
-**LiDAR → Camera distillation**: LiDAR의 정확한 3D 정보로 학습된 모델의 지식을, 카메라만 사용하는 모델로 전달한다. 이를 통해 배포 시에는 카메라만으로 LiDAR 수준의 3D 이해를 근사할 수 있다.
+**LiDAR → Camera distillation**: LiDAR의 정확한 3D 정보로 학습된 모델의 지식을 카메라만 사용하는 모델로 전달한다. 배포 시에는 카메라만으로 LiDAR 수준의 3D 이해를 근사한다.
 
 **Camera → LiDAR distillation**: 카메라의 풍부한 의미론적 정보를 LiDAR 처리 모델에 전달한다. 예를 들어, CLIP의 의미론적 feature를 LiDAR 포인트에 부여하여, 텍스트 질의로 LiDAR 맵을 검색할 수 있게 한다.
 
@@ -409,13 +409,13 @@ $$\mathcal{L}_{\text{contrastive}} = -\log \frac{\exp(\text{sim}(f_L(\mathbf{x}_
 
 2. **Temporal alignment**: 다른 모달리티의 관측은 시간적으로 완벽히 동기화되지 않는다. 비동기 관측을 어떻게 공통 표현으로 융합할 것인가?
 
-3. **Partial observation**: 하나의 센서가 일시적으로 실패(LiDAR가 비에 영향, 카메라가 어둠에 영향)할 때, 사용 가능한 모달리티만으로 일관된 표현을 유지하는 방법.
+3. **Partial observation**: 하나의 센서가 일시적으로 실패(LiDAR가 비에 영향, 카메라가 어둠에 영향)할 때, 사용 가능한 모달리티만으로 일관된 표현을 유지하는 방법이다.
 
 ---
 
 ## 13.5 Event Camera 기반 퓨전
 
-이벤트 카메라(Event Camera, Dynamic Vision Sensor, DVS)는 전통적 프레임 기반 카메라와 근본적으로 다른 센서다. 각 픽셀이 독립적으로 밝기 변화를 감지하여, 변화가 일어난 시점에만 **이벤트**를 비동기적으로 출력한다.
+이벤트 카메라(Event Camera, Dynamic Vision Sensor, DVS)는 전통적 프레임 기반 카메라와 다른 방식으로 동작한다. 각 픽셀이 독립적으로 밝기 변화를 감지하여, 변화가 일어난 시점에만 **이벤트**를 비동기적으로 출력한다.
 
 ### 13.5.1 Event Camera의 원리와 장점
 
@@ -442,11 +442,11 @@ $$|\log I(x, y, t) - \log I(x, y, t_{\text{last}})| \geq C$$
 | 정적 장면 | 정보 제공 | 이벤트 없음 (정보 없음) |
 | 전력 소비 | 높음 | 매우 낮음 |
 
-**왜 센서 퓨전에서 중요한가**: Event camera는 전통 카메라가 실패하는 극한 조건 — 고속 회전, 급격한 조명 변화(터널 진입/출구), 저조도 환경 — 에서 강건하다. 다른 센서의 취약점을 보완하는 역할을 한다.
+Event camera는 고속 회전, 급격한 조명 변화(터널 진입/출구), 저조도 환경에서도 정보를 제공하여 전통 카메라와 다른 센서의 취약점을 보완한다.
 
 ### 13.5.2 Event + Frame 퓨전
 
-Event camera와 전통 프레임 카메라를 결합하는 접근:
+Event camera와 전통 프레임 카메라는 다음과 같이 결합한다.
 
 **Event-enhanced frame tracking**: 프레임 간의 고속 모션을 이벤트로 추적하여, 프레임 기반 VO의 프레임 간격 사이를 채운다. 빠른 카메라 모션에서도 tracking이 끊기지 않는다.
 
@@ -463,10 +463,10 @@ Event camera와 전통 프레임 카메라를 결합하는 접근:
 
 **현재 과제**:
 - Event camera의 데이터 형식(비동기 이벤트 스트림)이 전통적 컴퓨터 비전 파이프라인(프레임 기반)과 호환되지 않는다. 이벤트를 프레임으로 변환(event frame)하면 장점을 잃는다.
-- 상용 event camera가 아직 고가이며, 해상도가 낮다 (최신 모델도 1280 × 720 수준).
+- Event camera의 가격과 해상도는 모델별 차이가 크며, 같은 가격대의 frame camera보다 선택지가 제한적이다.
 - 학습 데이터가 부족하다. 대부분의 데이터셋은 프레임 카메라용이다.
 
-**최근 주요 발전 (2024~2025)**:
+**최근 시스템과 연구 (2024~2025)**:
 
 - **[EvenNICER-SLAM](https://arxiv.org/abs/2410.03812)** (2024): Event camera를 neural implicit SLAM에 통합한 시스템으로, 이벤트의 높은 시간 해상도를 활용하여 고속 모션에서의 tracking 강건성을 향상시켰다.
 - **Event-based 3D reconstruction survey** ([arxiv:2505.08438](https://arxiv.org/abs/2505.08438), 2025): Event-driven 3D reconstruction 분야 서베이로, NeRF·3DGS 기반 이벤트 재구성, depth estimation, optical flow 등 최신 연구를 분류·정리했다.
@@ -584,7 +584,7 @@ class EventProcessor:
 
 ## 13.6 4D Radar 퓨전
 
-4D imaging radar는 센서 퓨전 분야에서 최근 주목받기 시작한 모달리티다. 전통적 automotive radar가 거리와 각도만 제공했다면, 4D radar는 거리(range), 방위각(azimuth), 고도(elevation), 도플러 속도(Doppler velocity)의 4차원 정보를 제공한다.
+4D imaging radar는 거리(range), 방위각(azimuth), 고도(elevation), 도플러 속도(Doppler velocity)의 4차원 정보를 제공한다. 전통적 automotive radar가 제공하던 거리와 각도에 고도와 도플러 속도가 더해진다.
 
 **FMCW radar의 거리/속도 측정 원리**: 4D radar의 대부분은 FMCW(Frequency-Modulated Continuous Wave) 방식을 사용한다. 송신 신호의 주파수를 시간에 따라 선형으로 증가(chirp)시키고, 반사 신호와의 비트 주파수(beat frequency)로 거리를, chirp 간 위상 변화로 속도를 측정한다:
 
@@ -598,22 +598,22 @@ $$v = \frac{\lambda \cdot \Delta\phi}{4\pi \cdot T_c}$$
 
 ### 13.6.1 악천후 Robustness
 
-4D radar는 악천후에서도 작동한다. 이것이 이 센서의 핵심 가치다:
+4D imaging radar는 가시광·근적외선 센서가 저하되는 조건에서도 유효한 거리·Doppler 검출을 유지하는 경우가 많지만, 악천후의 영향을 받지 않는 것은 아니다. 다음 표는 일반적인 상대 경향이며 특정 장치의 성능 보증이 아니다.
 
-| 조건 | 카메라 | LiDAR | 4D Radar |
-|------|--------|-------|----------|
-| 맑은 날 | 최고 | 최고 | 양호 |
-| 비 | 저하 | 약간 저하 | 정상 |
-| 안개 | 심각 저하 | 심각 저하 | 정상 |
-| 눈/먼지 | 심각 저하 | 심각 저하 | 정상 |
-| 야간 | 심각 저하 | 정상 | 정상 |
-| 직사광선 | 저하 | 정상 | 정상 |
+| 조건 | 카메라의 경향 | LiDAR의 경향 | 4D Radar의 경향 | 주요 변수 |
+|------|---------------|--------------|------------------|----------|
+| 맑은 날 | 색·텍스처 정보가 풍부함 | 조밀한 기하 정보에 유리함 | 거리·Doppler를 주지만 각 해상도가 제한될 수 있음 | 타겟 RCS, 거리, 각 해상도 |
+| 비 | 대비 저하와 렌즈 젖음 | 후방 산란과 감쇠 | 상대적으로 덜 저하될 수 있으나 rain clutter와 젖은 radome 영향 | 강우량, radome 상태, 주파수 |
+| 안개 | 대비와 가시거리 저하 | 후방 산란과 감쇠 | 대체로 상대적 강건성이 높음 | 안개 농도, 거리, 타겟 RCS |
+| 눈/먼지 | 가림과 대비 저하 | 입자 후방 산란 | clutter·multipath와 표면 적설 영향이 남음 | 입자 농도, 축적, 타겟 RCS |
+| 야간 | 조명과 노출에 의존 | 능동 거리 측정 유지 | 능동 거리·Doppler 측정 유지 | 조명, 표면 반사율, 타겟 RCS |
+| 직사광선 | glare와 포화 가능 | 수광부의 태양 배경광 영향 가능 | 광학적 영향은 작지만 RF 간섭은 남음 | 수광부·필터, RF 간섭, 장착 방향 |
 
-Radar의 파장(밀리미터파)은 물방울, 안개 입자, 먼지보다 훨씬 크다. 이 입자들이 신호를 거의 산란시키지 못한다. LiDAR(근적외선)와 카메라(가시광선)가 갖는 한계를 여기서 보완한다.
+밀리미터파는 일반적으로 가시광·근적외선보다 안개 크기의 입자에 덜 민감하지만 영향이 0인 것은 아니다. 강한 강수, 젖거나 얼어붙은 radome, multipath, RF 간섭, 낮은 RCS의 타겟, 제한된 각 해상도는 탐지 거리를 줄이거나 오경보를 늘릴 수 있다. 목표 기상 조건에서 탐지 거리, 오경보율, Doppler 오차를 장치별로 검증한다.
 
 ### 13.6.2 4D Radar + Camera Fusion
 
-4D radar와 카메라를 합치면 "악천후에서도 동작하는 저비용 인식 시스템"에 가까워진다:
+4D radar와 카메라를 결합하면 서로 다른 failure mode를 보완할 수 있다. 비용과 악천후 성능은 센서 모델, 장착, 처리 장치, 목표 데이터셋에서 따로 검증한다.
 
 **BEV 기반 퓨전**: 카메라 이미지에서 BEV feature를 추출하고 (LSS 또는 BEVFormer 방식), radar 포인트를 BEV 공간에 투영하여 결합한다.
 
@@ -737,12 +737,12 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 | **nuScenes** | Camera, LiDAR, Radar | 도심 | 5개 radar 포함, 악천후 일부 |
 | **View-of-Delft** | Camera, LiDAR, 4D Radar | 도심 | 4D radar + 3D annotation |
 
-**최근 주요 발전 (2024~2025)**:
+**최근 시스템과 데이터셋 (2024~2025)**:
 
 - **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (2024): 4D radar 기반 SLAM 평가 벤치마크로, 핸드헬드·자전거·SUV 세 플랫폼에서 다양한 날씨/조명 조건으로 수집된 44개 시퀀스를 제공한다.
 - **[4D Radar-Inertial Odometry](https://arxiv.org/abs/2412.13639)** (2024): 3D Gaussian 기반 radar scene representation과 multi-hypothesis scan matching을 제안하여 voxel 방식 대비 더 정밀한 radar odometry를 달성했다.
 
-4D radar 퓨전은 아직 초기 단계다. 특히 Doppler 정보를 활용한 ego-motion estimation과 동적 객체 분류는 LiDAR나 카메라로는 대체할 수 없는 고유한 기능이다.
+4D radar 퓨전은 아직 적용 범위가 제한적이다. Doppler 정보를 활용한 ego-motion estimation과 동적 객체 분류는 LiDAR나 카메라가 제공하지 않는 기능이다.
 
 ---
 
@@ -750,11 +750,11 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 
 센서 모델링(Ch.2)에서 출발한 흐름은 캘리브레이션(Ch.3), 상태 추정 이론(Ch.4), 특징점 매칭(Ch.5), VO/VIO(Ch.6), LiDAR odometry(Ch.7), 멀티센서 퓨전(Ch.8), Place Recognition(Ch.9), Loop Closure(Ch.10), 공간 표현(Ch.11), 실전 시스템(Ch.12), 연구 프런티어(Ch.13)까지 이어졌다.
 
-핵심 흐름은 네 가지다.
+이 흐름에서 네 가지 경향을 확인할 수 있다.
 
 1. **전통 방법은 여전히 기반이다.** 칼만 필터, ICP, RANSAC, 팩터 그래프 — 수십 년 전에 제안된 이 방법들이 현대 시스템의 뼈대를 이루고 있다.
-2. **딥러닝은 지각(perception)에서 전통 방법을 밀어냈다.** 특징점 매칭, 깊이 추정, Place Recognition 등 "무엇을 보는가"의 영역에서 학습 기반 방법이 전통을 압도한다.
+2. **딥러닝은 지각(perception)에 널리 쓰인다.** 특징점 매칭, 깊이 추정, Place Recognition에서는 학습 기반 방법이 여러 공개 벤치마크에서 전통 방법보다 높은 점수를 보고했다. 우위의 범위는 데이터셋과 평가 프로토콜에 따라 달라진다.
 3. **추론(inference)에서는 전통과 학습이 공존한다.** 상태 추정 backend는 여전히 최적화 기반이 지배적이지만, DROID-SLAM처럼 미분 가능 최적화로 경계를 허무는 시도가 진행 중이다.
-4. **Foundation model이 파이프라인을 바꾸고 있다.** DINOv2, SAM 등 범용 모델의 표현력이 센서 퓨전 파이프라인 곳곳에 유입되고 있다.
+4. **Foundation model이 파이프라인에 통합되고 있다.** DINOv2, SAM 등 범용 모델의 표현을 센서 퓨전 파이프라인 여러 단계에서 사용한다.
 
-센서 퓨전은 불완전한 관측으로부터 세상을 이해하는 기술이다. 출발점은 센서 모델과 추정기, 그리고 실패 모드를 같은 표 안에 놓는 일이다.
+센서 퓨전은 불완전한 관측을 결합해 환경 상태를 추정한다. 시스템을 설계할 때는 센서 모델, 추정기, 실패 모드를 함께 검토해야 한다.

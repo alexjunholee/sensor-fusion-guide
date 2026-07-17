@@ -1,14 +1,14 @@
 # Ch.2 — Sensor Modeling
 
-Ch.1에서 센서 퓨전의 분류와 설계 원칙을 살펴보았다. 이제 본격적으로 각 센서가 세상을 어떻게 "보는지"를 수학적으로 정의한다. 센서의 관측 모델은 Ch.4에서 다룰 칼만 필터와 팩터 그래프의 관측 함수 $h(\mathbf{x})$에 직접 대입되므로, 이 챕터의 수식들은 이후 모든 알고리즘의 기초가 된다.
+센서가 세상을 어떻게 "보는지"는 수학적 관측 모델로 정의한다. 이 모델은 Ch.4의 칼만 필터와 팩터 그래프에서 관측 함수 $h(\mathbf{x})$로 직접 쓰인다.
 
-> robotics-practice Ch.2는 센서를 소개 수준에서 다뤘다. 여기서는 **노이즈 모델과 수학적 관측 모델**에 집중한다. 퓨전 알고리즘은 측정값이 실제 물리량과 어떤 수학적 관계에 있고 오차가 어떻게 분포하는가를 정확히 모르면 설계할 수 없다.
+> robotics-practice Ch.2의 개략적 소개에서 한 단계 더 들어가 **노이즈 모델과 수학적 관측 모델**을 본다. 퓨전 알고리즘을 설계하려면 측정값과 실제 물리량의 수학적 관계, 오차 분포를 알아야 한다.
 
 ---
 
 ## 2.1 카메라 관측 모델
 
-카메라는 3D 세계의 점을 2D 이미지 평면에 투영하는 센서이다. 이 투영 과정을 수학적으로 모델링하는 것이 카메라 관측 모델의 핵심이다.
+카메라는 3D 세계의 점을 2D 이미지 평면에 투영하는 센서이다. 이 투영 과정을 수학으로 나타낸 것이 카메라 관측 모델이다.
 
 ### 2.1.1 핀홀 카메라 모델 (Pinhole Camera Model)
 
@@ -36,11 +36,11 @@ $$s \begin{bmatrix} u \\ v \\ 1 \end{bmatrix} = \mathbf{K} [\mathbf{R} | \mathbf
 
 $$\mathbf{p} = \pi(\mathbf{P}_c) = \begin{bmatrix} f_x \frac{X_c}{Z_c} + c_x \\ f_y \frac{Y_c}{Z_c} + c_y \end{bmatrix}$$
 
-이 비선형 투영 함수의 자코비안(Jacobian)은 상태 추정에서 핵심적으로 사용된다:
+이 비선형 투영 함수의 자코비안(Jacobian)은 상태 추정에서 직접 사용된다:
 
 $$\frac{\partial \pi}{\partial \mathbf{P}_c} = \begin{bmatrix} \frac{f_x}{Z_c} & 0 & -\frac{f_x X_c}{Z_c^2} \\ 0 & \frac{f_y}{Z_c} & -\frac{f_y Y_c}{Z_c^2} \end{bmatrix}$$
 
-이 $2 \times 3$ 자코비안은 EKF 기반 VIO에서 관측 모델의 선형화에 직접 사용되며, 비선형 최적화에서도 잔차의 자코비안을 구성하는 핵심 요소이다.
+이 $2 \times 3$ 자코비안은 EKF 기반 VIO에서 관측 모델을 선형화하고, 비선형 최적화에서 잔차의 자코비안을 구성한다.
 
 ### 2.1.2 렌즈 왜곡 모델 (Lens Distortion Model)
 
@@ -48,7 +48,7 @@ $$\frac{\partial \pi}{\partial \mathbf{P}_c} = \begin{bmatrix} \frac{f_x}{Z_c} &
 
 #### Radial-Tangential 왜곡 (Brown-Conrady 모델)
 
-OpenCV의 기본 왜곡 모델이며, 대부분의 SLAM·VIO 시스템이 표준으로 채택한다.
+OpenCV가 지원하는 대표적인 왜곡 모델이며, pinhole camera를 쓰는 SLAM·VIO에서 흔히 선택된다. Wide-FoV lens에는 fisheye나 omnidirectional model이 더 적합할 수 있다.
 
 정규화된 이미지 좌표 $\mathbf{p}_n = [x_n, y_n]^\top = [X_c/Z_c, \, Y_c/Z_c]^\top$에 대해:
 
@@ -172,7 +172,7 @@ def project_fisheye(P_c, K, fisheye_coeffs):
 
 ### 2.1.3 재투영 오차 (Reprojection Error)
 
-재투영 오차(reprojection error)는 센서 퓨전에서 카메라 관측을 활용하는 거의 모든 알고리즘의 핵심 비용 함수이다.
+재투영 오차(reprojection error)는 센서 퓨전에서 카메라 관측을 활용하는 거의 모든 알고리즘의 비용 함수이다.
 
 재투영 오차는 카메라 포즈 $\mathbf{T}_{cw} = [\mathbf{R}|\mathbf{t}]$로 3D 랜드마크 $\mathbf{P}_w$를 이미지에 투영한 예측 좌표 $\hat{\mathbf{p}}$와 실제 관측된 특징점 좌표 $\mathbf{p}_{\text{obs}}$ 사이의 차이이다:
 
@@ -303,7 +303,7 @@ $$\mathbf{P}_L^{(t_0)} = \mathbf{T}(t_0)^{-1} \cdot \mathbf{T}(t_i) \cdot \mathb
 
 **보정 방법:**
 
-1. **IMU 기반 보간**: IMU의 고주파 측정으로 스캔 기간 동안의 포즈 변화를 보간한다. 가장 일반적인 방법이며, LIO-SAM, FAST-LIO2 등에서 사용된다.
+1. **IMU 기반 보간**: IMU의 고주파 측정으로 스캔 기간 동안의 포즈 변화를 보간한다. LIO-SAM과 FAST-LIO2를 비롯한 LIO 시스템에서 쓰이는 방식이다.
 2. **이전 프레임 오도메트리 기반**: 직전 프레임의 추정 속도로 등속(constant velocity) 모델을 적용한다.
 3. **연속 시간(Continuous-time) 방법**: B-스플라인 등으로 궤적을 연속 함수로 모델링하고, 각 포인트의 시각에서의 포즈를 평가한다. [CT-ICP (Dellenbach et al., 2022)](https://arxiv.org/abs/2109.12979)가 대표적이다.
 
@@ -362,13 +362,13 @@ def undistort_scan(points, timestamps, T_start, T_end, t_start, t_end):
 | Feature 추출 | 스캔 라인 기반 가능 | 스캔 라인 구조 없음 |
 | 적합한 알고리즘 | LOAM, LeGO-LOAM | FAST-LIO/LIO2 (점 단위 처리) |
 
-FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829)가 솔리드 스테이트 LiDAR에서 특히 강력한 이유는, 스캔 라인 구조에 의존하지 않고 **개별 포인트를 순차적으로 처리**하는 iterated EKF 구조를 사용하기 때문이다. 반면 LOAM의 edge/planar feature 추출은 스캔 라인 구조를 전제하므로 솔리드 스테이트에 직접 적용하기 어렵다. 최근 [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035)는 이 구조를 확장하여 LiDAR-관성-비전 세 센서를 동일한 iterated EKF 내에서 순차적으로 융합하며, direct 방법으로 별도의 특징점 추출 없이 LiDAR 포인트와 이미지 모두를 처리한다.
+FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829)는 스캔 라인 구조에 의존하지 않고 **개별 포인트를 순차적으로 처리**하는 iterated EKF 구조를 사용하므로 솔리드 스테이트 LiDAR에 잘 맞는다. 반면 LOAM의 edge/planar feature 추출은 스캔 라인 구조를 전제하므로 솔리드 스테이트에 직접 적용하기 어렵다. 최근 [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035)는 이 구조를 확장하여 LiDAR-관성-비전 세 센서를 동일한 iterated EKF 내에서 순차적으로 융합하며, direct 방법으로 별도의 특징점 추출 없이 LiDAR 포인트와 이미지 모두를 처리한다.
 
 ---
 
 ## 2.3 IMU 모델
 
-IMU(Inertial Measurement Unit)는 3축 가속도계(accelerometer)와 3축 자이로스코프(gyroscope)로 구성된다. 거의 모든 센서 퓨전 시스템에서 IMU는 척추 역할을 한다. 100Hz–1kHz의 고주파 관측이 카메라·LiDAR 프레임 사이를 보간하고, 초기화와 스케일 관측성을 떠받친다. 오차 모델을 상세히 본다.
+IMU(Inertial Measurement Unit)는 3축 가속도계(accelerometer)와 3축 자이로스코프(gyroscope)로 구성된다. 100Hz–1kHz의 고주파 관측은 카메라·LiDAR 프레임 사이를 보간하며 초기화와 스케일 관측성을 제공한다. 퓨전에는 이 측정의 오차 모델이 필요하다.
 
 ### 2.3.1 자이로스코프 오차 모델
 
@@ -389,10 +389,11 @@ $$\dot{\mathbf{b}}_g = \mathbf{n}_{bg}$$
 
 $$\mathbf{b}_{g,k+1} = \mathbf{b}_{g,k} + \sigma_{bg} \sqrt{\Delta t} \cdot \mathbf{w}_k, \quad \mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
 
-MEMS급 자이로스코프의 전형적인 파라미터:
-- 측정 노이즈 밀도: $\sigma_g \approx 0.004\,\text{rad/s}/\sqrt{\text{Hz}}$ (약 $0.2\,°/\text{s}/\sqrt{\text{Hz}}$)
-- 바이어스 안정성(in-run bias stability): $\sigma_{bg} \approx 10\text{–}100\,°/\text{hr}$
-- 바이어스 랜덤 워크: $\sigma_{bg} \approx 0.0002\,\text{rad/s}^2/\sqrt{\text{Hz}}$
+자이로스코프의 노이즈 파라미터는 장치와 운용 조건에 맞춰 정한다.
+
+- **백색 노이즈 밀도**: 이름이 명시된 장치의 데이터시트와 Allan deviation의 $-1/2$ 기울기 구간에서 추정한다. 단위와 연속 시간 노이즈 밀도 정의가 구현의 이산 공분산 변환과 일치하는지 확인한다.
+- **In-run bias stability**: 충분히 긴 정지 데이터의 Allan deviation에서 기울기가 거의 0인 구간을 확인한다. 온도, 장착 응력, 진동, 측정 시간에 따라 달라지므로 데이터시트의 한 수치를 그대로 쓰지 않는다.
+- **바이어스 랜덤 워크 구동 노이즈**: 장시간 구간의 양의 기울기에서 추정한다. 측정 노이즈 $\sigma_g$와 바이어스 구동 노이즈 $\sigma_{bg}$를 구분하고, 연속 시간 밀도와 이산 시간 공분산의 변환 규약을 기록한다.
 
 ### 2.3.2 가속도계 오차 모델
 
@@ -413,10 +414,11 @@ $$\tilde{\mathbf{a}} = \mathbf{R}_{bw}(\mathbf{a}_w - \mathbf{g}_w) + \mathbf{b}
 
 $$\dot{\mathbf{b}}_a = \mathbf{n}_{ba}, \quad \mathbf{n}_{ba} \sim \mathcal{N}(\mathbf{0}, \sigma_{ba}^2 \mathbf{I})$$
 
-MEMS급 가속도계의 전형적인 파라미터:
-- 측정 노이즈 밀도: $\sigma_a \approx 0.04\,\text{m/s}^2/\sqrt{\text{Hz}}$ (약 $4\,\text{mg}/\sqrt{\text{Hz}}$)
-- 바이어스 안정성: $\sigma_{ba} \approx 0.01\text{–}0.1\,\text{mg}$
-- 바이어스 랜덤 워크: $\sigma_{ba} \approx 0.001\,\text{m/s}^3/\sqrt{\text{Hz}}$
+가속도계도 같은 절차로 파라미터를 정한다.
+
+- **백색 노이즈 밀도**: 장치 데이터시트와 Allan deviation의 $-1/2$ 기울기 구간을 함께 사용하고, $\text{m/s}^2/\sqrt{\text{Hz}}$, $\text{mg}/\sqrt{\text{Hz}}$, VRW 사이의 단위 변환을 명시한다.
+- **In-run bias stability**: 정지·온도 시험에서 거의 평평한 Allan 구간과 반복 실험의 분산을 확인한다. 중력 투영 오차와 장착 자세 변화가 바이어스로 섞이지 않게 한다.
+- **바이어스 랜덤 워크 구동 노이즈**: 장시간 데이터의 해당 기울기에서 $\sigma_{ba}$를 추정하고, 필터가 사용하는 샘플 주기에 맞춰 이산 공분산으로 변환한다.
 
 ### 2.3.3 Allan Variance
 
@@ -436,7 +438,7 @@ log-log 플롯에서 Allan Deviation $\sigma(\tau)$의 기울기로 노이즈 �
 | $0$ | 바이어스 불안정성 (Bias Instability) | 플리커 노이즈, 최소값이 바이어스 안정성 |
 | $+1/2$ | 레이트 랜덤 워크 (RRW) | 바이어스 랜덤 워크 $\mathbf{n}_{bg}, \mathbf{n}_{ba}$ |
 
-**데이터시트 읽는 법.** IMU 데이터시트에서 센서 퓨전에 필요한 핵심 파라미터를 추출하는 방법:
+**데이터시트 읽는 법.** IMU 데이터시트에서는 센서 퓨전에 필요한 파라미터를 다음과 같이 추출한다.
 
 1. **각도 랜덤 워크(Angular Random Walk, ARW)**: 단위 $°/\sqrt{\text{hr}}$ 또는 $\text{rad/s}/\sqrt{\text{Hz}}$. Allan Deviation 플롯에서 $\tau = 1\,\text{s}$일 때의 값, 또는 기울기 $-1/2$ 구간에서 읽는다. 이것이 $\sigma_g$에 해당한다.
 2. **속도 랜덤 워크(Velocity Random Walk, VRW)**: 단위 $\text{m/s}/\sqrt{\text{hr}}$ 또는 $\text{m/s}^2/\sqrt{\text{Hz}}$. 가속도계의 백색 노이즈 밀도. 이것이 $\sigma_a$에 해당한다.
@@ -566,7 +568,7 @@ $$\mathbf{v}_{k+1} = \mathbf{v}_k + (\bar{\mathbf{a}} + \mathbf{g}) \Delta t$$
 
 $$\mathbf{p}_{k+1} = \mathbf{p}_k + \mathbf{v}_k \Delta t + \frac{1}{2}(\bar{\mathbf{a}} + \mathbf{g}) \Delta t^2$$
 
-이 중간점 적분이 VINS-Mono, FAST-LIO2 등에서 사용되는 기본 적분 방식이다. 더 정밀한 4차 Runge-Kutta(RK4) 적분도 가능하지만, 일반적인 IMU 주파수(200–400Hz)에서는 중간점 적분으로 충분하다.
+중간점 적분은 VINS-Mono 같은 VIO 구현에서 흔히 쓰인다. FAST-LIO2를 포함한 각 system의 propagation 식과 discretization은 구현별로 확인해야 한다. IMU rate가 높더라도 angular acceleration과 sampling jitter가 크면 적분 오차가 남으므로, 중간점·RK4·preintegration 선택은 목표 motion과 error budget으로 검증한다.
 
 ```python
 import numpy as np
@@ -647,25 +649,27 @@ def imu_strapdown(gyro_data, accel_data, dt, R0, v0, p0, bg, ba, gravity):
     return Rs, vs, ps
 ```
 
-**드리프트의 수치적 의미.** 위의 스트랩다운 적분을 바이어스 보정 없이 수행하면 얼마나 빠르게 발산하는지 간단히 계산해보자. 가속도계 바이어스가 $b_a = 0.01\,\text{m/s}^2$ (약 $1\,\text{mg}$, 전형적인 MEMS 수준)인 경우:
+**드리프트의 수치적 의미.** 위의 스트랩다운 적분을 바이어스 보정 없이 수행하면 어떻게 오차가 누적되는지 단순한 가정으로 계산해보자. 설명을 위해 일정한 가속도계 바이어스를 $b_a = 0.01\,\text{m/s}^2$ (약 $1\,\text{mg}$)로 둔다.
 
 - 1초 후 위치 오차: $\frac{1}{2} \times 0.01 \times 1^2 = 0.005\,\text{m}$ (5mm)
 - 10초 후: $\frac{1}{2} \times 0.01 \times 100 = 0.5\,\text{m}$
 - 60초 후: $\frac{1}{2} \times 0.01 \times 3600 = 18\,\text{m}$
 
-IMU 단독으로는 항법이 불가능한 이유가 바로 이 발산 속도이다. 바이어스는 센서 퓨전을 통해 지속적으로 추정하고 보정해야 한다. VIO/LIO 시스템에서 바이어스 $\mathbf{b}_g, \mathbf{b}_a$는 **상태 벡터의 일부로 포함**되어 다른 센서의 관측을 통해 지속적으로 업데이트된다. 한편, 최근 딥러닝 기반 관성 오도메트리 연구도 활발하다. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659)는 IMU 특징의 관측 가능성을 강화하여 드론 환경에서 기존 학습 기반 관성 오도메트리 대비 50% 이상의 정확도 향상을 보고하고 있다.
+이 예는 보조 센서가 없는 저가형 MEMS 관성 추정의 위치 오차가 짧은 임무에서도 빠르게 허용 범위를 넘을 수 있음을 보여준다. 실제 지속 시간은 IMU 성능, 온도 환경, 운동, 초기화, 임무의 오차 예산에 따라 달라진다. 더 높은 성능의 INS는 보조 없이 더 오래 운용할 수 있지만 드리프트 자체는 계속 누적된다. VIO/LIO 시스템에서는 바이어스 $\mathbf{b}_g, \mathbf{b}_a$를 **상태 벡터의 일부로 포함**하고 다른 센서의 관측으로 갱신한다. 한편, 최근 딥러닝 기반 관성 오도메트리 연구도 활발하다. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659)는 IMU 특징의 관측 가능성을 강화하여 드론 환경에서 기존 학습 기반 관성 오도메트리 대비 50% 이상의 정확도 향상을 보고하고 있다.
 
 ### 2.3.5 IMU 등급 분류
 
-IMU는 성능에 따라 크게 세 등급으로 나뉘며, 센서 퓨전 시스템 설계 시 어떤 등급을 사용하느냐에 따라 필요한 외부 센서 보조의 빈도와 종류가 달라진다.
+항법등급, 전술등급, 산업용, 소비자용 같은 명칭은 제조사와 분야마다 경계가 다르다. 또한 MEMS는 제작 기술을 가리키므로 하나의 성능 등급과 같은 뜻이 아니다. 따라서 등급명이나 고정 가격표보다 이름이 명시된 장치의 사양과 목표 플랫폼 시험으로 선택한다.
 
-| 등급 | ARW | 바이어스 안정성 (자이로) | 가격대 | 단독 항법 시간 | 예시 |
-|------|-----|----------------------|-------|-------------|------|
-| 항법등급 (Navigation) | $< 0.002°/\sqrt{\text{hr}}$ | $< 0.01°/\text{hr}$ | $>$ \$10k | 수 시간 | HG1700, LN-200 |
-| 전술등급 (Tactical) | $0.05\text{–}0.5°/\sqrt{\text{hr}}$ | $0.1\text{–}10°/\text{hr}$ | \$1k–10k | 수 분 | STIM300, ADIS16490 |
-| MEMS | $0.1\text{–}1°/\sqrt{\text{hr}}$ | $1\text{–}100°/\text{hr}$ | $<$ \$100 | 수 초 | BMI088, ICM-42688 |
+| 선택 기준 | 확인할 항목 | 검증 자료 | 설계 영향 |
+|----------|------------|----------|----------|
+| 백색 노이즈 | 자이로·가속도계 노이즈 밀도, ARW/VRW 단위 | 장치 데이터시트 + Allan 시험 | 단기 상태 전파 오차 |
+| 바이어스 | In-run stability, 랜덤 워크, 온도 계수 | 정지·온도 반복 시험 + Allan 시험 | 무보조 드리프트와 외부 관측 주기 |
+| 동적 범위 | 측정 범위, 대역폭, 포화·클리핑 | 목표 운동·진동 프로파일 시험 | 급격한 운동에서의 관측 손실 |
+| 시간 특성 | 출력률, 타임스탬프, clock/trigger 지원 | 지연·지터 측정 | 시간 보정과 퓨전 일관성 |
+| 환경 내성 | 온도, 진동, 충격, 장착 응력 | 제조사 qualification + 목표 플랫폼 시험 | 반복성과 장기 안정성 |
 
-로보틱스와 자율주행에서는 대부분 MEMS급 IMU를 사용하므로, 카메라, LiDAR 등과의 긴밀한 퓨전이 필수적이다.
+외부 센서의 종류와 보조 주기는 이 측정값을 임무의 오차 예산에 넣어 정한다. 가격은 시점과 수량에 따라 달라지므로 현재 견적과 필요한 캘리브레이션·동기화 비용까지 함께 비교한다.
 
 ---
 
@@ -693,20 +697,20 @@ $$\rho^s = r^s + c \cdot \delta t_r - c \cdot \delta t^s + I^s + T^s + \epsilon_
 
 ### 2.4.2 반송파 위상 관측 모델 (Carrier Phase)
 
-반송파 위상(carrier phase) 관측은 의사거리보다 훨씬 정밀하다(밀리미터 수준). L1 반송파(약 1575.42MHz)의 파장은 약 19cm이며, 위상을 1%만 분해해도 약 2mm의 거리 정밀도가 가능하다.
+반송파 위상의 fractional-phase 관측 잡음은 의사거리보다 훨씬 작아 millimeter 수준일 수 있다. 그러나 이것이 곧바로 millimeter positioning accuracy를 뜻하지는 않는다. L1 반송파(약 1575.42 MHz)의 파장은 약 19 cm이며, 정수 모호성·cycle slip·multipath·대기 오차를 함께 풀어야 한다.
 
 $$\Phi^s = r^s + c \cdot \delta t_r - c \cdot \delta t^s + \lambda N^s - I^s + T^s + \epsilon_\Phi$$
 
 여기서:
 - $\lambda$: 반송파 파장
-- $N^s$: **정수 모호성(integer ambiguity)** — 수신기와 위성 사이의 전체 파장 수. 미지의 정수값으로, 이를 정확히 결정하는 것이 RTK/PPP의 핵심이다.
+- $N^s$: **정수 모호성(integer ambiguity)** — 수신기와 위성 사이의 전체 파장 수. RTK/PPP는 이 미지의 정수값을 정확히 결정해야 한다.
 - $\epsilon_\Phi \approx 1\text{–}5\,\text{mm}$: 반송파 위상 노이즈 (의사거리 노이즈의 약 1/100)
 
-전리층 지연의 부호는 의사거리와 반대이다(군속도 vs 위상속도). 이중 주파수 관측으로 이 차이를 활용하면 전리층 지연을 제거할 수 있다.
+전리층 지연의 부호는 의사거리와 반대이다(군속도 vs 위상속도). 이중 주파수 조합으로 1차 전리층 항을 추정·완화할 수 있지만, higher-order term과 다른 오차원은 남는다.
 
 ### 2.4.3 RTK (Real-Time Kinematic)
 
-RTK는 가까운 거리(수 km 이내)에 있는 기준국(base station)과의 **차분(differencing)** 관측을 통해 공통 오차(위성 시계, 전리층, 대류권)를 제거하고, 반송파 위상의 정수 모호성을 실시간으로 해결하여 **센티미터 급** 측위를 달성하는 기법이다.
+RTK는 기준국 또는 network correction과의 **차분(differencing)** 관측으로 공통 오차를 줄이고 carrier-phase integer ambiguity를 실시간으로 해결하는 기법이다. Baseline이 길어질수록 대기 오차의 상관이 약해지며, ambiguity가 fixed되고 신호·correction 품질이 좋은 조건에서 centimeter-class 결과를 낼 수 있다.
 
 **이중 차분(Double Difference).** 위성 $s$와 기준 위성 $r$에 대한 기준국-이동국 간 이중 차분:
 
@@ -727,7 +731,7 @@ PPP는 기준국 없이 단일 수신기로 센티미터 급 측위를 달성하
 | 정밀도 (수렴 후) | $\sim 2\,\text{cm}$ | $\sim 5\,\text{cm}$ |
 | 커버리지 | 기준국 근처 | 전지구 |
 
-**센서 퓨전에서의 GNSS 활용.** GNSS는 절대 위치를 제공하므로, VIO/LIO와 결합하면 장기 드리프트를 완전히 제거할 수 있다. [LIO-SAM (Shan et al., 2020)](https://arxiv.org/abs/2007.00258)은 GNSS 팩터를 팩터 그래프에 직접 추가하는 대표적인 예이다. GNSS 관측을 퓨전에 포함시킬 때 주요 고려사항:
+**센서 퓨전에서의 GNSS 활용.** GNSS의 global position observation은 VIO/LIO의 장기 drift를 제한하거나 보정할 수 있다. 다만 outage·multipath·frame alignment·lever arm·time offset이 남으면 drift와 bias도 남는다. [LIO-SAM (Shan et al., 2020)](https://arxiv.org/abs/2007.00258)은 조건을 만족하는 GNSS measurement를 factor graph에 추가할 수 있는 대표적 예다. GNSS 관측을 fusion에 포함할 때는 세 가지를 확인해야 한다:
 
 1. **좌표계 변환**: GNSS는 WGS84(위도, 경도, 타원체고)로 출력되며, 로보틱스 시스템은 ENU(East-North-Up) 또는 NED(North-East-Down) 로컬 프레임을 사용한다. 변환이 필요하다.
 2. **공분산 활용**: GNSS 수신기가 출력하는 DOP(Dilution of Precision) 값이나 위치 공분산을 퓨전 시스템의 관측 공분산으로 활용한다.
@@ -838,7 +842,7 @@ $$v_r = \frac{\lambda \cdot f_d}{2}$$
 
 전통적인 자동차 레이더는 거리, 속도, 수평 각도의 3차원 정보를 제공하며, 수직 방향 분해능은 매우 낮았다. **4D 이미징 레이더(4D Imaging Radar)**는 거리, 속도(도플러), 수평 각도, **수직 각도**의 4차원 정보를 높은 분해능으로 제공하는 차세대 레이더이다.
 
-4D 이미징 레이더의 핵심은 대규모 가상 안테나 어레이(virtual antenna array)를 MIMO(Multiple Input Multiple Output) 기술로 구현하는 것이다. 예를 들어, 12개 송신 안테나 × 16개 수신 안테나 = 192개 가상 안테나로, 수평/수직 모두에서 충분한 각도 분해능을 달성한다.
+4D 이미징 레이더는 MIMO(Multiple Input Multiple Output) 기술로 대규모 가상 안테나 어레이(virtual antenna array)를 구현한다. 예를 들어, 12개 송신 안테나 × 16개 수신 안테나 = 192개 가상 안테나로, 수평/수직 모두에서 충분한 각도 분해능을 달성한다.
 
 **4D Radar vs LiDAR:**
 
@@ -860,7 +864,7 @@ $$v_r^{(i)} = -\mathbf{e}^{(i)\top} \mathbf{v}_{\text{ego}}$$
 여기서 $\mathbf{e}^{(i)}$는 $i$번째 반사체 방향의 단위 벡터, $\mathbf{v}_{\text{ego}}$는 자기 속도. 여러 반사체로부터의 관측으로 $\mathbf{v}_{\text{ego}}$를 최소자승법으로 추정한다.
 
 2. **동적 물체 탐지**: 정적 환경에 대한 예측 도플러와 실제 관측의 차이로 이동 물체를 식별한다.
-3. **악천후 보완**: 비, 안개에서 카메라와 LiDAR가 실패할 때 레이더가 유일한 외향(exteroceptive) 센서로 기능한다.
+3. **악천후 보완**: 비나 안개로 카메라와 LiDAR 관측이 약해질 때 레이더가 독립적인 외향(exteroceptive) 관측을 제공한다. 성능은 강수량, 주파수 대역, 안테나와 신호 처리 설정에 따라 달라진다.
 
 ```python
 import numpy as np
@@ -898,7 +902,7 @@ def estimate_ego_velocity(bearings, doppler_velocities):
     return v_ego
 ```
 
-레이더는 직접적인 속도 측정이라는 다른 센서가 쉽게 줄 수 없는 정보를 제공한다. Ch.8의 멀티 센서 퓨전 아키텍처에서 레이더가 점점 핵심 센서로 자리잡고 있는 것은 이 때문이다.
+레이더는 다른 센서가 쉽게 줄 수 없는 속도 정보를 직접 측정한다. 이 특성 때문에 Ch.8의 멀티 센서 퓨전 아키텍처에서 레이더 활용이 늘고 있다.
 
 ---
 
@@ -960,7 +964,7 @@ $$\Delta h \approx -\frac{\Delta P}{\rho g} \approx -\frac{\Delta P}{12.0}\,[\te
 
 ### 2.6.3 자력계 (Magnetometer)
 
-자력계는 3축 자기장 벡터를 측정한다. 지구 자기장으로부터 **절대 요(yaw) 방위**를 추출할 수 있다.
+자력계는 3축 자기장 벡터를 측정한다. Roll·pitch 보정과 hard/soft-iron calibration이 유효하고 주변 자기 교란이 작다면, 지구 자기장에 대한 heading을 얻을 수 있다. True north가 필요하면 지역 magnetic declination도 보정해야 한다.
 
 **관측 모델.** 자력계 측정값은:
 
@@ -996,9 +1000,9 @@ $$d = \frac{c \cdot (t_{\text{round}} - t_{\text{reply}})}{2} + n_d$$
 - $t_{\text{reply}}$: 응답 노드의 처리 시간
 - $n_d$: 거리 노이즈, 일반적으로 $\sigma_d \approx 5\text{–}30\,\text{cm}$ (LOS 환경)
 
-**NLOS(Non-Line-of-Sight) 문제.** UWB는 직접 가시선(LOS)이 확보된 환경에서는 높은 정밀도를 보이지만, 벽이나 장애물을 통과하면(NLOS) 신호가 지연되어 실제보다 먼 거리를 보고한다. NLOS 탐지와 완화는 UWB 기반 측위의 핵심 과제이다.
+**NLOS(Non-Line-of-Sight) 문제.** UWB는 직접 가시선(LOS)이 확보된 환경에서는 높은 정밀도를 보이지만, 벽이나 장애물을 통과하면(NLOS) 신호가 지연되어 실제보다 먼 거리를 보고한다. UWB 기반 측위에서는 NLOS를 탐지하고 그 영향을 줄여야 한다.
 
-**센서 퓨전에서의 역할.** UWB 앵커(anchor)를 환경에 미리 설치하면, 각 앵커까지의 거리 측정으로 삼변측량(trilateration)하여 절대 위치를 추정할 수 있다. 이는 실내에서 GNSS를 대체하는 역할을 하며, VIO와 결합하면 장기 드리프트를 보정할 수 있다.
+**센서 퓨전에서의 역할.** UWB anchor를 환경에 미리 설치하면, 각 anchor까지의 range로 anchor frame 안의 position을 추정할 수 있다. Anchor 좌표를 survey해 global frame에 묶은 경우에만 global absolute position이 된다. VIO와 결합하면 geometry와 NLOS 조건이 충분한 구간에서 drift를 제한할 수 있다.
 
 **관측 방정식 (삼변측량):**
 
@@ -1045,19 +1049,19 @@ def uwb_trilateration(anchor_positions, ranges):
 
 ## 2.7 센서 모델링 요약
 
-이 챕터에서 다룬 각 센서의 관측 모델과 핵심 특성을 정리한다.
+표는 각 센서의 관측 모델과 주요 특성을 정리한다.
 
-| 센서 | 관측량 | 관측 모델 | 주요 노이즈원 | 전형적 노이즈 수준 |
+| 센서 | 관측량 | 관측 모델 | 주요 노이즈원 | 검증 기준 |
 |------|--------|----------|-------------|------------------|
-| 카메라 | 2D 이미지 좌표 | $\pi(\mathbf{T} \cdot \mathbf{P})$ (핀홀 + 왜곡) | 검출 노이즈, 왜곡 잔차 | $0.5\text{–}2$ 픽셀 |
-| LiDAR | 3D 점 $(r, \alpha, \omega)$ | Range-bearing | 거리 노이즈, 빔 확산, 혼합 픽셀 | $1\text{–}5\,\text{cm}$ |
-| IMU (자이로) | 각속도 $\boldsymbol{\omega}$ | $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$ | 바이어스, 랜덤 워크 | ARW $\sim 0.1\text{–}1°/\sqrt{\text{hr}}$ |
-| IMU (가속도) | 비력 $\mathbf{a}$ | $\tilde{\mathbf{a}} = \mathbf{R}(\mathbf{a}-\mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$ | 바이어스, 랜덤 워크 | VRW $\sim 0.02\text{–}0.2\,\text{m/s}/\sqrt{\text{hr}}$ |
-| GNSS | 의사거리 $\rho$ | $\rho = r + c\delta t_r + I + T + \epsilon$ | 다중경로, 전리층, 대류권 | $1\text{–}5\,\text{m}$ (SPP) |
-| Radar | Range, Doppler, 방위 | FMCW beat frequency | 클러터, 다중경로 | $\Delta R \sim 4\,\text{cm}$, $v \sim 0.1\,\text{m/s}$ |
-| Wheel Odom. | 회전수 | $\Delta s = r \Delta\theta$ | 슬립 | $1\text{–}5\%$ 이동 거리 |
-| 기압계 | 기압 $P$ | $h = f(P)$ | 기상 변화 | $0.1\text{–}0.5\,\text{m}$ (단기) |
-| 자력계 | 자기장 $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | 하드/소프트 아이언 | $1\text{–}5°$ (캘리브 후) |
-| UWB | 거리 $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | $5\text{–}30\,\text{cm}$ (LOS) |
+| 카메라 | 2D 이미지 좌표 | $\pi(\mathbf{T} \cdot \mathbf{P})$ (핀홀 + 왜곡) | 검출 노이즈, 왜곡 잔차 | 목표 검출기와 별도 검증 영상의 재투영 잔차 |
+| LiDAR | 3D 점 $(r, \alpha, \omega)$ | Range-bearing | 거리 노이즈, 빔 확산, 혼합 픽셀 | 장치 데이터시트 + 거리·표면·입사각별 잔차 시험 |
+| IMU (자이로) | 각속도 $\boldsymbol{\omega}$ | $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$ | 바이어스, 랜덤 워크 | 장치 데이터시트 + Allan·온도·진동 시험 |
+| IMU (가속도) | 비력 $\mathbf{a}$ | $\tilde{\mathbf{a}} = \mathbf{R}(\mathbf{a}-\mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$ | 바이어스, 랜덤 워크 | 장치 데이터시트 + Allan·온도·진동 시험 |
+| GNSS | 의사거리 $\rho$ | $\rho = r + c\delta t_r + I + T + \epsilon$ | 다중경로, 전리층, 대류권 | 수신기·보정 상태별 목표 환경 주행 로그 |
+| Radar | Range, Doppler, 방위 | FMCW beat frequency | 클러터, 다중경로 | 장치의 거리·속도·각도 해상도 + 타겟·RCS·기상별 시험 |
+| Wheel Odom. | 회전수 | $\Delta s = r \Delta\theta$ | 슬립 | 노면·하중·슬립 조건별 반복 궤적 |
+| 기압계 | 기압 $P$ | $h = f(P)$ | 기상 변화 | 정지·온도·기상 조건별 반복 측정 |
+| 자력계 | 자기장 $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | 하드/소프트 아이언 | 캘리브레이션 잔차 + 운용 장소의 자기 간섭 시험 |
+| UWB | 거리 $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | 앵커별 LOS/NLOS 거리 잔차 |
 
-관측 모델은 센서 퓨전의 첫걸음일 뿐이다. 모델이 아무리 정확해도, 센서 간의 상대 위치와 시간 동기가 어긋나면 퓨전 성능이 무너진다. 다음 챕터는 그래서 **캘리브레이션(Calibration)**, 즉 센서 간의 기하·시간 관계를 결정하는 과정을 다룬다.
+관측 모델이 정확해도 센서 간 상대 위치와 시간 동기가 어긋나면 퓨전 성능이 무너진다. 센서를 함께 쓰려면 센서 간 기하·시간 관계를 정하는 **캘리브레이션(Calibration)**이 필요하다.

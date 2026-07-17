@@ -1,9 +1,9 @@
 # Ch.9 — Place Recognition & Retrieval
 
-Ch.6-8에서 다룬 odometry/fusion 시스템은 시간이 지나면 드리프트가 누적된다. 이 드리프트를 교정하려면 로봇이 과거에 방문한 장소를 다시 인식할 수 있어야 한다 — 이것이 Place Recognition의 역할이다. 이 챕터에서 다루는 기술들은 Ch.10의 Loop Closure에서 직접 활용된다.
+Odometry/fusion 시스템은 시간이 지나면 드리프트가 누적된다. Place Recognition은 로봇이 과거에 방문한 장소를 다시 찾아 이 드리프트를 교정할 후보를 제공하고, 그 결과는 Ch.10의 Loop Closure에 직접 들어간다.
 
 > 로봇이 "이 장소를 전에 본 적이 있는가?"를 판단하는 문제.
-> Loop closure의 핵심 컴포넌트이자, multi-session SLAM과 재위치추정(relocalization)의 기반이다.
+> Loop closure의 후보를 만들고, multi-session SLAM과 재위치추정(relocalization)에 쓰인다.
 
 ---
 
@@ -13,7 +13,7 @@ Ch.6-8에서 다룬 odometry/fusion 시스템은 시간이 지나면 드리프�
 
 **Place Recognition (PR)**은 "현재 관측이 데이터베이스의 어떤 장소와 일치하는가?"를 판단하는 retrieval 문제이다. 이것은 standalone 문제로, SLAM 없이도 정의된다.
 
-**Loop Closure Detection**은 SLAM 시스템 내에서 "로봇이 이전에 방문했던 장소를 다시 방문했는가?"를 탐지하는 것이다. Place recognition은 loop closure detection의 핵심 컴포넌트이지만, loop closure는 PR 이후에 **geometric verification**(기하학적 검증)까지 포함하는 더 넓은 파이프라인이다.
+**Loop Closure Detection**은 SLAM 시스템 내에서 "로봇이 이전에 방문했던 장소를 다시 방문했는가?"를 탐지하는 것이다. Place recognition이 후보를 만들면 loop closure 파이프라인이 **geometric verification**(기하학적 검증)을 거쳐 확정한다.
 
 ```
 Loop Closure Detection Pipeline:
@@ -24,11 +24,11 @@ Loop Closure Detection Pipeline:
 └─────────────┘    └────────────────┘    └───────────────────┘    └─────────────┘
 ```
 
-SLAM에서 loop closure가 없으면 드리프트가 계속 누적된다. 그런데 brute-force로 현재 프레임을 모든 과거 프레임과 비교하는 것은 $O(N^2)$으로 불가능하다. Place recognition은 이 비교를 sub-linear (보통 $O(\log N)$ 또는 $O(1)$)로 줄여주는 핵심 기술이다.
+SLAM에서 loop closure가 없으면 드리프트가 누적된다. 현재 query를 $N$개 과거 frame과 모두 비교하는 비용은 query당 $O(N)$이고, 전체 sequence의 all-pairs 비교는 $O(N^2)$이다. Global descriptor와 exact scan만 사용하면 여전히 $O(N)$이지만, inverted index나 tree, approximate-nearest-neighbor index를 쓰면 데이터 분포와 recall trade-off 아래에서 평균 query 비용을 줄일 수 있다.
 
 ### 9.1.2 Retrieval Pipeline
 
-Place recognition의 일반적인 파이프라인은 정보 검색(Information Retrieval)의 패러다임을 따른다:
+Place recognition은 정보 검색(Information Retrieval)과 같은 파이프라인을 쓴다:
 
 1. **Encoding**: 각 관측(이미지, 포인트 클라우드, 또는 둘 다)을 고정 길이의 **글로벌 디스크립터(global descriptor)**로 인코딩.
 2. **Indexing**: 데이터베이스의 모든 디스크립터를 검색 가능한 인덱스 구조(예: kd-tree, FAISS)에 저장.
@@ -45,17 +45,17 @@ $$
 
 PR 시스템의 성능은 다음 메트릭으로 평가한다:
 
-**Recall@N**: 상위 $N$개 후보 중 올바른 매칭이 포함되는 비율. 가장 보편적인 메트릭이다.
+**Recall@N**: 상위 $N$개 후보 중 올바른 매칭이 포함되는 비율로, 널리 쓰이는 메트릭이다.
 
 $$
 \text{Recall@N} = \frac{|\{q : \text{top-}N \text{ 후보 중 정답이 있는 쿼리 } q\}|}{|\text{전체 쿼리}|}
 $$
 
-**Recall@1**이 특히 중요한 이유: 실시간 SLAM에서는 보통 가장 유사한 1개의 후보만 검증할 여유가 있기 때문이다.
+**Recall@1**은 첫 번째 검색 결과의 성공률을 나타낸다. 실제 SLAM은 지연시간과 false-positive 비용에 따라 top-$k$ 후보를 기하 검증하므로 Recall@$k$, precision-recall, query latency도 함께 봐야 한다.
 
 **Precision-Recall Curve**: 디스크립터 유사도에 임계값을 변화시키며 precision과 recall의 관계를 그린다. 높은 precision (false positive 최소화)이 SLAM에서 특히 중요하다 — false positive loop closure는 맵을 파괴적으로 왜곡시킨다.
 
-**"정답"의 정의**: 보통 GPS 거리 기준 25m 이내를 같은 장소로 정의한다. 데이터셋에 따라 다르다.
+**"정답"의 정의**: 위치 거리, 시야 중첩, 자세 차이 등 데이터셋의 annotation protocol이 정한다. 예를 들어 일부 VPR benchmark는 특정 GPS 반경을 쓰지만 25m를 일반 규칙으로 적용하면 안 된다.
 
 ```python
 import numpy as np
@@ -105,7 +105,7 @@ Visual Place Recognition은 이미지만으로 장소를 인식하는 문제이�
 
 ### 9.2.1 전통적 방법: Bag of Words (BoW)
 
-**[Video Google (Sivic & Zisserman, 2003)](https://www.robots.ox.ac.uk/~vgg/publications/2003/Sivic03/)**이 제안한 **Bag of Visual Words** 모델은 VPR의 원점이다. 핵심 아이디어는 텍스트 검색(text retrieval)의 방법론을 시각 검색에 그대로 적용하는 것이다.
+**[Video Google (Sivic & Zisserman, 2003)](https://www.robots.ox.ac.uk/~vgg/publications/2003/Sivic03/)**이 제안한 **Bag of Visual Words** 모델은 텍스트 검색(text retrieval)의 방법론을 시각 검색에 적용했다.
 
 파이프라인:
 
@@ -132,7 +132,7 @@ $$
 \text{sim}(\mathbf{v}_q, \mathbf{v}_d) = \frac{\mathbf{v}_q \cdot \mathbf{v}_d}{\|\mathbf{v}_q\| \cdot \|\mathbf{v}_d\|}
 $$
 
-**DBoW2**: ORB-SLAM 시리즈에서 사용되는 BoW 구현이다. Hierarchical k-means tree를 사용하여 vocabulary 크기를 크게 늘리면서도 양자화 속도를 유지한다. 실시간 SLAM에서 loop closure 탐지의 사실상 표준이었다.
+**DBoW2**: ORB-SLAM 시리즈에서 사용된 BoW 구현이다. Hierarchical k-means tree로 큰 vocabulary를 효율적으로 검색하며, feature-based real-time SLAM의 loop-candidate retrieval에 널리 쓰인 구현 중 하나다.
 
 ```python
 import numpy as np
@@ -270,22 +270,22 @@ Pitts250k Recall@1 약 84.3%, Pitts30k Recall@1 약 86.3%로, 당시 hand-crafte
 
 **[AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688)**은 VPR 전용 학습 없이 범용적으로 작동하는 장소 인식이 가능한가를 묻는다. 대답은 DINOv2 같은 Foundation Model의 특징을 사용하면 가능하다는 것이다.
 
-1. **DINOv2 특징 추출**: DINOv2 ViT-G14의 중간 레이어(31번째 레이어)에서 밀집(dense) 특징을 추출한다. CLS 토큰(이미지 전체를 하나의 벡터로 요약)이 아니라 모든 패치의 특징을 사용한다. CLS 토큰은 이미지 전체의 semantic을 포착하지만 장소를 구분하는 세밀한 구조적 차이를 놓칠 수 있다. 밀집 특징은 각 패치의 로컬 정보를 보존하므로 더 정밀한 장소 구분이 가능하다 (평균 23% 성능 향상).
+1. **DINOv2 특징 추출**: AnyLoc 구성은 DINOv2 ViT-G/14의 중간 layer에서 dense patch feature를 추출한다. CLS token 대신 patch 정보를 보존하며, 저자들은 논문의 비교 집합과 지표에서 dense feature 사용의 평균 향상을 보고했다. layer와 향상 폭은 backbone·dataset에 따라 달라진다.
 
 2. **VLAD 집계**: 밀집 특징을 k-means로 클러스터링하여 시각 어휘를 구축하고, hard-assignment VLAD로 글로벌 디스크립터를 생성한다. NetVLAD처럼 학습하지 않고 비지도(unsupervised) VLAD를 사용한다.
 
-3. **도메인별 어휘**: PCA 투영으로 Urban, Indoor, Aerial, SubT(지하), Degraded(악조건), Underwater(수중) 6개 도메인을 비지도적으로 발견하고, 도메인별 어휘를 구축하면 성능이 최대 19% 더 향상된다.
+3. **도메인별 어휘**: 논문은 PCA 투영에서 Urban, Indoor, Aerial, SubT, Degraded, Underwater 집단을 분석하고 domain-specific vocabulary를 사용한다. 보고된 최대 향상은 해당 평가 설정의 결과이며 새 domain에서는 vocabulary 선택을 검증해야 한다.
 
 Foundation Model이 작동하는 이유:
 
-[DINOv2 (Oquab et al., 2023)](https://arxiv.org/abs/2304.07193)는 1.42억 장의 이미지에서 자기지도 학습(self-supervised learning)으로 학습한 모델이다. 훈련 과정에서 장면의 구조적·시맨틱 특징을 범용적으로 익힌다. 특정 장소 인식 태스크에 학습하지 않았음에도 이 범용 특징이 장소를 구분하는 데 충분하다.
+[DINOv2 (Oquab et al., 2023)](https://arxiv.org/abs/2304.07193)는 1.42억 장의 이미지로 자기지도 학습한 모델이다. 특정 place-recognition label로 fine-tune하지 않은 feature도 여러 benchmark에서 유용했지만, 반복 구조·극단적 viewpoint·미포함 sensor domain에서 식별 가능성을 보장하지는 않는다.
 
-벤치마크 성능:
-- 주야간 변화: 기존 SOTA(MixVPR, CosPlace) 대비 5-21% Recall@1 향상
-- 계절 변화: 8-9% 향상
-- 반대 시점(180도): 39-49% 향상
-- 비정형 환경(수중, 지하): 기존 대비 최대 4배
-- PCA-Whitening으로 49K 차원 → 512 차원 (100배 압축)하면서 SOTA 성능 유지
+AnyLoc 원 논문이 사용한 benchmark·protocol에서 보고한 상대 비교:
+- 주야간 변화: 비교한 MixVPR·CosPlace 계열보다 Recall@1이 5–21%p 높은 경우
+- 계절 변화: 8–9%p 높은 경우
+- 반대 시점(180도): 39–49%p 높은 경우
+- 수중·지하 등 일부 비정형 환경: baseline의 최대 약 4배
+- PCA-Whitening으로 49K 차원을 512차원으로 줄인 실험도 제시하지만, recall 변화는 dataset별로 확인해야 한다
 
 ```python
 import numpy as np
@@ -367,7 +367,7 @@ DINOv2 외에도 다양한 Foundation Model이 VPR에 활용되고 있다:
 
 - **CLIP**: 텍스트-이미지 대응 학습으로, "도시 거리", "숲 속 길" 같은 시맨틱 수준의 장소 인식에 활용 가능. 그러나 세밀한 구조적 차이 구분에서는 DINOv2에 뒤진다.
 - **SAM (Segment Anything)**: 세그멘테이션 마스크를 장소의 구조적 표현으로 활용하는 연구가 진행 중.
-- **DINOv2 + NetVLAD**: AnyLoc의 비지도 VLAD 대신, DINOv2 특징에 학습된 NetVLAD 레이어를 붙이면 성능이 더 향상된다는 후속 연구.
+- **DINOv2 + NetVLAD**: 후속 연구에서는 AnyLoc의 비지도 VLAD 대신 DINOv2 특징에 학습된 NetVLAD 레이어를 붙여 성능을 더 높였다.
 
 ### 9.2.7 SeqSLAM과 시퀀스 매칭
 
@@ -514,7 +514,7 @@ Scan Context 외의 handcrafted LiDAR 디스크립터:
 
 ### 9.3.3 Learning-based: PointNetVLAD
 
-**[PointNetVLAD (Uy & Lee, 2018)](https://arxiv.org/abs/1804.03492)**는 NetVLAD의 아이디어를 3D 포인트 클라우드에 직접 적용한 최초의 연구이다. PointNet 백본으로 로컬 특징을 추출하고, NetVLAD 레이어로 글로벌 디스크립터로 집계하며, lazy triplet loss로 학습한다.
+**[PointNetVLAD (Uy & Lee, 2018)](https://arxiv.org/abs/1804.03492)**는 PointNet과 NetVLAD를 결합해 point cloud place retrieval을 end-to-end로 학습한 초기의 영향력 있는 연구다. PointNet backbone으로 특징을 추출하고, NetVLAD layer로 global descriptor를 집계하며, lazy triplet·quadruplet loss를 사용한다.
 
 $$
 \mathcal{L} = \max(0, m + \max_{p^+} d(q, p^+) - \min_{p^-} d(q, p^-))
@@ -524,7 +524,7 @@ PointNet은 포인트 간 상호작용을 충분히 모델링하지 못하며, �
 
 ### 9.3.4 MinkLoc3D
 
-**[MinkLoc3D (Komorowski, 2021)](https://arxiv.org/abs/2011.04530)**는 PointNetVLAD의 한계를 극복하기 위해 Minkowski Convolutional Neural Network을 백본으로 사용한다. 희소 3D 합성곱(sparse 3D convolution)을 통해 포인트 클라우드의 로컬 구조를 효과적으로 포착하며, GeM (Generalized Mean) 풀링으로 글로벌 디스크립터를 생성한다.
+**[MinkLoc3D (Komorowski, 2021)](https://arxiv.org/abs/2011.04530)** ([code](https://github.com/jac99/MinkLoc3D))는 PointNetVLAD의 한계를 극복하기 위해 Minkowski Convolutional Neural Network을 백본으로 사용한다. 희소 3D 합성곱(sparse 3D convolution)을 통해 포인트 클라우드의 로컬 구조를 효과적으로 포착하며, GeM (Generalized Mean) 풀링으로 글로벌 디스크립터를 생성한다.
 
 ### 9.3.5 OverlapTransformer: Range Image 기반
 
@@ -554,9 +554,9 @@ Bird's Eye View(BEV)로 포인트 클라우드를 투영하여 2D 맵으로 변�
 
 이런 시나리오에서는 **LiDAR 관측과 카메라 관측 사이의 장소 인식**, 즉 cross-modal PR이 필요하다.
 
-### 9.4.2 Cross-Modal PR의 근본적 어려움: Domain Gap
+### 9.4.2 Cross-Modal PR의 Domain Gap
 
-LiDAR 포인트 클라우드와 카메라 이미지는 근본적으로 다른 표현(representation)이다:
+LiDAR 포인트 클라우드와 카메라 이미지는 데이터 표현(representation)이 다르다:
 
 | 특성 | LiDAR 포인트 클라우드 | 카메라 이미지 |
 |------|---------------------|-------------|
@@ -566,7 +566,7 @@ LiDAR 포인트 클라우드와 카메라 이미지는 근본적으로 다른 �
 | 텍스처 | 없음 | 풍부 |
 | 밀도 | 거리에 반비례 | 균일 |
 
-이 근본적 차이를 **domain gap**이라 하며, 같은 장소를 다른 모달리티로 관측했을 때 디스크립터 공간에서의 거리가 멀어지는 원인이 된다.
+이 차이를 **domain gap**이라 하며, 같은 장소를 다른 모달리티로 관측했을 때 디스크립터 공간에서의 거리가 멀어지는 원인이 된다.
 
 ### 9.4.3 (LC)²: LiDAR-Camera Cross-Modal PR
 
@@ -586,7 +586,7 @@ $$
 
 ### 9.4.5 Modality-Agnostic Descriptor 접근
 
-궁극적 목표는 **모달리티에 무관한(modality-agnostic) 디스크립터**이다. 어떤 센서로 관측하든 같은 장소는 같은 디스크립터를 생성하는 것이다. 이를 위한 접근법:
+**모달리티에 무관한(modality-agnostic) 디스크립터**는 어떤 센서로 관측하든 같은 장소에서 같은 디스크립터를 생성하는 것을 목표로 한다. 이를 위한 접근법은 다음과 같다.
 
 - **Knowledge Distillation**: 정보가 풍부한 모달리티(LiDAR+Camera)의 디스크립터를 teacher로, 단일 모달리티를 student로 학습
 - **Canonical Representation**: BEV 또는 semantic layout 같은 모달리티 중립적 표현으로 변환 후 비교
@@ -689,7 +689,7 @@ LiDAR 기반 PR 후보에 대해:
 2. **RANSAC** 또는 **GeoTransformer의 RANSAC-free** 방식으로 강체 변환 추정
 3. **ICP로 정밀 정합** (coarse-to-fine)
 
-GeoTransformer (Qin et al., 2022)를 사용하면 RANSAC 없이도 강건한 정합이 가능하다. GeoTransformer는 쌍별 거리(pairwise distance)와 삼중 각도(triplet angle)를 인코딩하는 기하학적 트랜스포머로, rigid transformation에 불변한 특징을 학습하여 저오버랩 시나리오에서도 강건하다. 슈퍼포인트 수준의 대응에서 직접 변환을 추정하므로 RANSAC 대비 100배 빠르다.
+GeoTransformer (Qin et al., 2022)는 pairwise distance와 triplet angle을 인코딩하고 local-to-global registration으로 별도 외부 RANSAC 단계를 생략한다. 논문은 3DLoMatch를 포함한 비교 설정에서 저오버랩 성능과 큰 처리시간 단축을 보고했지만, 100배 수치는 그 구현·하드웨어·비교 단계에 한정된다.
 
 ```python
 def geometric_verification_lidar(query_cloud, db_cloud, 
@@ -754,7 +754,7 @@ def geometric_verification_lidar(query_cloud, db_cloud,
 
 ### 9.7.1 Foundation Model 기반 PR의 부상
 
-VPR은 "환경별 전용 학습"에서 "범용 zero-shot 인식"으로 이동하고 있다. AnyLoc이 보여주었듯이, Foundation Model의 범용 특징이 VPR 전용 학습 없이도 대부분의 환경에서 SOTA를 달성한다.
+VPR에서는 환경별 전용 학습과 foundation-model 기반 zero-shot 인식을 함께 연구한다. AnyLoc은 VPR 전용 학습 없이도 원 논문이 선택한 여러 환경에서 경쟁력 있는 결과를 보고했다.
 
 향후 방향은 크게 두 가지다. 첫째, ViT-G14는 1B+ 파라미터로 임베디드 배포에 제약이 있어 경량 FM(ViT-S/B) + 도메인 적응의 조합이 연구되고 있다. 둘째, FM이 제공하는 패치 수준의 dense correspondence를 re-ranking이나 상대 포즈 추정에 직접 활용하는 연구가 진행 중이다.
 
@@ -774,13 +774,13 @@ VPR은 "환경별 전용 학습"에서 "범용 zero-shot 인식"으로 이동하
 - Range-Doppler image를 CNN으로 처리하여 글로벌 디스크립터 생성
 - Radar-Camera cross-modal PR
 
-비·눈·안개 환경에서 LiDAR PR과 Visual PR이 실패할 때 radar PR이 백업 역할을 할 수 있다. 다만 아직 초기 단계이며, radar의 낮은 해상도 때문에 장소 구별 능력(discriminability)이 LiDAR나 Visual에 비해 떨어진다. 4D radar의 해상도가 개선되고 있어 향후 주목할 분야다.
+비·눈·안개 환경에서 LiDAR PR과 Visual PR이 실패할 때 radar PR이 백업 역할을 할 수 있다. 다만 아직 초기 단계이며, radar의 낮은 해상도 때문에 장소 구별 능력(discriminability)이 LiDAR나 Visual에 비해 떨어진다. 4D radar의 해상도 개선과 함께 관련 연구가 이어지고 있다.
 
 ### 9.7.4 최근 연구 (2024-2025)
 
-**[SALAD (Izquierdo & Civera, 2024)](https://arxiv.org/abs/2311.15937)**: NetVLAD의 feature-to-cluster 할당을 **optimal transport** 문제로 재정의하고, DINOv2를 백본으로 fine-tuning한다. Sinkhorn 알고리즘으로 soft assignment를 최적화하여 NetVLAD/CosPlace 대비 다수 벤치마크에서 SOTA를 달성한다.
+**[SALAD (Izquierdo & Civera, 2024)](https://arxiv.org/abs/2311.15937)**: NetVLAD의 feature-to-cluster 할당을 **optimal transport** 문제로 재정의하고, DINOv2를 백본으로 fine-tuning한다. 원 논문은 Sinkhorn 기반 soft assignment가 선택한 VPR benchmark에서 NetVLAD·CosPlace보다 높은 recall을 보였다고 보고한다.
 
-**[EffoVPR (Taha et al., 2024)](https://arxiv.org/abs/2405.18065)**: DINOv2 등 Foundation Model의 특징을 효율적으로 활용하는 프레임워크. 128차원까지 압축된 디스크립터로도 SOTA 성능을 유지하며, 임베디드 배포에 유리한 경량 VPR을 보여준다.
+**[EffoVPR (Taha et al., 2024)](https://arxiv.org/abs/2405.18065)**: DINOv2 등 foundation model의 특징을 효율적으로 활용하는 프레임워크다. 원 논문은 128차원 descriptor 설정을 포함한 평가에서 정확도와 저장·검색 비용의 절충을 보고한다.
 
 ### 9.7.5 기술 계보 요약
 
@@ -817,11 +817,11 @@ Lee (2023) (LC)² [LiDAR ↔ Camera shared embedding]
 
 ## 9장 요약
 
-Place Recognition은 SLAM 시스템에서 드리프트를 교정하는 loop closure의 핵심 컴포넌트이다. Visual PR은 BoW(Video Google) → VLAD → NetVLAD → AnyLoc으로 진화하며, Foundation Model(DINOv2) 기반의 범용 zero-shot 인식이 최근 패러다임이 되었다. LiDAR PR은 Scan Context(handcrafted) → PointNetVLAD → MinkLoc3D → OverlapTransformer로 발전하며, range image 기반 방법이 효율성 면에서 주목할 만하다.
+Place Recognition은 SLAM 시스템에서 loop closure 후보를 찾아 드리프트 교정을 돕는다. Visual PR은 BoW(Video Google) → VLAD → NetVLAD → AnyLoc으로 이어졌고, 최근에는 Foundation Model(DINOv2) 기반의 범용 zero-shot 인식을 쓴다. LiDAR PR은 Scan Context(handcrafted) → PointNetVLAD → MinkLoc3D → OverlapTransformer로 발전했으며, range image 기반 방법은 계산 효율을 높인다.
 
-Cross-modal PR은 domain gap이라는 근본적 어려움이 있으며, 공통 임베딩 공간 학습과 modality-agnostic 디스크립터가 연구되고 있다. Long-term PR은 계절/조명/구조적 변화에 대응해야 하며, Foundation Model의 강건한 특징이 이 문제에 유망하다.
+Cross-modal PR에는 domain gap이 있으며, 공통 임베딩 공간 학습과 modality-agnostic 디스크립터가 연구되고 있다. Long-term PR은 계절·조명·구조 변화에 대응해야 하며, Foundation Model의 특징을 적용하는 연구가 이어진다.
 
-Geometric verification은 PR 후보의 최종 검증 단계로, false positive를 방지하여 SLAM의 무결성을 보호한다. PnP+RANSAC(visual), ICP/GeoTransformer(LiDAR)가 표준적 방법이다.
+Geometric verification은 PR 후보가 실제 기하 제약을 만족하는지 검사해 false positive 위험을 낮춘다. Visual에서는 PnP·essential matrix와 robust estimation을, LiDAR에서는 ICP 계열이나 learned registration을 사용하며, 어느 방법도 잘못된 loop를 완전히 배제하지는 못한다.
 
 최신 동향으로는 Foundation Model 기반 PR의 경량화, semantic PR, 4D radar PR이 활발히 연구되고 있다.
 

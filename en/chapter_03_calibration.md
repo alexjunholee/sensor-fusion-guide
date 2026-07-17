@@ -2,9 +2,9 @@
 
 Ch.2 defined the observation model of each sensor mathematically. However, applying these models to real sensor data requires one prerequisite — the parameters of the model must be known precisely. The camera's focal length, the relative position between LiDAR and IMU, the time offset between sensors — the process that determines these values precisely is calibration.
 
-> Sensor fusion accuracy cannot exceed calibration accuracy. Calibration spans camera intrinsics, multi-sensor extrinsics, and time synchronization.
+> Calibration error introduces systematic bias into sensor fusion. Calibration spans camera intrinsics, multi-sensor extrinsics, and time synchronization.
 
-Calibration is the first problem that must be solved in a sensor fusion pipeline. No matter how sophisticated the state estimation algorithm, if the internal model of a sensor is inaccurate or if the relative position/orientation between sensors is wrong, the fusion result diverges. In LiDAR-camera fusion in particular, an error of even 1 degree in the extrinsic parameters produces roughly 87 cm of registration error for an object 50 m away. Calibration work therefore has two parts: the mathematical foundation of each problem, and code and tools that can be used directly in practice.
+Calibration is one of the first checks in a sensor-fusion pipeline. An inaccurate sensor model or relative pose biases the estimate and can make a filter or optimizer unstable under some conditions. In LiDAR-camera fusion, for example, a one-degree angular error gives a small-angle lateral-error approximation of about 87 cm at 50 m. Calibration work therefore has two parts: the mathematical foundation of each problem, and code and tools that can be used directly in practice.
 
 ---
 
@@ -73,9 +73,9 @@ The distortion parameter vector is expressed as $\mathbf{d} = [k_1, k_2, p_1, p_
 
 ### 3.1.3 Zhang's Method: Homography-Based Calibration
 
-The method proposed by [Zhang (2000)](https://ieeexplore.ieee.org/document/888718) estimates camera parameters from images of a planar pattern (a checkerboard) captured in various poses. Since it requires no 3D calibration apparatus — only a printer-produced checkerboard — it is currently the most widely used calibration method.
+The method proposed by [Zhang (2000)](https://ieeexplore.ieee.org/document/888718) estimates camera parameters from images of a planar pattern captured in several poses. It is a widely used formulation because it does not require a 3D calibration rig. OpenCV's `calibrateCamera()` can optimize the same kind of 2D–3D correspondences with nonlinear refinement.
 
-**Key idea**: When the pattern lies on the $Z = 0$ plane, the 3D-to-2D projection simplifies to a homography.
+When the pattern lies on the $Z = 0$ plane, the 3D-to-2D projection simplifies to a homography.
 
 #### Step 1: Homography Extraction
 
@@ -151,7 +151,7 @@ $$
 
 Given $n$ images, we obtain a $2n \times 6$ system.
 
-**Minimum number of images**: Setting $\gamma = 0$ (adding the constraint $B_{12} = 0$) leaves 5 unknowns, so a minimum of 3 images suffices. The general 5-parameter model also requires a minimum of 3 images. In practice, 15-25 images are captured.
+**Minimum number of images**: Setting $\gamma = 0$ (adding the constraint $B_{12} = 0$) leaves 5 unknowns, so a minimum of 3 images suffices. The general 5-parameter model likewise needs at least three distinct planar poses for its linear solution. This is only an algebraic minimum. In practice, collect enough views to cover positions, distances, and tilts across the image and to obtain a well-conditioned estimate.
 
 #### Step 4: Recovering K
 
@@ -225,18 +225,18 @@ images = sorted(glob.glob("calibration_images/*.jpg"))
 for fname in images:
     img = cv2.imread(fname)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
+
     # Corner detection
     ret, corners = cv2.findChessboardCorners(
         gray, CHECKERBOARD,
         cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE
     )
-    
+
     if ret:
         # Refine corner locations to sub-pixel precision
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
         corners_refined = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-        
+
         obj_points.append(objp)
         img_points.append(corners_refined)
 
@@ -253,40 +253,37 @@ print(f"Distortion coefficients: {dist.ravel()}")
 errors = []
 for i in range(len(obj_points)):
     img_points_proj, _ = cv2.projectPoints(obj_points[i], rvecs[i], tvecs[i], K, dist)
-    error = cv2.norm(img_points[i], img_points_proj, cv2.NORM_L2) / len(img_points_proj)
+    residual = img_points[i].reshape(-1, 2) - img_points_proj.reshape(-1, 2)
+    error = np.sqrt(np.mean(np.sum(residual ** 2, axis=1)))
     errors.append(error)
-    
+
 print(f"Per-image mean error: {np.mean(errors):.4f} pixels")
 print(f"Max error image: {np.argmax(errors)} ({max(errors):.4f} px)")
 ```
 
 ### 3.1.5 Practical Tips: Conditions for Good Calibration
 
-The quality of calibration is determined during the data collection process. Below are key conditions that have been repeatedly confirmed in practice.
+Calibration quality depends strongly on data collection. The following conditions are observability principles, not fixed quotas for image count or board angle.
 
-**Pose Diversity**: the most important factor. The checkerboard should be captured from diverse angles and positions. Concretely:
-- Place the checkerboard in every region of the image — top, bottom, left, right, and center (essential for principal-point estimation)
-- Tilt the board by more than 45 degrees when photographing (improves the accuracy of focal-length estimation)
+**Pose Diversity**: The checkerboard should be captured from diverse angles and positions under the following conditions:
+- Place the checkerboard near the top, bottom, left, right, and center so observations cover the image
+- Avoid repeating nearly fronto-parallel poses; tilt the board about several axes so focal length and extrinsics are distinguishable
 - Place the board close to and far from the camera to obtain a variety of scales
-- A minimum of 15-25 images, ideally more than 50
+- Decide whether to collect more images from pose diversity, conditioning, and the spatial pattern of residuals, not from image count alone
 
-**Corner Accuracy**: always secure sub-pixel precision with `cv2.cornerSubPix()`. Exclude images where corner detection fails.
+**Corner Accuracy**: if the detector does not already provide refined coordinates, refine corners with a method such as `cv2.cornerSubPix()`. Exclude images with failed detections, motion blur, or glare on the target.
 
-**Illumination Conditions**: uniform lighting is ideal, but slight shadows do not affect corner detection. Glare interferes with corner detection, so use a checkerboard printed on matte paper.
+**Illumination Conditions**: uniform lighting stabilizes corner contrast. Strong shadows and glare can move or hide detections, so use a matte target and inspect the exposed images.
 
-**Reprojection Error Criteria**:
-- $< 0.3$ pixels: excellent
-- $0.3 - 0.5$ pixels: good
-- $0.5 - 1.0$ pixels: consider recollection
-- $> 1.0$ pixels: problematic (insufficient pose diversity, corner-detection errors, etc.)
+**Interpreting Reprojection Error**: no single pixel threshold establishes success. The expected error depends on resolution, lens model, target size, and detector uncertainty. Inspect the global RMS together with per-image residuals, directional patterns across the image, straightness after rectification, and error on held-out validation images.
 
-**Detecting Outlier Images**: compute the per-image reprojection error and remove any image with error 2-3 times larger than the mean, then recalibrate. The `errors` array above shows this.
+**Detecting Outlier Images**: compare per-image errors using the `errors` array above. Do not discard a high-error image automatically; first inspect it for a failed detection, motion blur, glare, or a non-planar target. Compare parameter stability and held-out error before and after exclusion.
 
 **Warning — accuracy of the square size**: `SQUARE_SIZE` must exactly match the actual printed checkerboard square size. Printer scaling can cause the physical size to differ from the specified size, so always measure with a ruler. If this value is wrong, `tvecs` (the translation vector) will be incorrect, but `K` and the distortion coefficients are unaffected (since the distortion model is defined in normalized coordinates).
 
 ### 3.1.6 Fisheye / Omnidirectional Calibration
 
-For fisheye lenses with a FoV exceeding 180 degrees, the standard radial-tangential distortion model fails. The distortion is so severe that the polynomial approximation does not converge.
+For wide-angle and fisheye lenses, the standard radial-tangential model may not describe projection near the image boundary adequately. There is no single FoV cutoff that determines validity; select an equidistant or Kannala–Brandt model according to the lens projection and residual pattern.
 
 **Equidistant Projection Model**:
 
@@ -336,7 +333,7 @@ print(f"D: {D_fisheye.ravel()}")
 
 **Scaramuzza OCamCalib (Omnidirectional Camera Calibration)**:
 
-The OCamCalib of [Scaramuzza et al. (2006)](https://sites.google.com/site/scarabotix/ocamcalib-omnidirectional-camera-calibration-toolbox-for-matlab) is a unified calibration tool for catadioptric systems (mirror + lens) and ultra-wide-angle fisheye lenses. It models the projection function directly as a polynomial, independent of sensor type:
+The [OCamCalib toolbox](https://sites.google.com/site/scarabotix/ocamcalib-omnidirectional-camera-calibration-toolbox-for-matlab), described by [Scaramuzza et al. (2006)](https://rpg.ifi.uzh.ch/docs/IROS06_scaramuzza.pdf), calibrates catadioptric systems (mirror + lens) and ultra-wide-angle fisheye lenses. It models the projection function directly as a polynomial, independent of sensor type:
 
 $$
 \begin{bmatrix} u \\ v \end{bmatrix} = \begin{bmatrix} x_c \\ y_c \end{bmatrix} + \mathbf{A} \cdot \rho(\theta) \begin{bmatrix} \cos(\phi) \\ \sin(\phi) \end{bmatrix}
@@ -346,7 +343,7 @@ Here $\mathbf{A}$ is an affine transformation matrix (for stretch and non-square
 
 ### 3.1.7 Camera Calibration with Kalibr
 
-[Kalibr](https://github.com/ethz-asl/kalibr), developed at ETH Zurich, is the de facto standard for camera-IMU calibration (Section 3.4). For camera intrinsic calibration as well, it often yields more refined results than OpenCV.
+[Kalibr](https://github.com/ethz-asl/kalibr), developed at ETH Zurich, is a widely used public tool for camera-IMU calibration (Section 3.4). It supports several camera models and batch optimization, so intrinsics can be estimated in the same tool. Precision relative to OpenCV depends on the model, target observations, initialization, and optimization settings.
 
 **Camera models supported by Kalibr**:
 
@@ -502,11 +499,11 @@ Here $f$ is the focal length (in pixel units) and $B = \|\mathbf{t}\|$ is the ba
 
 ## 3.3 Camera-LiDAR Extrinsic Calibration
 
-Estimating the extrinsic parameters $(\mathbf{R}, \mathbf{t})$ between a camera and a LiDAR is a core prerequisite for multi-modal sensor fusion. To project LiDAR point clouds onto images or to place image features in 3D space, this transformation must be accurate.
+Multi-modal sensor fusion requires estimating the extrinsic parameters $(\mathbf{R}, \mathbf{t})$ between a camera and a LiDAR. To project LiDAR point clouds onto images or to place image features in 3D space, this transformation must be accurate.
 
 ### 3.3.1 Target-based Calibration
 
-The most traditional approach, in which a known geometric target (checkerboard, AprilTag, etc.) is observed simultaneously by the camera and the LiDAR to create correspondences.
+Target-based calibration creates correspondences by observing a known geometric target (checkerboard, AprilTag, etc.) simultaneously with the camera and LiDAR.
 
 **Principle**: The corners of a checkerboard are observed as 2D points in the camera image and as a 3D plane in the LiDAR point cloud. We extract the LiDAR points that fit the checkerboard plane and use the plane's normal and boundary to build 3D-2D correspondences.
 
@@ -540,33 +537,33 @@ def calibrate_camera_lidar_target(
     board_corners_3d     # 3D corners in the checkerboard frame [N_corners x 3]
 ):
     """Target-based Camera-LiDAR extrinsic calibration via PnP."""
-    
+
     # Estimate camera-to-checkerboard transform for each image
     all_points_3d_lidar = []
     all_points_2d_camera = []
-    
+
     for i, (corners_2d, (normal, d)) in enumerate(zip(img_corners_list, lidar_planes_list)):
         # Checkerboard pose as seen from the camera (PnP)
         ret, rvec, tvec = cv2.solvePnP(
             board_corners_3d, corners_2d, K, dist
         )
         R_cam_board, _ = cv2.Rodrigues(rvec)
-        
+
         # Transform checkerboard corners into the camera frame
         corners_cam = (R_cam_board @ board_corners_3d.T + tvec).T
-        
+
         # Collect points on the LiDAR plane
         # (in practice, use plane inliers from the LiDAR point cloud)
         all_points_2d_camera.append(corners_2d)
-    
+
     # The final result is refined by nonlinear optimization
     return R_cam_lidar, t_cam_lidar
 ```
 
 **Practical considerations**:
-- The checkerboard must be large enough for a sufficient number of LiDAR points to fall on it. At minimum A2 size, ideally A0.
-- 10-20 observations from various distances and angles are required.
-- Enough LiDAR beams must strike the checkerboard plane. This is difficult with sparse LiDAR (16-channel).
+- Choose the checkerboard size from range, angular resolution, and beam pattern so that each observation contains enough points for a stable plane estimate.
+- Collect views at several ranges and incidence angles; judge the dataset by plane-orientation and position diversity and by conditioning, not by a fixed observation count.
+- With a sparse LiDAR, inspect the actual hit pattern and adjust target size and distance accordingly.
 
 ### 3.3.2 Targetless Calibration
 
@@ -590,7 +587,7 @@ $$
 \text{MI}(X; Y) = H(X) + H(Y) - H(X, Y)
 $$
 
-If $X$ and $Y$ are independent, $\text{MI} = 0$; if perfectly dependent, $\text{MI} = H(X) = H(Y)$.
+If $X$ and $Y$ are independent, $\text{MI} = 0$. If one variable is a deterministic function of the other, their mutual information is bounded by the smaller entropy; equality with both entropies requires an invertible one-to-one relation.
 
 **Normalized Information Distance (NID)**:
 
@@ -620,25 +617,25 @@ def compute_nid(lidar_intensity, image_intensity, bins=64):
         lidar_intensity, image_intensity, bins=bins,
         range=[[0, 255], [0, 255]]
     )
-    
+
     # Normalize to a probability
     pxy = hist_2d / hist_2d.sum()
     px = pxy.sum(axis=1)  # marginal X
     py = pxy.sum(axis=0)  # marginal Y
-    
+
     # Entropy computation (handle 0 log 0 = 0)
     eps = 1e-10
     H_xy = -np.sum(pxy[pxy > eps] * np.log(pxy[pxy > eps]))
     H_x = -np.sum(px[px > eps] * np.log(px[px > eps]))
     H_y = -np.sum(py[py > eps] * np.log(py[py > eps]))
-    
+
     MI = H_x + H_y - H_xy
     NID = 1.0 - MI / (H_xy + eps)
-    
+
     return NID, MI
 ```
 
-The optimization of MI-based calibration has no explicit gradient, so we use gradient-free optimizers such as Nelder-Mead, or numerical gradients. [Pandey et al. (2015)](https://onlinelibrary.wiley.com/doi/abs/10.1002/rob.21542) were the first to apply this approach to LiDAR-camera calibration.
+The optimization of MI-based calibration has no explicit gradient, so we use gradient-free optimizers such as Nelder-Mead, or numerical gradients. [Pandey et al. (2015)](https://arxiv.org/abs/1507.07595) applied this approach to LiDAR-camera calibration.
 
 #### Edge Alignment Based Method
 
@@ -654,11 +651,11 @@ Here $\pi(\cdot)$ is the camera projection function and $\text{dist}(\cdot, \mat
 
 #### Learning-based Methods
 
-Deep learning approaches such as RegNet and CalibNet take the depth image of the LiDAR point cloud and the camera image as input and directly regress the 6-DoF transformation. These methods can perform calibration without initial values, but they currently fall short of traditional methods in accuracy and depend on the domain of the training data.
+Deep-learning approaches such as RegNet and CalibNet take a LiDAR depth image and a camera image as input and regress a 6-DoF correction. Their operating range depends on the sensors, scenes, and miscalibration distribution used for training. On new hardware, validate them with representative data and, when appropriate, use the estimate to initialize geometric optimization.
 
-### 3.3.3 Koide et al. (2023) — State-of-the-Art Targetless Calibration
+### 3.3.3 Koide et al. (2023) — An Open Targetless Calibration Implementation
 
-The `direct_visual_lidar_calibration` of [Koide et al. (2023)](https://arxiv.org/abs/2302.05094) is currently the most practical targetless LiDAR-camera calibration tool. Its core pipeline:
+The `direct_visual_lidar_calibration` of [Koide et al. (2023)](https://arxiv.org/abs/2302.05094) is a public implementation of targetless LiDAR-camera calibration. Its pipeline has three stages:
 
 **Stage 1: LiDAR point cloud densification**
 
@@ -668,44 +665,44 @@ A single scan from a rotational LiDAR (Ouster, Velodyne, etc.) is too sparse for
 
 The dense point cloud is rendered from a virtual camera viewpoint to produce a LiDAR intensity image. SuperGlue (learning-based matching) detects 2D-2D correspondences between this rendered image and the actual camera image. These are converted to 2D-3D correspondences, from which the initial transformation is estimated via RANSAC + PnP.
 
-This stage is innovative because SuperGlue solves the cross-modal correspondence problem of matching images from different modalities (LiDAR intensity vs. camera RGB). The success rate of the initial estimation is over 80%.
+SuperGlue proposes correspondences between a rendered LiDAR-intensity image and camera RGB. The paper reports an initialization success rate above 80% under its datasets and success criterion; this is not a guarantee for other sensors or scenes.
 
 **Stage 3: NID-based fine registration**
 
 Starting from the initial estimate, a Nelder-Mead optimization minimizes the NID. View-based hidden point removal is used to discard LiDAR points not visible from the camera, improving registration quality.
 
-**Result**: Mean translation error of 0.043 m and rotation error of 0.374 degrees. It operates across a wide variety of combinations — rotational/solid-state LiDAR, pinhole/fisheye/omnidirectional cameras.
+**Reported result**: under the authors' evaluation, the mean translation error was 0.043 m and the mean rotation error was 0.374 degrees. Their experiments included several combinations of rotating and solid-state LiDARs with pinhole, fisheye, and omnidirectional cameras.
 
 ### 3.3.4 Practical Tool Comparison
 
-| Tool | Approach | Target needed | Accuracy | Automation level |
-|------|------|----------|--------|-----------|
-| Autoware Calibration Toolkit | Target-based | O | High | Semi-automatic |
-| `direct_visual_lidar_calibration` (Koide) | Targetless (NID) | X | High | Automatic |
-| ACSC (Automatic Calibration) | Target-based + auto corner | O | High | Automatic |
-| LiveCalib | Online | X | Medium | Fully automatic |
+| Tool | Approach | Target needed | Operating mode | Check before use |
+|------|----------|---------------|----------------|------------------|
+| Autoware Calibration Toolkit | Target-based | Yes | Offline workflow with operator steps | Supported sensors and target; initialization |
+| `direct_visual_lidar_calibration` (Koide) | Targetless (NID) | No | Automated offline pipeline | Scene overlap, intensity rendering, initialization success |
+| ACSC (Automatic Calibration) | Target-based + automatic corner extraction | Yes | Automated target detection | Required target and supported sensor model |
+| LiveCalib | Online | No | Estimation during operation | Motion observability and drift-monitoring criterion |
 
-Recently, [MFCalib (2024)](https://arxiv.org/abs/2409.00992) significantly improved the accuracy of single-shot targetless calibration by simultaneously leveraging depth-continuity/discontinuity edges and intensity-discontinuity edges. A distinguishing feature is that it resolves the edge inflation problem by modeling the physical measurement principle of the LiDAR beam.
+Recently, [MFCalib (2024)](https://arxiv.org/abs/2409.00992) combined depth-continuity, depth-discontinuity, and intensity-discontinuity edges. Its authors model LiDAR-beam formation to address edge inflation and report lower calibration errors than the compared methods under the paper's datasets and metrics.
 
-In practice, a dual strategy is effective: first perform a precise target-based calibration, and then monitor calibration drift during operation with a targetless method.
+One operational design uses a target-based result as the initial reference and a targetless metric to monitor change during operation. Recalibration should be triggered only after validating how that metric relates to task error.
 
 ---
 
 ## 3.4 Camera-IMU Extrinsic + Temporal Calibration
 
-The key is to simultaneously estimate not only the spatial displacement (extrinsic) between the camera and the IMU but also the temporal offset. Modern VIO (Visual-Inertial Odometry) systems depend strongly on this calibration.
+Camera-IMU calibration estimates both the spatial displacement (extrinsic) and the temporal offset. Modern VIO (Visual-Inertial Odometry) systems depend on both parameters.
 
 ### 3.4.1 Why Time Offset Matters
 
 The camera and the IMU generate data on different clocks. When a time offset $t_d$ exists between the two sensors, the IMU data corresponding to a camera timestamp $t_c$ is actually from time $t_c + t_d$.
 
-A typical camera-IMU time offset is on the order of several to tens of milliseconds. Ignoring this offset greatly increases the reprojection error under fast rotation. For example, if the time offset is 10 ms and the camera is rotating at 100 deg/s, a 1-degree rotation error results.
+Furgale et al.'s experiments included camera-IMU time offsets from several to tens of milliseconds. Ignoring an offset can increase reprojection error during rapid rotation. For example, a 10 ms offset at 100 deg/s corresponds to a one-degree mismatch in observation time.
 
 ### 3.4.2 Kalibr: Continuous-Time B-Spline-Based Calibration
 
-Kalibr, proposed by [Furgale et al. (2013)](https://ieeexplore.ieee.org/document/6696514), is the de facto standard for camera-IMU calibration.
+Kalibr, proposed by [Furgale et al. (2013)](https://ieeexplore.ieee.org/document/6696514), is used by public VIO implementations including VINS-Mono and OpenVINS.
 
-**Key idea**: Represent the trajectory not as a sequence of discrete poses but as a continuous-time B-spline. This naturally handles sensors with different sampling rates (camera: 20-30 Hz, IMU: 200-1000 Hz).
+The trajectory is represented not as a sequence of discrete poses but as a continuous-time B-spline. This representation handles sensors with different sampling rates (camera: 20-30 Hz, IMU: 200-1000 Hz).
 
 **B-Spline trajectory representation**:
 
@@ -721,9 +718,9 @@ Here:
 - $\Omega_{i+j} = \text{Log}(\mathbf{T}_{i+j-1}^{-1} \mathbf{T}_{i+j})$ is the Lie algebra representation of the relative transform between adjacent control points
 - $\text{Exp}, \text{Log}$ are the exponential/logarithm maps of $SE(3)$
 
-Key advantages of the B-spline:
+Three properties of the B-spline:
 1. **Differentiable**: velocity and acceleration at any time can be computed analytically → direct connection to the IMU observation model
-2. **Asynchronous sensor handling**: not constrained by each sensor's timestamp
+2. **Asynchronous sensor handling**: evaluate the trajectory at each sensor timestamp without resampling everything to common frame times
 3. **Locality**: each basis function affects only 4 control points → sparse optimization is possible
 
 **Observation model**:
@@ -763,7 +760,7 @@ kalibr_create_target_pdf --type apriltag \
 # 2. Collect data (ROS bag)
 #    - Place the target in the camera's view and move the sensor rig diversely
 #    - Include both rotation and translation along all axes
-#    - Minimum 60 seconds, ideally more than 2 minutes
+#    - Record until all axes are excited, the target remains detectable, and residuals are well conditioned
 
 # 3. Run the Camera-IMU calibration
 kalibr_calibrate_imu_camera \
@@ -788,21 +785,21 @@ gyroscope_noise_density: 0.005      # rad/s/sqrt(Hz)
 gyroscope_random_walk: 4.0e-06      # rad/s^2/sqrt(Hz)
 ```
 
-**Key tips for data collection**:
+**Data collection**:
 1. **Motion diversity**: excite all 6-DoF. Rotation about each axis is especially important.
 2. **Motion speed**: too slow makes IMU bias hard to estimate, too fast blurs the images.
-3. **Target visibility**: the target should be visible during more than 80% of the total collection time.
+3. **Target visibility**: design a trajectory that keeps the target detectable while providing motion about all relevant axes.
 4. **Start and end**: begin and end at rest to facilitate IMU bias initialization.
 
 **Interpreting the results**: Items to check in Kalibr's output:
 - `T_cam_imu`: camera-IMU extrinsic (4x4 transformation matrix)
-- `timeshift_cam_imu`: time offset $t_d$ (usually several ms)
-- Reprojection-error distribution: a mean of 0.2-0.5 px is ideal
+- `timeshift_cam_imu`: time offset $t_d$ estimated from this dataset, including its sign convention
+- Reprojection-error distribution: inspect temporal and image-space residual patterns and outliers in addition to the global mean
 - Accelerometer/gyro residuals: must match the noise model
 
 ### 3.4.4 Allan Variance Measurement Hands-On
 
-Accurately knowing the IMU noise parameters directly affects not only Kalibr calibration but the performance of every IMU-based system. Allan variance is a technique for analyzing the noise characteristics of a time series according to cluster time, originally developed to measure the stability of atomic clocks.
+Accurate IMU noise parameters affect Kalibr calibration and the performance of IMU-based systems. Allan variance analyzes the noise characteristics of a time series across cluster times; it was originally developed to measure atomic-clock stability.
 
 **Allan Variance Definition**:
 
@@ -840,61 +837,64 @@ def compute_allan_variance(data, dt, max_clusters=100):
     max_clusters: number of clusters distributed on a log scale
     """
     N = len(data)
-    max_n = N // 2
-    
+    # Retain at least ten clusters at the largest tau.
+    max_n = max(1, N // 10)
+
     # Choose cluster sizes on a log scale
     n_values = np.unique(
         np.logspace(0, np.log10(max_n), max_clusters).astype(int)
     )
-    
+
     taus = []
     allan_vars = []
-    
+
     for n in n_values:
         tau = n * dt
-        
+
         # Compute cluster means
         n_clusters = N // n
         trimmed = data[:n_clusters * n]
         clusters = trimmed.reshape(n_clusters, n)
         cluster_means = clusters.mean(axis=1)
-        
+
         # Allan variance
         diffs = np.diff(cluster_means)
         avar = 0.5 * np.mean(diffs**2)
-        
+
         taus.append(tau)
         allan_vars.append(avar)
-    
+
     return np.array(taus), np.array(allan_vars)
 
-def extract_imu_noise_params(taus, allan_vars, dt):
+def extract_imu_noise_params(taus, allan_vars):
     """
     Extract IMU noise parameters from the Allan variance plot.
     """
     adev = np.sqrt(allan_vars)
-    
-    # 1. Random walk (slope -1/2): value at tau=1
-    # N (noise density) = sigma(tau=1) 
-    idx_1s = np.argmin(np.abs(taus - 1.0))
-    noise_density = adev[idx_1s]
-    
-    # 2. Bias instability: minimum of the Allan deviation
-    bias_instability = np.min(adev)
+
+    valid = (taus > 0) & (adev > 0) & np.isfinite(adev)
+    taus, adev = taus[valid], adev[valid]
+    slopes = np.gradient(np.log(adev), np.log(taus))
+
+    # Fit the coefficient N of sigma(tau) = N / sqrt(tau) over a -1/2 region.
+    white = np.abs(slopes + 0.5) < 0.1
+    if not np.any(white):
+        raise ValueError("No stable -1/2-slope region; collect or inspect more data")
+    noise_coefficient = np.median(adev[white] * np.sqrt(taus[white]))
+
+    # Report bias instability only if a near-flat region is present.
+    flat = np.abs(slopes) < 0.1
+    bias_instability = np.min(adev[flat]) / 0.664 if np.any(flat) else np.nan
     tau_min = taus[np.argmin(adev)]
-    
-    # 3. Random walk (slope +1/2): extracted from the long-term slope
-    # K (rate random walk) = sigma(tau=3) * sqrt(3) (approximation)
-    # In practice, extract precisely via linear regression
-    
+
     return {
-        'noise_density': noise_density,
+        'noise_coefficient': noise_coefficient,
         'bias_instability': bias_instability,
         'tau_min': tau_min
     }
 
 # Usage example
-# 1. Record the IMU stationary for at least 2 hours
+# 1. Record enough stationary data to retain many clusters at the largest tau of interest
 # 2. Analyze raw data from each gyro/accelerometer axis
 
 # Example: 200 Hz IMU data, 2 hours long
@@ -910,9 +910,9 @@ gyro_x = noise_density * np.sqrt(1/dt) * np.random.randn(N)
 gyro_x += bias * np.cumsum(np.random.randn(N)) * np.sqrt(dt)
 
 taus, avars = compute_allan_variance(gyro_x, dt)
-params = extract_imu_noise_params(taus, avars, dt)
+params = extract_imu_noise_params(taus, avars)
 
-print(f"Gyroscope noise density: {params['noise_density']:.6f} rad/s/sqrt(Hz)")
+print(f"White-noise coefficient: {params['noise_coefficient']:.6f}")
 print(f"Bias instability: {params['bias_instability']:.6f} rad/s")
 print(f"Min at tau = {params['tau_min']:.1f} s")
 
@@ -926,9 +926,9 @@ plt.grid(True, which='both', alpha=0.3)
 
 # Slope reference lines
 tau_ref = np.array([0.01, 100])
-plt.loglog(tau_ref, params['noise_density'] / np.sqrt(tau_ref), 
+plt.loglog(tau_ref, params['noise_coefficient'] / np.sqrt(tau_ref),
            'r--', label='Random walk (-1/2)')
-plt.axhline(y=params['bias_instability'], color='g', linestyle='--', 
+plt.axhline(y=params['bias_instability'], color='g', linestyle='--',
             label=f'Bias instability ({params["bias_instability"]:.1e})')
 plt.legend()
 plt.savefig('allan_deviation.png', dpi=150)
@@ -936,10 +936,10 @@ plt.show()
 ```
 
 **Practical tips for Allan variance measurement**:
-- **Stationary data collection**: place the IMU on a rigid surface free from vibration and record for at least 2 hours (ideally 6 hours). With short records, the minimum of the bias instability cannot be identified accurately.
+- **Stationary data collection**: place the IMU on a rigid surface free from vibration. Choose the recording length so that many non-overlapping clusters remain at the largest $\tau$ of interest. If no bias-instability plateau appears, extend the record, but no fixed duration guarantees identification.
 - **Comparison with the data sheet**: compare the noise density value in the manufacturer's data sheet with the value extracted from the Allan variance to verify the sensor's health.
-- **Connection to Kalibr**: the `accelerometer_noise_density` and `gyroscope_noise_density` entered into Kalibr's `imu.yaml` are exactly the Allan deviation at $\tau = 1$ second.
-- **Temperature stabilization**: IMUs are sensitive to temperature, so warm up for 15-30 minutes after power-on before starting the recording.
+- **Connection to Kalibr**: fit the white-noise coefficient over the $-1/2$-slope region, then check that the Allan-deviation definition and units match Kalibr's continuous-time noise-density convention. Copying the sample nearest $\tau=1$ second can hide slope and unit mismatches.
+- **Temperature stabilization**: begin after sensor temperature and output mean have stabilized, and record temperature with the data. Warm-up time depends on the IMU, mounting, and ambient conditions.
 
 ---
 
@@ -1003,18 +1003,18 @@ The key requirement of hand-eye calibration is that the motion estimates (odomet
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-def hand_eye_calibration_tsai(A_rotations, A_translations, 
+def hand_eye_calibration_tsai(A_rotations, A_translations,
                                 B_rotations, B_translations):
     """
     Tsai-Lenz hand-eye calibration (AX = XB).
-    
+
     A_rotations: [N x 3 x 3] relative rotation matrices of sensor A
     A_translations: [N x 3] relative translations of sensor A
     B_rotations: [N x 3 x 3] relative rotation matrices of sensor B
     B_translations: [N x 3] relative translations of sensor B
     """
     N = len(A_rotations)
-    
+
     # Step 1: Estimate rotation RX
     C = []
     d = []
@@ -1022,33 +1022,33 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
         # Convert to angle-axis representation
         rA = Rotation.from_matrix(A_rotations[i]).as_rotvec()
         rB = Rotation.from_matrix(B_rotations[i]).as_rotvec()
-        
+
         alpha = np.linalg.norm(rA)
         beta = np.linalg.norm(rB)
-        
+
         if alpha < 1e-6 or beta < 1e-6:
             continue  # Ignore small rotations
-        
+
         # Modified Rodrigues parameters
         a_prime = np.tan(alpha / 2) * rA / alpha
         b_prime = np.tan(beta / 2) * rB / beta
-        
+
         # skew(a' + b') * rX = a' - b'
         skew_sum = np.array([
             [0, -(a_prime[2]+b_prime[2]), a_prime[1]+b_prime[1]],
             [a_prime[2]+b_prime[2], 0, -(a_prime[0]+b_prime[0])],
             [-(a_prime[1]+b_prime[1]), a_prime[0]+b_prime[0], 0]
         ])
-        
+
         C.append(skew_sum)
         d.append(a_prime - b_prime)
-    
+
     C = np.vstack(C)
     d = np.concatenate(d)
-    
+
     # Least-squares solve
     rX, _, _, _ = np.linalg.lstsq(C, d, rcond=None)
-    
+
     # Modified Rodrigues → rotation matrix
     angle = 2 * np.arctan(np.linalg.norm(rX))
     if angle > 1e-6:
@@ -1056,25 +1056,25 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
         R_X = Rotation.from_rotvec(angle * axis).as_matrix()
     else:
         R_X = np.eye(3)
-    
+
     # Step 2: Estimate translation tX
     C_t = []
     d_t = []
     for i in range(N):
         C_t.append(A_rotations[i] - np.eye(3))
         d_t.append(R_X @ B_translations[i] - A_translations[i])
-    
+
     C_t = np.vstack(C_t)
     d_t = np.concatenate(d_t)
-    
+
     t_X, _, _, _ = np.linalg.lstsq(C_t, d_t, rcond=None)
-    
+
     return R_X, t_X
 ```
 
 ### 3.5.3 LI-Init (FAST-LIO Lineage)
 
-Modern LIO systems such as FAST-LIO2 include a feature that automatically initializes the LiDAR-IMU extrinsic parameters online. The key idea of the **LI-Init** approach:
+FAST-LIO2 can estimate LiDAR-IMU extrinsics during operation, but it still requires a useful initial value and sufficient excitation. [**LI-Init**](https://arxiv.org/abs/2202.11006) is a separate initialization module that estimates the time offset, extrinsics, gravity, and IMU bias before handing the state to FAST-LIO2. It proceeds in three steps:
 
 1. Estimate the attitude using only IMU data, and estimate the pose via LiDAR matching
 2. Iteratively refine the relative transform from the difference of the two estimates
@@ -1087,7 +1087,7 @@ This approach estimates the extrinsic parameters automatically at the start of t
 
 **GRIL-Calib**: When motion is confined to a plane, as with ground robots, existing methods suffer reduced accuracy because some axes are poorly observable. [GRIL-Calib (Kim et al., 2024)](https://arxiv.org/abs/2312.14035) leverages the ground-plane residual in LiDAR odometry and integrates a ground-plane motion (GPM) constraint into the optimization, enabling 6-DoF calibration parameters to be estimated from planar motion alone.
 
-So far we have addressed calibration between a single LiDAR and a single IMU. However, in systems that use multiple LiDARs, such as autonomous vehicles, the relative poses between LiDARs must also be determined.
+Systems with multiple LiDARs, such as autonomous vehicles, need the relative poses between LiDARs as well as the LiDAR-IMU extrinsic parameters.
 
 ---
 
@@ -1145,7 +1145,7 @@ The calibrations covered so far (3.1-3.6) concerned relations among cameras, LiD
 
 ## 3.7 GNSS-IMU Lever Arm & Boresight
 
-The spatial relation between the GNSS antenna and the IMU is called the **lever arm**. This is a core calibration parameter in GNSS/INS integrated navigation.
+The spatial relation between the GNSS antenna and the IMU is called the **lever arm**. GNSS/INS integrated navigation requires this parameter to be calibrated.
 
 ### 3.7.1 Lever Arm Vector
 
@@ -1163,7 +1163,7 @@ Here $\mathbf{R}_{\text{body}}^{\text{nav}}$ is the rotation matrix from the bod
 
 **Method 1: Physical measurement**
 
-The most intuitive method is to measure directly with a tape measure, laser rangefinder, or similar. The accuracy is on the order of several cm, which is sufficient for most applications.
+The most direct method uses a tape measure, laser rangefinder, or similar tool. Derive the required accuracy from the antenna-to-IMU distance, expected rotation, and allowable position error. A several-centimeter measurement is adequate only when it fits that error budget; otherwise use precision surveying or estimation.
 
 **Method 2: Filter-based online estimation**
 
@@ -1177,7 +1177,7 @@ Process the collected GNSS/IMU data with a forward-backward smoother to optimize
 
 The antenna phase center (APC) of a GNSS antenna does not coincide with the antenna's physical center and varies with the satellite's elevation angle and frequency. This variation is called the Phase Center Variation (PCV), and is on the order of mm to cm.
 
-In precision positioning (RTK/PPP), antenna phase-center correction data (ANTEX files) must be applied. For robotics-grade applications this can usually be ignored, but when survey-grade accuracy is required it must be considered.
+In precision RTK or PPP processing, apply antenna phase-center corrections when required by the error budget and processing convention. The decision depends on the antenna model, base/rover processing, attitude changes, and target accuracy.
 
 ---
 
@@ -1239,7 +1239,7 @@ Recently, [CalibRefine (2025)](https://arxiv.org/abs/2502.17648) proposed a deep
 - **Unified interface**: a ROS-based unified interface handles diverse sensor inputs
 - **Visualization**: calibration results are visualized in real time so quality can be assessed intuitively
 
-Calibration in an autonomous-driving system matters not only for a single sensor pair but also for the consistency of the **sensor chain**. For example, if a vehicle has 6 cameras and 1 LiDAR, even if the camera-LiDAR calibrations are performed independently, the relative poses among the cameras must remain consistent. OpenCalib integrates such consistency constraints into a global optimization.
+Calibration in an autonomous-driving system must remain consistent across the entire **sensor chain**. For example, a vehicle with six cameras and one LiDAR may calibrate each camera-LiDAR pair independently, but the relative poses among the cameras must still agree. OpenCalib includes these consistency constraints in a global optimization.
 
 ---
 
@@ -1249,7 +1249,7 @@ Time synchronization between sensors is as important as spatial calibration. On 
 
 ### 3.9.1 Hardware Synchronization
 
-Hardware synchronization is the most accurate and reliable method.
+When a shared clock, trigger, and timestamp path can be configured clearly, hardware synchronization is the preferred starting point. Device-specific latency and the timestamp reference instant still need separate validation.
 
 **Trigger-based synchronization**:
 
@@ -1261,7 +1261,7 @@ A single master timer sends hardware trigger signals to all sensors, causing the
 
 **PPS (Pulse Per Second)**:
 
-A GNSS receiver outputs a 1 Hz electrical pulse (PPS) synchronized with GPS time. Since the rising edge of this pulse corresponds exactly to a GPS-second boundary, it can be used as a reference to align every sensor's local timestamp to GPS time.
+A GNSS receiver can output a 1 Hz electrical pulse synchronized with GNSS time. If the receiver is configured to place its rising edge on the GNSS-second boundary, the edge can serve as a common reference. Verify receiver configuration, cable and input-circuit delay, and each device's timestamp reference point.
 
 ```
                    PPS Signal (from GNSS)
@@ -1269,17 +1269,17 @@ A GNSS receiver outputs a 1 Hz electrical pulse (PPS) synchronized with GPS time
                       │     │   │     │   │     │
                       └─────┘   └─────┘   └─────┘
                    t=0     t=1       t=2       t=3   (GPS seconds)
-                   
+
    Camera capture  ──X──X──X──X──X──X──X──X──X──X──  (30 Hz)
    LiDAR scan      ──X─────X─────X─────X─────X─────  (10 Hz)
    IMU sample      ──XXXX──XXXX──XXXX──XXXX──XXXX──  (200 Hz)
 ```
 
-The essence of PPS synchronization is to measure the offset between each sensor's local timestamp and the PPS pulse, thereby aligning all data to a common time axis (GPS time).
+PPS synchronization measures the offset between each sensor's local timestamp and the PPS pulse, thereby aligning all data to a common time axis (GPS time).
 
 ### 3.9.2 PTP (Precision Time Protocol)
 
-IEEE 1588 PTP is a protocol that provides microsecond-level time synchronization over Ethernet. It is far more precise than the millisecond-level accuracy of NTP (Network Time Protocol).
+IEEE 1588 PTP synchronizes clocks over Ethernet. With hardware timestamping and a PTP-aware network, sub-microsecond errors can be possible, but actual accuracy depends on the devices and network configuration.
 
 **How PTP works**:
 
@@ -1300,24 +1300,24 @@ IEEE 1588 PTP is a protocol that provides microsecond-level time synchronization
          |                                |
          |------- Delay_Resp (t4) ------->|  (conveys the reception time t4)
          |                                |
-         
+
    offset = [(t2 - t1) - (t4 - t3)] / 2
    delay  = [(t2 - t1) + (t4 - t3)] / 2
 ```
 
-Modern LiDARs (Ouster, Hesai, etc.) and industrial cameras (FLIR/Lucid, etc.) support PTP hardware timestamping, enabling microsecond-level synchronization without software overhead.
+Some LiDARs and industrial cameras support PTP and hardware timestamping. Support and the timestamp reference point must be checked in the datasheet for the specific model.
 
 ### 3.9.3 Software Synchronization
 
 When hardware synchronization is not available, time alignment is done in software.
 
-**Host clock based**: when all sensor data arrives at the host computer, the host's system clock timestamps them. Simple, but the jitter of USB/network delays introduces uncertainty on the order of milliseconds.
+**Host-clock based**: timestamp data with the host system clock when it arrives. The value then includes USB, network, and driver-queue latency and jitter; their magnitude depends on the device and host load and must be measured.
 
 **ROS Time**: in ROS, `ros::Time::now()` records the message reception time. When the driver converts the sensor's local timestamp to ROS time, the accuracy of that conversion determines the overall synchronization precision.
 
 ### 3.9.4 Online Estimation of the Time Offset
 
-[Li & Mourikis (2014)](https://journals.sagepub.com/doi/abs/10.1177/0278364913515286) proposed including the time offset $t_d$ in the state vector of VIO and estimating it online. The key idea:
+[Li & Mourikis (2014)](https://arxiv.org/abs/1310.7863) proposed including the time offset $t_d$ in the state vector of VIO and estimating it online. The observation model incorporates the offset as follows:
 
 **Reflecting the time offset in the observation model**:
 
@@ -1345,31 +1345,31 @@ Kalibr (Section 3.4.2), OpenVINS, VINS-Mono, and other modern VIO systems all im
 
 ### 3.9.5 Practical Synchronization Strategy Guide
 
-| Precision required | Recommended method | Cost |
-|-----------|----------|------|
-| $< 1\mu s$ | PPS + HW trigger | High (dedicated HW required) |
-| $1\mu s - 100\mu s$ | PTP | Medium (PTP-capable equipment) |
-| $100\mu s - 1ms$ | NTP + online estimation | Low |
-| $> 1ms$ | Host clock + online estimation | None |
+| Configuration | First method to consider | What to verify |
+|---------------|--------------------------|----------------|
+| A shared trigger and clock can be wired | Hardware trigger + common clock/PPS | Timestamp reference within exposure, sample, or scan; fixed latency |
+| Every device and switch supports PTP and hardware timestamps | PTP | Grandmaster selection, PTP profile, path asymmetry, lock state |
+| Device clocks are readable but no shared signal exists | Clock conversion + offline/online offset estimation | Clock drift, motion observability, time variation of the offset |
+| Only receive timestamps are available | Use host timestamps provisionally and measure jitter | USB/network queueing; change hardware if the error budget is not met |
 
-**Autonomous-driving grade**: PPS + PTP combination is standard. All sensors are synchronized to GPS time.
+**For systems requiring hardware synchronization**: PPS and PTP can be combined to align multiple sensors to a GNSS-referenced clock.
 
 **Research/prototyping grade**: software synchronization + online time-offset estimation is often sufficient. Kalibr estimates the initial offset and the VIO system fine-tunes it online.
 
-**Core principle**: if hardware synchronization is available, use it. Software synchronization complements, but does not replace, hardware synchronization.
+When hardware synchronization is available, consider it first and still measure timestamp semantics and fixed or variable latency. Software offset estimation supplements the hardware path or serves setups in which a shared trigger is unavailable.
 
 ---
 
 ## 3.10 Chapter Summary
 
-We summarize the overall system of calibrations covered in this chapter.
+The table summarizes the parameters and methods for each sensor combination.
 
-| Calibration type | Parameters estimated | Key method | Minimum requirement |
+| Calibration type | Parameters estimated | Method | Minimum requirement |
 |----------------|-------------|----------|-------------|
-| Camera intrinsic | $\mathbf{K}, \mathbf{d}$ | Zhang's method | 15-25 checkerboard images |
-| Stereo extrinsic | $\mathbf{R}, \mathbf{t}$ | Shared target + stereoCalibrate | 15-25 simultaneous observation pairs |
-| Camera-LiDAR | $\mathbf{T}_{CL}$ | Target-based / NID | 10-20 target observations / natural scene |
-| Camera-IMU | $\mathbf{T}_{CI}, t_d$ | Kalibr (B-spline) | 60+ seconds of diverse motion |
+| Camera intrinsic | $\mathbf{K}, \mathbf{d}$ | Zhang's method | Diverse target poses covering the image |
+| Stereo extrinsic | $\mathbf{R}, \mathbf{t}$ | Shared target + stereoCalibrate | Diverse poses detected simultaneously by both cameras |
+| Camera-LiDAR | $\mathbf{T}_{CL}$ | Target-based / NID | Multiple target views / natural scene |
+| Camera-IMU | $\mathbf{T}_{CI}, t_d$ | Kalibr (B-spline) | A sufficiently long sequence with diverse motion |
 | LiDAR-IMU | $\mathbf{T}_{LI}$ | Hand-eye (AX=XB) / LI-Init | Diverse motion |
 | LiDAR-LiDAR | $\mathbf{T}_{L_1 L_2}$ | ICP / Feature matching | Overlapping region or motion data |
 | GNSS-IMU | $\mathbf{l}$ (lever arm) | Physical measurement / EKF estimation | Rotational motion |
@@ -1387,13 +1387,13 @@ We summarize the overall system of calibrations covered in this chapter.
 
 Example of indirect computation: the camera-LiDAR transform can be obtained as $\mathbf{T}_{CL} = \mathbf{T}_{CI} \cdot \mathbf{T}_{IL}$. However, errors accumulate, so verifying it via direct calibration is recommended.
 
-**Key paper summary**:
+**Related papers**:
 
 - [Zhang (2000)](https://ieeexplore.ieee.org/document/888718): camera intrinsic — flexible homography-based calibration
 - [Furgale et al. (2013)](https://ieeexplore.ieee.org/document/6696514): camera-IMU — simultaneous spatio-temporal calibration with B-spline continuous-time trajectories
 - [Tsai & Lenz (1989)](https://ieeexplore.ieee.org/document/34770): hand-eye — the original AX=XB
 - [Koide et al. (2023)](https://arxiv.org/abs/2302.05094): camera-LiDAR targetless — automatic calibration based on NID + SuperGlue
-- [Li & Mourikis (2014)](https://journals.sagepub.com/doi/abs/10.1177/0278364913515286): temporal — online estimation of the time offset
+- [Li & Mourikis (2014)](https://arxiv.org/abs/1310.7863): temporal — online estimation of the time offset
 - [OpenCalib (2023)](https://arxiv.org/abs/2205.14087): an integrated calibration framework for autonomous driving
 - [GRIL-Calib (Kim et al., 2024)](https://arxiv.org/abs/2312.14035): targetless IMU-LiDAR calibration in ground-robot settings using planar-motion constraints. 6-DoF estimation is possible even from constrained motion.
 - [MFCalib (2024)](https://arxiv.org/abs/2409.00992): single-shot targetless LiDAR-camera calibration that leverages multi-feature edges (depth continuity/discontinuity, intensity discontinuity). The edge inflation problem is solved with a LiDAR beam model.
