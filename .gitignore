@@ -1,2 +1,8 @@
 .git.nosync
 node_modules/
+
+# 워크스페이스 로컬 전용 — 공개 저장소에 올리지 않는다
+CLAUDE.md
+AGENTS.md
+writing-status.json
+VOICE_CARD.md
