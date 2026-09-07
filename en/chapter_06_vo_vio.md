@@ -10,9 +10,9 @@ VO/VIO systems can be classified along three main axes:
 
 1. **Feature-based vs Direct**: whether geometric features (corners, edges) are extracted and matched, or pixel intensities themselves are used directly.
 2. **Filter vs Optimization**: whether state estimation relies on Kalman-filter-family methods or nonlinear optimization.
-3. **Loosely coupled vs Tightly coupled**: whether IMU and camera are processed independently and their results fused, or their raw measurements are placed in a single optimization problem.
+3. **Loosely coupled vs Tightly coupled**: whether IMU and camera are processed independently and their results fused, or their raw measurements are combined within a single estimation framework.
 
-The combinations of these three axes have produced a wide variety of systems. Representative systems show the rationale and consequences of each design choice.
+Combinations of these axes produce different internal structures and operating characteristics.
 
 ---
 
@@ -26,7 +26,7 @@ The frontend of a feature-based VO performs three tasks.
 
 **Feature Detection**
 
-This step finds trackable points in a frame. Ideal feature points must have high repeatability — the same 3D point should be detected at similar locations when imaged from different viewpoints.
+This step finds trackable points in a frame. Ideal feature points must have high repeatability — the projection of the same 3D point should be repeatedly detected in images taken from different viewpoints.
 
 The Harris corner detector detects corners based on the autocorrelation matrix (also called the second moment matrix) $\mathbf{M}$ of an image patch:
 
@@ -36,7 +36,7 @@ Here $I_x, I_y$ are the image gradients, $W$ is the window, and $w$ is the weigh
 
 $$R = \det(\mathbf{M}) - k \cdot \text{tr}(\mathbf{M})^2 = \lambda_1\lambda_2 - k(\lambda_1 + \lambda_2)^2$$
 
-FAST (Features from Accelerated Segment Test) is optimized for speed. It declares a candidate pixel $p$ a corner if at least $n$ (typically $n=9$) contiguous pixels on a radius-3 Bresenham circle are all brighter or all darker than $p$. A pre-test examines pixels 1, 5, 9, and 13 to reject non-corners quickly. Its speed relative to Harris depends on implementation and hardware, and basic FAST has no orientation or scale invariance.
+FAST (Features from Accelerated Segment Test) is optimized for speed. It declares a candidate pixel $p$ a corner if at least $n$ (typically $n=9$) of the 16 pixels on a radius-3 Bresenham circle are contiguous and all brighter or all darker than $p$. A pre-test examines pixels 1, 5, 9, and 13 to reject non-corners quickly. Its speed relative to Harris depends on implementation and hardware, and basic FAST has no orientation or scale invariance.
 
 ORB (Oriented FAST and Rotated BRIEF) augments FAST detection with orientation and rotates the BRIEF descriptor accordingly, yielding features suited to real-time SLAM. Orientation is computed from the intensity centroid of the image patch:
 
@@ -249,7 +249,7 @@ There are two limitations:
 
 1. **Direct**: uses pixel intensity directly, without feature points.
 2. **Sparse**: instead of using the entire image, samples points evenly in regions with gradient.
-3. **Joint Optimization**: simultaneously optimizes poses, inverse depths, and camera intrinsic parameters (affine brightness parameters).
+3. **Joint Optimization**: simultaneously optimizes poses, inverse depths, and camera intrinsic parameters, and affine brightness parameters.
 
 **Full Photometric Calibration**
 
@@ -337,7 +337,7 @@ def dso_track(frame, window, camera):
 
 **Three Stages of SVO**
 
-1. **Sparse Model-based Image Alignment**: existing 3D map points are projected onto the current frame, and the frame pose is estimated by minimizing the photometric error over a patch around each projected point. This uses image gradients directly, as DSO does, but only around already-known map points rather than the whole image, so it is very fast.
+1. **Sparse Model-based Image Alignment**: existing 3D map points are projected onto the current frame, and the frame pose is estimated by minimizing the photometric error over a patch around each projected point. This uses image gradients directly, as DSO does. Processing only the neighborhoods of known map points reduces computation compared with processing the whole image.
 
 2. **Feature Alignment**: once the pose is estimated, the projected location of each map point is refined to subpixel accuracy. Patch-based direct alignment is again used here.
 
@@ -653,8 +653,8 @@ This is one of the oldest debates in the VIO field.
 
 **Filter-based (MSCKF, OpenVINS)**
 
-- Maintains only the current state and updates it sequentially as new measurements arrive
-- Past states are "absorbed" into the current state distribution (mean + covariance)
+- Sequentially updates the maintained state, including some past camera poses, as new measurements arrive
+- Information from removed past states is "absorbed" into the maintained state distribution (mean + covariance)
 - Computational complexity: $O(N^2)$ per update ($N$ is the state dimension)
 - Advantages: constant per-update cost, simple implementation
 - Disadvantages: accumulated linearization error (once linearized, it cannot be corrected), consistency problems
@@ -715,13 +715,13 @@ where $(\bar{u}, \bar{v})$ are the normalized coordinates in the anchor frame an
 
 ## 6.5 Learning-Based VO/VIO
 
-Traditional VO/VIO relies on a "human-designed pipeline": feature detection → matching → RANSAC → BA. Learning-based approaches aim to replace part or all of this pipeline with neural networks.
+Traditional VO/VIO relies on a "human-designed pipeline." A feature-based example is feature detection → matching → RANSAC → BA. Learning-based approaches aim to replace part or all of this pipeline with neural networks.
 
 ### 6.5.1 Supervised: the DeepVO Family
 
 Early learning-based VO ([DeepVO, Wang et al., 2017](https://doi.org/10.1109/ICRA.2017.7989236)) trained an end-to-end network that takes consecutive image pairs as input and directly predicts the relative pose. A CNN extracts visual features and an LSTM models temporal dependencies.
 
-The limitations are clear:
+The remaining limitations are:
 - Overfitting to the environment of the training data (poor generalization)
 - Not exploiting geometric constraints (e.g., epipolar geometry), so accuracy falls short of traditional methods
 - Severe scale drift
@@ -817,7 +817,7 @@ Follow-up work addresses these limits through sparse patches, lower memory use, 
 |--------|------|-----------|------|-----------|
 | ORB-SLAM3 | Feature-based | Optimization (BA) | Mono/Stereo/RGBD + IMU | Multi-map Atlas, fisheye support |
 | DSO | Direct | Optimization (windowed) | Mono | Photometric calibration, sparse sampling |
-| SVO | Semi-direct | Optimization (BA) | Mono/Stereo | Semi-direct front end, sparse depth, designed for high-rate processing |
+| SVO | Semi-direct | Optimization (BA) | Mono/Stereo | Semi-direct frontend, sparse depth, designed for high-rate processing |
 | VINS-Mono | Feature-based | Optimization (sliding window) | Mono + IMU | Robust initialization, 4-DoF loop closure |
 | MSCKF | Feature-based | EKF (sliding window) | Mono/Stereo + IMU | Excludes landmarks from state, null-space projection |
 | OpenVINS | Feature-based | EKF (MSCKF) | Mono/Stereo + IMU | Online calibration, FEJ, research platform |
@@ -826,4 +826,4 @@ Follow-up work addresses these limits through sparse patches, lower memory use, 
 | DPVO | Learned (sparse) | Differentiable BA | Mono | Sparse patches; paper reports lower compute and memory cost than DROID-SLAM under its setup |
 | MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper |
 
-LiDAR-based odometry and LiDAR-Inertial fusion form the complementary line to camera-based systems.
+LiDAR-based odometry and LiDAR-Inertial systems solve the same ego-motion estimation problem under different sensing conditions. This is also what makes them complementary to camera-based systems.

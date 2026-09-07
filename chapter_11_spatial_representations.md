@@ -519,14 +519,14 @@ $$\hat{C}(\mathbf{r}) = \int_{t_n}^{t_f} T(t) \sigma(\mathbf{r}(t)) c(\mathbf{r}
 
 여기서 $T(t) = \exp\left(-\int_{t_n}^{t} \sigma(\mathbf{r}(s)) ds\right)$는 누적 투과율(accumulated transmittance)이다.
 
-**NeRF-SLAM 파이프라인**: 기존 NeRF가 offline reconstruction이었다면, NeRF-SLAM은 SLAM과 결합하여 online으로 동작한다:
+**NeRF-SLAM 파이프라인**: 기존 NeRF가 오프라인 재구성(offline reconstruction)을 위한 방법이었다면, NeRF-SLAM은 SLAM과 결합하여 온라인으로 동작한다:
 
 1. **Tracking**: 현재 프레임의 camera pose를 기존 neural map에 대해 최적화한다 (photometric loss + depth loss).
 2. **Mapping**: 추정된 pose에서 neural network 가중치를 갱신한다. 새로운 관측 영역을 학습하면서 기존 영역의 일관성도 유지해야 한다.
 
 **[iMAP](https://arxiv.org/abs/2103.12352)** (Sucar et al. 2021)은 단일 MLP를 handheld RGB-D 실시간 SLAM의 유일한 장면 표현으로 사용한 초기 시스템이다. 원 논문은 keyframe 구조와 정보 기반 pixel sampling으로 tracking 10 Hz, global map update 2 Hz를 보고한다.
 
-한계는 두 가지다. MLP 학습 속도(training speed)가 느려 실시간 mapping에 제약이 있고, 새 영역을 학습하면 이전 영역의 표현이 퇴화하는 catastrophic forgetting이 발생한다. 대규모 환경에서는 단일 MLP의 용량 한계도 드러난다.
+한계는 세 가지다. MLP 학습 속도(training speed)가 느려 실시간 mapping에 제약이 있고, 새 영역을 학습하면 이전 영역의 표현이 퇴화하는 catastrophic forgetting이 발생한다. 대규모 환경에서는 단일 MLP의 용량 한계도 드러난다.
 
 Instant-NGP는 multi-resolution hash-grid feature encoding으로 신경 장면 표현의 학습과 렌더링을 가속했고, 이를 활용한 NeRF-SLAM 변형도 등장했다. 공간의 여러 해상도에서 해시 테이블로 local feature를 저장하고 조회한다.
 
@@ -541,7 +541,7 @@ Instant-NGP는 multi-resolution hash-grid feature encoding으로 신경 장면 �
 - 불투명도 $\alpha \in [0, 1]$
 - 색상 (spherical harmonics 계수)
 
-렌더링은 splatting — 3D Gaussian을 이미지 평면에 투영하고 깊이 순서대로 alpha blending — 으로 수행한다. 명시적 primitive와 rasterization 덕분에 원 3DGS 논문은 자사 장면·해상도·하드웨어 설정에서 실시간 렌더링을 보고했다.
+렌더링은 splatting — 3D Gaussian을 이미지 평면에 투영하고 깊이 순서대로 alpha blending — 으로 수행한다. 명시적 primitive와 rasterization 덕분에 원 3DGS 논문은 자체 실험의 장면·해상도·하드웨어 설정에서 실시간 렌더링을 보고했다.
 
 **[3DGS-SLAM](https://arxiv.org/abs/2312.06741)** (Matsuki et al. 2024): 3DGS를 SLAM 표현으로 사용:
 
@@ -813,7 +813,7 @@ Object-level map은 개별 객체만 인식한다. 하지만 인간은 환경을
 
 **Room detection**: place graph에서 방을 검출하는 방법:
 
-1. Place 노드들의 에지를 장애물 근접도에 따라 가중치를 부여한다.
+1. Place 노드들의 에지에 장애물 근접도에 따라 가중치를 부여한다.
 2. 문(doorway) 같은 좁은 통로에서 가중치가 높아진다 (통과하기 어렵다는 의미).
 3. 커뮤니티 검출 알고리즘(예: dilation 기반)으로 place들을 방 단위로 그룹핑한다.
 

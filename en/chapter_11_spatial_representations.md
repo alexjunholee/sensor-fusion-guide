@@ -503,7 +503,7 @@ SLAM systems can mesh an incremental TSDF or pass an online point/surfel map to 
 
 ## 11.3 Neural / Learned Representations
 
-Traditional map representations (voxel, mesh, surfel) are explicit — they store 3D structure directly. Neural representations, in contrast, encode the 3D scene into the weights of a neural network in an **implicit** or **parametric** manner.
+Traditional map representations (voxel, mesh, surfel) are explicit — they store 3D structure directly. Neural representations, in contrast, encode the 3D scene **implicitly** in the weights of a neural network.
 
 ### 11.3.1 NeRF-SLAM: Neural Implicit + Odometry
 
@@ -822,11 +822,7 @@ An object-level map only recognizes individual objects. But humans understand en
 2. At narrow passages such as doorways, weights become high (indicating difficulty of passage).
 3. Group places into rooms using a community detection algorithm (e.g., dilation-based).
 
-**Hierarchical loop closure**: Hydra leverages the hierarchical structure of the scene graph to improve the quality of loop closure:
-
-- **Top-down**: first find candidates at higher layers (room, place).
-- **Bottom-up**: perform geometric verification at lower layers (visual feature, object) (TEASER++ based).
-- This hierarchical approach detects more and more accurate loop closures than a simple BoW approach.
+**Hierarchical loop closure**: Hydra leverages the scene graph hierarchy to improve loop closure. It first narrows candidates at higher layers (room, place), then performs TEASER++-based geometric verification at lower layers (visual feature, object). This top-down/bottom-up structure detects more loop closures, and does so more accurately, than a simple BoW approach.
 
 **S-Graphs** (Situational Graphs): a hierarchical scene graph similar to Hydra, but directly incorporating hierarchical information into factor graph optimization. Structural elements such as rooms, walls, and floors are added as variables of the factor graph to improve SLAM accuracy.
 
@@ -922,7 +918,7 @@ class OpenVocabSemanticMap:
 
 ## 11.5 Long-Term & Dynamic Maps
 
-Real environments are not static. Vehicles move, furniture is rearranged, and buildings are newly constructed. Robots operating over long periods must adapt to such changes.
+Real environments are not static. People come and go, furniture is moved, and appearance changes with the seasons. Robots operating over long periods must adapt to such changes.
 
 ### 11.5.1 Change Detection
 
@@ -971,14 +967,14 @@ def detect_changes(occupancy_map, current_scan, robot_pose, threshold=0.3):
 
 Long-term operation cannot retain every observation indefinitely, so map maintenance needs criteria for keeping and discarding information.
 
-**Strategy 1: Recency weighting**: assign higher weights to recent observations and gradually decay the influence of older ones. A scheme that decays the TSDF weight over time.
+**Strategy 1: Recency weighting**: assign higher weights to recent observations and gradually decay the influence of older ones. Decaying the TSDF weight over time is one implementation.
 
 **Strategy 2: Semi-static classification**: classify each element of the environment as static, semi-static, or dynamic:
 - **Static**: walls, floors, buildings -> permanently preserved.
 - **Semi-static**: furniture, parked vehicles -> periodically updated.
 - **Dynamic**: pedestrians, moving vehicles -> removed from the map.
 
-**Strategy 3: Multi-experience mapping**: store multiple "experiences" of the same place. Maintain several versions of the map under different lighting, season, and furniture arrangement, and select the experience that best matches the current observation.
+**Strategy 3: Multi-experience mapping**: store multiple "experiences" of the same place. Maintain several versions of the map under different lighting conditions or seasons, and select the experience that best matches the current observation.
 
 ### 11.5.3 Handling Dynamic Objects
 
@@ -1080,4 +1076,4 @@ class DynamicMapManager:
 
 ---
 
-Spatial representations include volumetric occupancy such as OctoMap, point and surfel maps, continuous surfaces such as TSDF and meshes, neural representations such as NeRF and 3DGS, and semantic scene graphs. Each has different query, error, and memory tradeoffs, so combine and evaluate them for the platform's sensors and downstream tasks.
+Each representation serves different downstream tasks. Modern systems combine them hierarchically—planning paths with OctoMap, rendering with surfels, and answering semantic queries with scene graphs. On a real platform, these algorithms and representations must be integrated and evaluated within autonomous-driving, drone, or handheld systems.

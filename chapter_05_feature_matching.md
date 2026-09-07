@@ -2,7 +2,7 @@
 
 Ch.4에서 상태 추정의 수학적 프레임워크를 세웠다. 하지만 칼만 필터든 팩터 그래프든, "어떤 관측이 어떤 랜드마크에 대응하는가"라는 **데이터 연관(data association)** 문제가 먼저 풀려야 한다. 이 챕터는 그 핵심인 특징점 매칭(feature matching)과 대응점 탐색(correspondence search)의 기술 계보를 추적한다.
 
-> **이 챕터의 목적**: 센서 퓨전의 거의 모든 컴포넌트 — Visual Odometry, calibration, loop closure, point cloud registration — 가 **correspondence**(대응점)에 의존한다. 이 챕터는 mutual information에서 출발하여 RoMa까지 이어지는 기술적 흐름을 추적하며, 각 방법이 이전 세대의 어떤 한계를 해결했는지 살핀다.
+> **이 챕터의 목적**: 센서 퓨전의 거의 모든 컴포넌트—Visual Odometry, calibration, loop closure, point cloud registration—가 **correspondence**(대응점)에 의존한다. 이 챕터는 mutual information에서 출발하여 RoMa까지 이어지는 기술적 흐름을 추적하며, 각 방법이 이전 세대의 어떤 한계를 해결했는지 살핀다.
 
 ---
 
@@ -57,7 +57,7 @@ $$\min_{\mathbf{R}, \mathbf{t}} \sum_{i} \| \mathbf{q}_i - (\mathbf{R} \mathbf{p
 
 ### 5.1.3 센서 퓨전에서의 역할
 
-센서 퓨전의 정확도는 correspondence 품질에 크게 좌우된다. 잘못된 대응점(outlier)은 포즈 추정을 불안정하게 만들고, 텍스처가 부족한 환경처럼 충분한 대응점을 찾기 어려운 조건에서는 포즈를 추정할 수 없다. 이를 해결하는 방법은 전통적 특징점 검출·기술에서 학습 기반 정합으로 발전해 왔다.
+센서 퓨전의 정확도는 correspondence 품질에 크게 좌우된다. 잘못된 대응점(outlier)이 섞이면 포즈 추정의 오차가 급격히 커진다. 또한 텍스처가 결여된 환경에서는 유효 대응점의 수가 부족해 포즈 계산 자체가 불가능해지기도 한다. 이를 해결하는 방법은 전통적 특징점 검출·기술에서 학습 기반 정합으로 발전해 왔다.
 
 ---
 
@@ -230,9 +230,10 @@ SURF는 [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_3
 $$\det(\mathbf{H}) = D_{xx} D_{yy} - (0.9 \cdot D_{xy})^2$$
 
 - 64차원 디스크립터 (SIFT의 128차원 대비 절반): Haar wavelet 응답의 합과 절댓값 합.
-- integral image와 box filter로 Hessian 근사를 빠르게 계산하도록 설계됐다. 속도와 정확도 차이는 구현, 영상 크기, 하드웨어에 따라 달라진다.
 
-SURF는 특허 문제로 최근에는 잘 사용되지 않으며, 실시간 응용에서는 ORB가, 정확도가 중요한 응용에서는 SIFT나 학습 기반 방법이 선호된다.
+integral image와 box filter로 Hessian 근사를 빠르게 계산하도록 설계됐다. 속도와 정확도 차이는 구현, 영상 크기, 하드웨어에 따라 달라진다.
+
+SURF는 과거 특허 문제로 채택률이 낮아졌다. 현재 실시간성이 중요한 파이프라인에서는 ORB를 주로 쓰고, 정밀한 복원이 필요한 분야에서는 SIFT나 최신 학습 기반 정합 기법을 활용한다.
 
 ### 5.2.3 Binary Descriptors: BRIEF, ORB, BRISK
 
@@ -268,7 +269,7 @@ FAST (2006)       — 극한 속도 검출 (descriptor 없음)
 ORB (2011)        — oFAST + rBRIEF, 256-bit binary (Hamming 매칭)
 ```
 
-이 트레이드오프는 딥러닝 시대에도 계속되며, SuperPoint는 SIFT급 정확도를 ORB급 속도로 달성하는 것을 목표로 했다.
+이러한 속도와 정확도의 상충 관계는 딥러닝 기반 모델에서도 주요 설계 쟁점이다. 예컨대 SuperPoint는 SIFT 수준의 정합 정밀도를 확보하면서도 ORB에 근접하는 추론 속도를 달성하도록 설계되었다.
 
 ---
 
@@ -334,7 +335,7 @@ for m, n in matches:  # m: best, n: second best
 
 [Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692)은 다음 절차로 로버스트 추정을 수행한다.
 
-1. 전체 매칭 중 모델에 필요한 최소 $n$개를 무작위 추출 (예: Fundamental matrix는 8점, 7점, 또는 5점)
+1. 전체 매칭 중 모델에 필요한 최소 $n$개를 무작위 추출 (예: Fundamental matrix는 8점 또는 7점, Essential matrix는 5점)
 2. 추출한 점으로 모델 추정
 3. 전체 매칭에서 모델과의 오차가 임계값 $t$ 이내인 점(인라이어)의 consensus set 구성
 4. 가장 큰 consensus set을 가진 모델을 최종 선택
@@ -493,7 +494,7 @@ NMI는 오버랩 영역이 변할 때도 안정적이므로 실용적으로 MI�
 
 ### 5.4.4 MI Gradient 계산
 
-MI를 정합의 목적 함수로 사용하려면 변환 파라미터에 대한 그래디언트를 계산해야 한다.
+MI를 정합의 목적 함수로 삼아 그래디언트 기반 최적화를 하려면 변환 파라미터에 대한 그래디언트를 계산해야 한다.
 
 변환 $T_\xi$ (파라미터 $\xi$)에 의한 MI의 그래디언트:
 
@@ -501,7 +502,7 @@ $$\frac{\partial I}{\partial \xi} = \sum_{a, b} \frac{\partial p(a, b)}{\partial
 
 결합 히스토그램이 이산적이면 그래디언트가 존재하지 않으므로, **Parzen 윈도우(커널 밀도 추정)** 또는 **B-spline** 기반의 미분 가능한 히스토그램 추정 방법을 사용한다.
 
-실용적으로는 그래디언트 기반 최적화보다 **Nelder-Mead simplex** 같은 미분-free 최적화가 자주 사용되기도 한다 (Koide et al., 2023의 캘리브레이션 툴에서 사용).
+실용적으로는 그래디언트 기반 최적화보다 **Nelder-Mead simplex** 같은 미분이 필요 없는(gradient-free) 최적화가 자주 사용되기도 한다 (Koide et al., 2023의 캘리브레이션 툴에서 사용).
 
 ### 5.4.5 왜 Calibration에서 MI가 쓰이는가
 
@@ -588,7 +589,7 @@ VGG 스타일 인코더(공유 백본) → 두 개의 디코더 헤드로 분기
 
 **Descriptor Decoder**:
 - 공유 백본의 feature map에서 256차원 디스크립터 맵을 출력
-- 검출된 키포인트 위치에서 bi-cubic interpolation으로 샘플링
+- 검출된 키포인트 위치에서 bicubic interpolation으로 샘플링
 - L2 정규화 적용
 
 #### 학습 손실
@@ -600,7 +601,7 @@ $$L_{desc} = \sum_{(i,j) \in \text{pos}} \max(0, m_p - \mathbf{d}_i^\top \mathbf
 
 여기서 $m_p, m_n$은 positive/negative margin.
 
-**논문 보고 성능**: 단일 포워드 패스로 검출과 기술을 함께 수행한다. SuperPoint 논문은 저자들의 GPU·구현에서 640×480 입력 약 70 FPS를 보고했으며, 현재 처리량은 하드웨어와 후보점 수에 따라 다시 측정해야 한다.
+**논문 보고 성능**: 단일 포워드 패스로 검출과 기술을 함께 수행한다. SuperPoint 원 논문에서는 저자들의 GPU 환경에서 640×480 해상도 기준 약 70 FPS의 처리 속도를 제시했다. 실무 적용 시의 실제 처리량은 타깃 하드웨어 스펙과 추출 후보점 수에 맞춰 개별적으로 벤치마크해야 한다.
 
 ```python
 import torch
@@ -625,7 +626,7 @@ with torch.no_grad():
 [D2-Net (Dusmanu et al., 2019)](https://arxiv.org/abs/1905.03561)은 검출과 기술을 더 극단적으로 통합한 방법이다. SuperPoint가 여전히 검출 헤드와 기술 헤드를 분리한 반면, D2-Net은 **같은 특징 맵에서 검출과 기술을 동시에 수행**한다.
 
 D2-Net은 VGG16의 중간 특징 맵 $\mathbf{F} \in \mathbb{R}^{H \times W \times C}$를 다음 두 작업에 함께 사용한다.
-- **Detection**: 각 위치에서 채널 축 최대값을 취한 뒤, 공간적 NMS를 적용하여 키포인트 선택
+- **Detection**: 각 위치에서 채널 축 최댓값을 취한 뒤, 공간적 NMS를 적용하여 키포인트 선택
 - **Description**: 같은 위치의 $C$-차원 벡터를 디스크립터로 사용
 
 장점: 높은 수준의 의미적(semantic) 특징을 사용하므로 큰 외관 변화에 강건.
@@ -711,7 +712,7 @@ $$\mathbf{S} \leftarrow \text{row-normalize}(\mathbf{S}), \quad \mathbf{S} \left
 
 #### 학습
 
-Ground-truth 대응점(호모그래피 또는 상대 포즈 + 깊이 맵에서 생성)에 대한 negative log-likelihood 최대화로 end-to-end 학습:
+Ground-truth 대응점(호모그래피 또는 상대 포즈 + 깊이 맵에서 생성)에 대한 negative log-likelihood 최소화로 end-to-end 학습:
 
 $$L = -\sum_{(i,j) \in \mathcal{M}} \log \hat{P}_{ij} - \sum_{i \in \mathcal{U}_A} \log \hat{P}_{i, M+1} - \sum_{j \in \mathcal{U}_B} \log \hat{P}_{N+1, j}$$
 
@@ -794,7 +795,7 @@ SuperPoint detect+describe → SuperGlue attention matching → LightGlue 효율
     (2018)                       (2020)                        (2023)
 ```
 
-파이프라인의 각 단계를 하나씩 딥러닝으로 대체하는 동안에도 3단계 직렬 구조 자체는 유지됐다. 이 구조의 장점은 모듈성과 해석 가능성이며, 단점은 검출 단계의 실패가 전체 파이프라인의 실패로 이어진다는 것이다. 다음 절의 detector-free 방법은 이 검출 단계를 없앤다.
+파이프라인의 각 단계를 하나씩 딥러닝으로 대체하는 동안에도 3단계 직렬 구조 자체는 유지됐다. 이러한 직렬 구조는 각 모듈을 독립적으로 분석하기에 유리하다. 하지만 첫 단계인 키포인트 검출에 실패하면 이후 기술과 매칭 단계까지 연쇄적으로 무너지는 한계를 안고 있다. 다음 절의 detector-free 방법은 이 검출 단계를 없앤다.
 
 ---
 
@@ -974,7 +975,7 @@ RoMa는 RAFT의 iterative refinement 아이디어와 LoFTR의 detector-free 사�
 
 2024-2025년에는 2D 매칭을 넘어 **3D 기하학을 직접 예측하면서 매칭을 수행**하는 방법이 등장했다.
 
-**DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132)는 캘리브레이션이나 포즈 정보 없이 임의의 이미지 쌍에서 직접 3D pointmap을 회귀하는 방법이다. 기존 매칭 파이프라인이 "2D 매칭 → 3D 복원"의 순서를 따른 반면, DUSt3R는 이를 뒤집어 **3D 구조 자체를 직접 예측하고, 대응점은 3D 공간에서 자연스럽게 얻어지는 부산물**로 다룬다.
+**DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132)는 캘리브레이션이나 포즈 정보 없이 임의의 이미지 쌍에서 직접 3D pointmap을 회귀하는 방법이다. 기존 매칭 파이프라인은 "2D 매칭 → 3D 복원" 순서로 동작했다. DUSt3R는 이 순서를 바꾸어 **3D 형상 자체를 직접 회귀하고, 대응점은 3D 공간의 근접성에서 자연스럽게 유도되는 결과물**로 취급한다.
 
 **MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756)는 DUSt3R에 dense local feature head를 추가했다. 저자들은 논문의 map-free localization 설정에서 이전 비교 방법보다 VCRE AUC가 30%p 높았다고 보고한다.
 
@@ -1007,9 +1008,9 @@ $$\alpha = \mathbf{v} \cdot \mathbf{n}_k, \quad \phi = \mathbf{u} \cdot \frac{\m
 
 각 특성을 $B$-bin 히스토그램으로 양자화.
 
-#### FPFH: SPFH의 가속 버전
+#### FPFH: PFH의 가속 버전
 
-SPFH는 반경 $r$ 내의 모든 이웃 쌍의 특성을 계산하므로 $O(k^2)$. FPFH는 이를 근사하여 $O(k)$로 줄인다:
+PFH는 반경 $r$ 내의 이웃 쌍 특성을 계산하므로 포인트당 $O(k^2)$의 계산이 필요하다. FPFH는 query와 각 이웃 사이의 특성으로 SPFH를 구하고 이웃의 SPFH를 가중 결합하여 포인트당 $O(k)$로 근사한다:
 
 $$\text{FPFH}(\mathbf{p}) = \text{SPFH}(\mathbf{p}) + \frac{1}{k} \sum_{i=1}^{k} \frac{1}{w_i} \text{SPFH}(\mathbf{p}_i)$$
 
@@ -1037,13 +1038,13 @@ fpfh = o3d.pipelines.registration.compute_fpfh_feature(
 - **아키텍처**: 3D TDF(Truncated Distance Function) 볼륨을 입력으로 하는 3D CNN
 - **출력**: 512차원 로컬 디스크립터
 
-3DMatch는 학습 기반 3D descriptor 연구의 주요 기준점이 되었고, 함께 공개한 **3DMatch Benchmark**도 후속 연구에서 널리 쓰이는 평가셋이 되었다.
+3DMatch는 학습 기반 3D descriptor 연구를 촉발한 선구적 작업이다. 논문과 함께 공개된 **3DMatch Benchmark**는 후속 연구들의 표준 평가셋으로 자리 잡았다.
 
 ### 5.8.3 FCGF (Fully Convolutional Geometric Features, 2019)
 
 [Choy et al. (2019)](https://arxiv.org/abs/1904.09793)의 FCGF는 **sparse convolution**을 이용하여 전체 점군에서 한 번의 포워드 패스로 모든 점의 디스크립터를 추출한다.
 
-3DMatch가 각 키포인트 주변의 로컬 볼륨을 개별 처리하는 반면, FCGF는 sparse convolution으로 전체 점군의 특징을 함께 계산한다. FCGF 논문은 해당 구현·하드웨어·벤치마크에서 큰 처리시간 단축과 32차원 디스크립터의 높은 registration 성능을 보고했다.
+3DMatch는 각 키포인트 주변의 로컬 볼륨을 개별 처리하는 방식을 썼다. FCGF는 sparse convolution을 도입해 전체 점군의 특징을 단일 패스로 계산한다. FCGF 논문은 해당 구현·하드웨어·벤치마크에서 큰 처리시간 단축과 32차원 디스크립터의 높은 registration 성능을 보고했다.
 
 ### 5.8.4 Predator (2021): Overlap-Aware 3D Matching
 
@@ -1166,13 +1167,13 @@ P2-Net (Yu et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패
 
 4. **외관 도메인 갭(Appearance Domain Gap)**: 같은 물체라도 카메라의 반사율(albedo)과 LiDAR의 반사 강도(intensity)는 다른 물리적 양을 측정한다.
 
-이러한 어려움 때문에, cross-modal correspondence는 아직 unimodal (2D-2D 또는 3D-3D) 매칭에 비해 성숙도가 낮은 연구 영역이다. MI 기반 접근법 (5.4절)은 이 도메인 갭을 통계적으로 우회하는 전략이며, 투영 기반 접근법은 문제를 같은 모달리티로 환원하는 전략이다.
+이런 어려움 때문에 cross-modal correspondence는 아직 unimodal (2D-2D 또는 3D-3D) 매칭보다 덜 성숙한 연구 영역이다. MI 기반 접근법 (5.4절)은 이 도메인 갭을 통계적으로 우회하고, 투영 기반 접근법은 두 관측을 같은 2D 영상 형식으로 표현한다.
 
 ---
 
 ## 5.10 Dense Matching & Optical Flow
 
-지금까지 다룬 방법들은 **sparse correspondence** (희소 대응점)에 집중했다. Dense matching은 이미지의 **모든 픽셀에 대해 대응을 찾는 문제**다.
+앞에서는 **sparse correspondence** (희소 대응점)와 일부 밀집 정합 방법을 다뤘다. Dense matching은 이미지의 **모든 픽셀에 대해 대응을 찾는 문제**다.
 
 ### 5.10.1 Classical Optical Flow: Lucas-Kanade, Horn-Schunck
 
@@ -1293,7 +1294,7 @@ with torch.no_grad():
 
 #### FlowFormer (2022)
 
-[FlowFormer (Huang et al., 2022)](https://arxiv.org/abs/2203.16194)는 RAFT의 GRU 업데이트를 **트랜스포머로 대체**한 방법이다. Cost volume을 토큰화하고, 트랜스포머의 자기주의(self-attention)로 글로벌 컨텍스트를 포착하여 RAFT를 상회하는 정확도를 달성했다.
+[FlowFormer (Huang et al., 2022)](https://arxiv.org/abs/2203.16194)는 cost volume을 토큰화하고 트랜스포머로 cost memory를 인코딩한다. 이어 recurrent transformer decoder가 이 표현을 조회하며 optical flow를 반복 갱신한다. 논문에서는 RAFT를 상회하는 정확도를 보고했다.
 
 #### UniMatch (2023)
 

@@ -2,7 +2,7 @@
 
 같은 자기 운동 추정 문제도 카메라(+IMU) 대신 LiDAR로 풀면 조건이 바뀐다.
 
-LiDAR는 카메라와 상보적인 센서다. 카메라는 풍부한 텍스처를 제공하지만 가시광 조명에 민감하고 단안 기하만으로 절대 거리를 정할 수 없다. LiDAR는 가시광 조명 변화에 덜 민감한 3D 거리를 측정하지만, 비·안개·반사율·다중경로의 영향을 받을 수 있다. LiDAR Odometry(LO)는 LiDAR로부터 자기 운동을 추정하고, LiDAR-Inertial Odometry(LIO)는 여기에 IMU를 결합한다.
+LiDAR는 카메라와 상보적인 센서다. 카메라는 풍부한 텍스처를 제공하지만 가시광 조명에 민감하고 단안 기하만으로 절대 거리를 정할 수 없다. LiDAR는 가시광 조명 변화에 덜 민감한 3D 거리를 측정하지만, 비·안개·반사율·다중경로의 영향을 받을 수 있다. LiDAR Odometry(LO)는 LiDAR 점군을 기반으로 자체 움직임을 추정하는 기법이다. 여기에 IMU 관성 측정을 결합한 형태를 LiDAR-Inertial Odometry(LIO)라고 부른다.
 
 LiDAR 오도메트리는 **포인트 클라우드 정합(registration)**으로 연속된 두 스캔 사이의 강체 변환 $\mathbf{T} \in SE(3)$를 찾는다. 이 과정에는 데이터 연관(correspondence), 노이즈 모델, 계산 효율, 모션 왜곡 보정이 얽힌다.
 
@@ -54,7 +54,7 @@ Point-to-point ICP의 한계:
 
 $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i \left((\mathbf{T} \cdot \mathbf{p}_i - \mathbf{q}_{c(i)})^T \mathbf{n}_{c(i)}\right)^2$$
 
-여기서 $\mathbf{n}_{c(i)}$는 타겟 점 $\mathbf{q}_{c(i)}$에서의 표면 법선(surface normal)이다. 점과 점 사이 거리가 아니라 점에서 법선 방향으로의 거리만 측정하므로, 평면을 따른 슬라이딩은 비용에 기여하지 않는다.
+여기서 $\mathbf{n}_{c(i)}$는 타겟 점 $\mathbf{q}_{c(i)}$에서의 표면 법선(surface normal)이다. 이는 점 사이의 3차원 유클리드 거리가 아닌 접평면 법선 방향 오차만을 투영해 측정한다. 따라서 평면을 따라 미끄러지는 움직임은 잔차 비용에 불필요한 페널티를 주지 않는다.
 
 장점: Point-to-point 대비 수렴 속도가 훨씬 빠르다. 특히 평면이 많은 실내/도시 환경에서 효과적이다.
 
@@ -190,7 +190,7 @@ LOAM은 두 가지를 결합했다:
 
 $$c_i = \frac{1}{|\mathcal{S}_i| \cdot \|\mathbf{p}_i\|} \left\| \sum_{j \in \mathcal{S}_i} (\mathbf{p}_j - \mathbf{p}_i) \right\|$$
 
-여기서 $\mathcal{S}_i$는 같은 스캔 라인에서 $\mathbf{p}_i$의 좌우 이웃점(보통 5개씩) 집합이고, $\|\mathbf{p}_i\|$는 센서로부터의 거리(range)로 정규화하여 가까운 점과 먼 점의 곡률을 비교 가능하게 한다.
+여기서 $\mathcal{S}_i$는 같은 스캔 라인에서 $\mathbf{p}_i$의 좌우 이웃점(보통 5개씩) 집합이고, $\|\mathbf{p}_i\|$는 센서로부터의 거리(range)다. 이 거리로 곡률 점수를 정규화하여 가까운 점과 먼 점을 비교 가능하게 한다.
 
 - **Edge feature**: 곡률이 높은 점 ($c_i > c_{\text{thresh}}^e$). 물리적으로 모서리, 기둥 등 날카로운 경계에 해당.
 - **Planar feature**: 곡률이 낮은 점 ($c_i < c_{\text{thresh}}^p$). 물리적으로 벽, 바닥 같은 평탄한 표면에 해당.
@@ -230,7 +230,7 @@ Mapping 모듈은 Odometry 모듈보다 느리지만 더 정확하다. 맵은 �
 
 **모션 왜곡 보정 (Motion Distortion Compensation)**
 
-회전형(spinning) LiDAR의 한 스캔 시간은 회전 주기의 역수다. 예를 들어 10Hz에서는 약 100ms이며, 그동안 플랫폼이 움직이므로 각 점은 서로 다른 시점에서 획득된다. 모션 왜곡의 크기는 스캔 시간과 운동에 비례하므로 실제 timestamp와 궤적으로 보정한다.
+회전형(spinning) LiDAR의 한 스캔 시간은 회전 주파수의 역수다. 예컨대 10Hz 회전 주파수라면 1회 스캔에 약 100ms가 소요된다. 이 시간 동안 이동체가 계속 주행하므로 스캔 내의 각 측정점은 서로 다른 위치와 시점에서 기록된다. 모션 왜곡의 크기는 스캔 시간과 운동에 비례하므로 실제 timestamp와 궤적으로 보정한다.
 
 보정 방법: 스캔 시작 시점 $t_s$와 끝 시점 $t_e$ 사이의 포즈 변화 $\mathbf{T}_{s \to e}$를 알면, 각 점의 타임스탬프 $t_k$에 대해 중간 포즈를 등속 보간으로 추정한다:
 
@@ -364,11 +364,11 @@ LOAM이 2014년에 발표된 이후 10년이 넘었지만, LOAM 계열의 아이
 
 2. **계산 효율**: 전체 점군(수만~수십만 점) 대신 수백~수천 개의 특징점만 사용하므로 빠르다.
 
-3. **확장성**: LiDAR frontend를 IMU(LIO-SAM)나 카메라(LVI-SAM)와 결합하는 식으로 센서 구성을 확장할 수 있다. KISS-ICP는 이런 센서 추가형 확장이 아니라, 단순한 LiDAR-only ICP 설계를 택한 별도의 계보다.
+3. **확장성**: LiDAR frontend를 IMU(LIO-SAM)나 카메라(LVI-SAM)와 결합하는 식으로 센서 구성을 확장할 수 있다. KISS-ICP는 이런 센서 추가형 확장이 아닌, 단순한 LiDAR-only ICP 설계를 택한 대안적인 접근 방식을 취한다.
 
-4. **강건성**: edge/planar 분류가 일종의 아웃라이어 필터 역할을 한다 — 노이즈나 동적 물체에 속하는 점은 일관된 곡률 패턴을 보이지 않으므로 자연스럽게 제외된다.
+4. **강건성**: edge/planar 분류가 일종의 아웃라이어 필터 역할을 한다 — 노이즈나 동적 물체에 속하는 점은 일관된 곡률 패턴을 보이지 않으므로 자동으로 제외된다.
 
-다만, LOAM 계열의 한계도 명확하다. 기하학적 특징이 부족한 환경(넓은 들판, 긴 터널)에서는 성능이 저하되며, solid-state LiDAR의 비반복 스캔 패턴에는 기존 특징 추출이 적합하지 않다. 이 한계를 극복한 것이 FAST-LIO2의 direct 접근이다.
+다만, LOAM 계열의 한계도 명확하다. 기하학적 특징이 희소한 개활지나 직선 터널에서는 오도메트리 정확도가 크게 떨어진다. 또한 비반복 주사 패턴을 사용하는 solid-state LiDAR에서는 링 기반 특징 추출 기법을 그대로 적용하기 어렵다. 이 한계를 극복한 것이 FAST-LIO2의 direct 접근이다.
 
 ---
 
@@ -392,7 +392,7 @@ LIO-SAM은 다양한 센서 측정을 factor graph의 factor로 모델링한다:
 
 4. **Loop Closure Factor**: 장소 인식(Scan Context 등)으로 루프를 검출하고, ICP로 상대 포즈를 추정하여 이진(binary) factor로 추가한다.
 
-이 모든 factor가 하나의 그래프에 들어가고, GTSAM의 iSAM2로 incremental 최적화를 수행한다. Factor graph의 강점은 **모듈성**이다 — 각 센서는 독립적으로 factor를 추가/제거할 수 있으며, 새 센서를 추가하는 것이 간단하다.
+이 모든 factor가 하나의 그래프에 들어가고, GTSAM의 iSAM2로 incremental 최적화를 수행한다. Factor graph 구조의 핵심 강점은 뛰어난 **모듈성**에 있다. 각 센서 관측을 독립적인 factor 형태로 손쉽게 탈부착할 수 있어 새로운 센서 모달리티의 추가가 수월하다.
 
 **IMU 기반 De-skewing**
 
@@ -400,7 +400,7 @@ LIO-SAM에서 IMU는 두 가지 역할을 한다:
 1. **모션 왜곡 보정**: LiDAR 스캔 동안의 IMU 데이터로 각 점의 시점별 포즈를 정밀하게 보간하여 de-skewing한다.
 2. **초기값 제공**: IMU preintegration으로 다음 키프레임의 포즈를 예측하여 scan-to-map 정합의 초기값으로 사용한다.
 
-이 양방향 결합에서 IMU는 LiDAR에 초기값과 de-skewing을 제공하고, LiDAR는 IMU에 포즈 보정과 바이어스 추정을 제공한다.
+이 양방향 결합 구조에서 IMU는 스캔 왜곡 보정과 점군 정합 초기값을 제공한다. 반대로 LiDAR 정합 결과는 IMU의 적분 드리프트를 보정하고 바이어스를 실시간으로 갱신하는 기준이 된다.
 
 **Keyframe 기반 효율화**
 
@@ -499,7 +499,7 @@ $$d_k = \mathbf{n}_k^T (\mathbf{T} \cdot \mathbf{p}_k - \mathbf{q}_k)$$
 FAST-LIO2가 두 번째로 바꾼 것은 맵 자료구조다. 기존 kd-tree는 정적이라 점 삽입/삭제에 비효율적이다. ikd-Tree는:
 
 - **점 삽입**: $O(\log N)$ 시간에 새 점을 삽입한다.
-- **점 삭제**: 맵 영역 밖의 점을 lazy delete로 효율적 제거한다.
+- **점 삭제**: 맵 영역 밖의 점을 lazy delete로 효율적으로 제거한다.
 - **동적 re-balancing**: 삽입/삭제로 인해 트리가 불균형해지면 scapegoat tree 방식으로 부분 재구축한다.
 - **Box 범위 삭제**: 현재 위치에서 먼 영역의 점을 박스 단위로 삭제하여 맵 크기를 관리한다.
 
@@ -515,7 +515,7 @@ $$\hat{\mathbf{x}}^{(k+1)} = \hat{\mathbf{x}}^{-} + \mathbf{K}^{(k)} (\mathbf{z}
 
 여기서 $k$는 반복 인덱스, $\hat{\mathbf{x}}^{-}$는 prediction 결과, $\mathbf{H}^{(k)}$는 $\hat{\mathbf{x}}^{(k)}$에서의 자코비안이다.
 
-칼만 게인:
+칼만 이득:
 $$\mathbf{K}^{(k)} = \mathbf{P}^{-} (\mathbf{H}^{(k)})^T (\mathbf{H}^{(k)} \mathbf{P}^{-} (\mathbf{H}^{(k)})^T + \mathbf{R})^{-1}$$
 
 IEKF 반복 횟수는 잔차 감소나 상태 증분 기준으로 정한다. FAST-LIO 계열의 설정에서는 소수 회 반복하는 경우가 많지만, 필요한 횟수는 초기값과 장면 기하에 따라 달라진다. 이 갱신은 Gauss-Newton과 관련된 반복 선형화를 사용하면서 공분산도 전파한다.
@@ -604,7 +604,7 @@ void FASTLIO2::iterated_ekf_update(const PointCloud& scan, State& x, MatrixXd& P
 
 ### 7.3.3 Faster-LIO
 
-Faster-LIO는 FAST-LIO2의 ikd-Tree를 incremental voxel 구조로 대체하여 더 빠른 처리를 달성한다.
+Faster-LIO는 FAST-LIO2의 ikd-Tree를 incremental voxel 구조로 대체해 처리 속도를 높인다.
 
 kd-tree 대신 해시 맵 기반 voxel 구조를 사용한다. 각 voxel 내에서 평면을 유지하며, 점이 추가될 때마다 평면 파라미터를 incremental하게 업데이트한다. kd-tree의 $O(\log N)$ 검색 대신 해시 $O(1)$ 접근으로 속도를 높인다.
 
@@ -614,7 +614,7 @@ Point-LIO ([He et al., 2023](https://doi.org/10.1002/aisy.202200459))는 FAST-LI
 
 기존 LIO는 전체 스캔(~100ms)을 하나의 관측으로 처리한다. 이 동안 등속 보간으로 모션 왜곡을 보정하지만, 고속/고각속도 모션에서는 등속 가정이 깨진다.
 
-Point-LIO는 점 timestamp 순서로 상태를 전파하고 point-wise update를 수행한다. 고주파 IMU와 LiDAR 점의 timestamp를 이용해 각 관측 시각의 상태를 추정하므로 scan-level deskew의 단일 운동 가정보다 시간 해상도를 높이지만, 그 상태도 IMU noise·bias·동기화 오차를 포함한 추정치다.
+Point-LIO는 점 timestamp 순서로 상태를 전파하고 point-wise update를 수행한다. 고주파 IMU와 LiDAR 점의 timestamp로 각 관측 시각의 상태를 추정해 scan-level deskew의 단일 운동 가정보다 시간 해상도를 높이지만, 그 상태도 IMU noise·bias·동기화 오차를 포함한 추정치다.
 
 Point-LIO의 상태 전파는 IMU 측정 사이의 짧은 시간 간격에서 다음 연속 모델을 이산화한다:
 
@@ -628,13 +628,11 @@ $$\frac{d}{dt}\mathbf{R} = \mathbf{R}[\boldsymbol{\omega}]_\times, \quad \frac{d
 
 ### 7.3.5 COIN-LIO
 
-[COIN-LIO (Pfreundschuh et al., 2024)](https://arxiv.org/abs/2310.01235)는 LiDAR-Inertial 시스템에 **카메라 intensity** 정보를 추가한다. 전통적 LIO에서 카메라를 결합하려면 별도의 visual feature 추출/추적이 필요하지만, COIN-LIO는 더 간단한 접근을 취한다:
+[COIN-LIO (Pfreundschuh et al., 2024)](https://arxiv.org/abs/2310.01235)는 LiDAR-Inertial 시스템에 **LiDAR 반사 강도(intensity)** 정보를 결합한다. LiDAR가 측정한 반사 강도를 intensity image로 투영하고, 영상 내부와 관측 사이의 밝기 일관성을 개선하는 필터링을 수행한다.
 
-LiDAR 점에 해당하는 카메라 픽셀의 밝기(intensity)를 기록하고, 맵 포인트에도 intensity를 할당한다. 정합 시 기하학적 거리(point-to-plane)와 함께 intensity 차이도 비용에 포함한다:
+포인트 클라우드 정합에서 구속이 약한 방향을 찾고, 그 방향을 보완하는 intensity image 패치를 선택한다. 선택한 패치의 photometric residual은 IMU 측정 및 point-to-plane residual과 함께 iterated EKF에서 융합된다.
 
-$$e_k = \alpha \cdot d_{\text{geom}}(\mathbf{p}_k) + (1-\alpha) \cdot |I_{\text{obs}}(\mathbf{p}_k) - I_{\text{map}}(\mathbf{p}_k)|$$
-
-기하학적으로 퇴화(degenerate)된 환경 — 예를 들어 긴 터널이나 빈 홀 — 에서 intensity 정보가 추가적인 구속을 제공하여 정확도를 유지한다. 카메라의 텍스처 정보를 활용하면서도 본격적인 VIO 파이프라인의 복잡성을 피하는 실용적 접근이다.
+긴 터널이나 평탄한 개활지처럼 기하학적으로 퇴화한 환경에서는 LiDAR 반사 강도의 공간적 변화가 추가 구속을 제공할 수 있다. 이 구속의 효과는 해당 방향에서 관측할 수 있는 intensity 패턴에 달려 있다.
 
 ---
 
@@ -662,7 +660,7 @@ $$\mathbf{T}(t) = \prod_{i=0}^{k} \text{Exp}\left(B_i(t) \cdot \text{Log}(\mathb
 
 여기서 $B_i(t)$는 B-spline 기저 함수(basis function)다. 3차(cubic) B-spline이 주로 사용되며, $C^2$ 연속성을 보장한다.
 
-B-spline 궤적에서는 **임의 시점 질의**가 가능하다. 어떤 시점 $t$에서든 포즈, 속도, 가속도를 미분으로 얻어 비동기 센서 데이터를 처리한다. 3차 spline은 매듭 설정이 적절할 때 $C^2$ 연속성을 제공하지만, 이 수학적 매끄러움만으로 동역학적 실행 가능성이 보장되지는 않는다. 국소 지지 덕분에 한 제어점의 변경은 인접 구간에 주로 영향을 준다.
+B-spline 궤적에서는 **임의 시점 질의**가 가능하다. 어떤 시점 $t$에서든 궤적을 평가해 포즈를 얻고, 미분으로 속도와 가속도를 구해 비동기 센서 데이터를 처리한다. 3차 spline은 매듭 설정이 적절할 때 $C^2$ 연속성을 제공하지만, 이 수학적 매끄러움만으로 동역학적 실행 가능성이 보장되지는 않는다. 국소 지지 덕분에 한 제어점의 변경은 인접 구간에 주로 영향을 준다.
 
 단점:
 - 제어점 간격(knot spacing)이 주요 하이퍼파라미터다. 너무 조밀하면 과적합, 너무 듬성하면 고속 모션을 표현하지 못한다.
@@ -727,9 +725,9 @@ Livox 계열은 비반복 스캔 패턴과 작은 폼팩터 때문에 드론·�
 
 ## 7.7 최근 동향 (2023-2024)
 
-2023~2024년에 발표된 LiDAR 오도메트리 시스템은 다음과 같다.
+2023~2024년에는 간결성과 적응성을 앞세운 신규 LiDAR 오도메트리 파이프라인들이 주목받았다.
 
-**[KISS-ICP (Vizzo et al., 2023)](https://arxiv.org/abs/2209.15397)**: Point-to-point ICP에 적응적 임계값, 강건 커널, 모션 보상을 결합한다. 원 논문은 자동차·UAV·handheld 데이터셋의 공통 설정에서 경쟁력 있는 정확도를 보고하며, 별도의 dataset별 parameter tuning을 줄이는 데 초점을 둔다.
+**[KISS-ICP (Vizzo et al., 2023)](https://arxiv.org/abs/2209.15397)**: Point-to-point ICP에 적응적 임계값, 강건 커널, 모션 보상을 결합한다. 원 논문은 자동차·UAV·handheld 데이터셋 전반에서 단일 파라미터 세트로 경쟁력 있는 궤적 추정 성능을 달성할 수 있음을 보고했다. 벤치마크마다 개별 파라미터를 미세 조정해야 하는 부담을 대폭 줄였다.
 
 **[MAD-ICP (Ferrari et al., 2024)](https://arxiv.org/abs/2405.05828)**: PCA 기반 kd-tree를 활용하여 포인트 클라우드의 구조적 정보를 추출하고, point-to-plane 정합에 사용한다. 데이터 매칭 전략에 초점을 맞추며, 다양한 LiDAR 센서에서 도메인 특화 방법과 동등한 성능을 달성한다.
 
@@ -747,7 +745,7 @@ Livox 계열은 비반복 스캔 패턴과 작은 폼팩터 때문에 드론·�
 | LIO-SAM | Feature-based | Factor graph (iSAM2) | LiDAR + IMU + GPS | 모듈식 다중 센서 통합 |
 | FAST-LIO2 | Direct | IEKF | LiDAR + IMU | 특징 추출 없음, ikd-Tree, 논문 설정에서 최대 100Hz 보고 |
 | Point-LIO | Direct | Point-wise EKF | LiDAR + IMU | 점 단위 업데이트, 고속 모션 |
-| COIN-LIO | Direct + Intensity | IEKF | LiDAR + IMU + Camera(intensity) | Intensity 기반 degeneration 방지 |
+| COIN-LIO | Direct + Intensity | IEKF | LiDAR + IMU | LiDAR intensity로 기하학적 퇴화 보완 |
 | CT-ICP | Direct | 최적화 | LiDAR only | 연속 시간 모션 모델, IMU 불필요 |
 | KISS-ICP | Direct (P2P) | 반복 최적화 | LiDAR only | 적응적 임계값, 튜닝 불필요, 범용 |
 | MAD-ICP | Direct (P2Plane) | 반복 최적화 | LiDAR only | PCA 기반 구조 추출, 데이터 매칭 중심 |
@@ -755,4 +753,4 @@ Livox 계열은 비반복 스캔 패턴과 작은 폼팩터 때문에 드론·�
 
 LOAM(2014) → LeGO-LOAM(2018) → LIO-SAM(2020) 계보는 **feature-based + factor graph** 방향을 보여준다. FAST-LIO(2021) → FAST-LIO2(2022) → Point-LIO(2023) 계보는 **direct + Kalman filter** 방향을 보여준다. 어느 쪽이 더 정확하거나 빠른지는 sensor pattern, motion, map scale, 하드웨어, benchmark protocol에 따라 달라진다.
 
-Feature-based 접근은 구조화된 환경(건물, 도시)에서 강하고, direct 접근은 비구조화된 환경(숲, 동굴)과 solid-state LiDAR에서 강하다. 카메라와 LiDAR를 IMU와 함께 묶으면 multi-sensor fusion 아키텍처 문제가 된다.
+Feature-based 방식은 기하학적 평면과 모서리가 풍부한 도심 환경에서 높은 안정성을 보인다. 반면 direct 접근법은 형태가 비정형적인 산림이나 solid-state LiDAR 환경에서 더 유리하다. 카메라와 LiDAR를 IMU와 함께 묶으면 multi-sensor fusion 아키텍처 문제가 된다.

@@ -193,7 +193,7 @@ $$c_i = \frac{1}{|\mathcal{S}_i| \cdot \|\mathbf{p}_i\|} \left\| \sum_{j \in \ma
 where $\mathcal{S}_i$ is the set of left and right neighbors of $\mathbf{p}_i$ on the same scan line (typically five on each side), and $\|\mathbf{p}_i\|$ is the range from the sensor, used for normalization so that curvatures of near and far points can be compared.
 
 - **Edge feature**: point of high curvature ($c_i > c_{\text{thresh}}^e$). Physically corresponds to corners, poles, and sharp boundaries.
-- **Planar feature**: point of low curvature ($c_i < c_{\text{thresh}}^p$). Physically corresponds to walls, floors, and ceilings.
+- **Planar feature**: point of low curvature ($c_i < c_{\text{thresh}}^p$). Physically corresponds to walls and floors.
 
 Additional rules when selecting feature points:
 - Divide each scan line into four sectors to ensure a uniform distribution.
@@ -364,7 +364,7 @@ Over ten years have passed since LOAM was published in 2014, yet the LOAM-family
 
 2. **Computational efficiency**: Using hundreds to thousands of feature points instead of the full point cloud (tens to hundreds of thousands of points) makes the system fast.
 
-3. **Extensibility**: A LiDAR frontend can be combined with an IMU (LIO-SAM) or camera (LVI-SAM). KISS-ICP belongs to a different lineage: it is a deliberately simple LiDAR-only ICP system, not a GPU module added to LOAM.
+3. **Extensibility**: A LiDAR frontend can be combined with an IMU (LIO-SAM) or camera (LVI-SAM). KISS-ICP belongs to a different lineage: it is a deliberately simple LiDAR-only ICP system, not an additional-sensor extension of LOAM.
 
 4. **Robustness**: The edge/planar classification acts as a kind of outlier filter — points belonging to noise or dynamic objects do not show consistent curvature patterns and are naturally excluded.
 
@@ -400,7 +400,7 @@ In LIO-SAM the IMU plays two roles:
 1. **Motion distortion compensation**: IMU data during the LiDAR scan is used to precisely interpolate the per-timestamp pose of each point for de-skewing.
 2. **Initial guess**: IMU preintegration predicts the pose of the next keyframe, which is used as the initial guess for scan-to-map registration.
 
-This bidirectional coupling is the essence of the "tightly-coupled" nature of LIO-SAM: the IMU provides the LiDAR with the initial guess and de-skewing, while the LiDAR provides the IMU with pose correction and bias estimation.
+In this bidirectional coupling, the IMU provides the LiDAR with the initial guess and de-skewing, while the LiDAR provides the IMU with pose correction and bias estimation.
 
 **Keyframe-based efficiency**
 
@@ -604,7 +604,7 @@ void FASTLIO2::iterated_ekf_update(const PointCloud& scan, State& x, MatrixXd& P
 
 ### 7.3.3 Faster-LIO
 
-Faster-LIO replaces the ikd-Tree of FAST-LIO2 with an incremental voxel structure to achieve even faster processing.
+Faster-LIO replaces the ikd-Tree of FAST-LIO2 with an incremental voxel structure to increase processing speed.
 
 Instead of a kd-tree, the method uses a hash-map-based voxel structure. A plane is maintained within each voxel, and the plane parameters are updated incrementally whenever a point is added. The $O(\log N)$ kd-tree search is replaced by $O(1)$ hash access.
 
@@ -614,7 +614,7 @@ Point-LIO ([He et al., 2023](https://doi.org/10.1002/aisy.202200459)) is an extr
 
 Conventional LIO treats an entire scan (~100 ms) as a single observation. During that interval, motion distortion is corrected by constant-velocity interpolation, but under fast/high-angular-rate motion the constant-velocity assumption breaks down.
 
-Point-LIO propagates the state in point-timestamp order and performs point-wise updates. High-rate IMU measurements and LiDAR timestamps provide an estimate at each observation time, improving temporal resolution over a single scan-level motion assumption; it is still an estimate affected by IMU noise, bias, and synchronization error.
+Point-LIO propagates the state in point-timestamp order and performs point-wise updates. Using high-rate IMU measurements and LiDAR timestamps, it estimates the state at each observation time and achieves higher temporal resolution than the single-motion assumption of scan-level deskew. That state remains an estimate subject to IMU noise, bias, and synchronization error.
 
 Point-LIO discretizes the following continuous model over the short interval between IMU measurements:
 
@@ -628,13 +628,11 @@ Disadvantages: update work grows with the point count. The runtime ratio to FAST
 
 ### 7.3.5 COIN-LIO
 
-[COIN-LIO (Pfreundschuh et al., 2024)](https://arxiv.org/abs/2310.01235) adds **camera intensity** information to a LiDAR-Inertial system. Coupling a camera into a traditional LIO typically requires a separate visual feature extraction/tracking stack, but COIN-LIO takes a simpler approach:
+[COIN-LIO (Pfreundschuh et al., 2024)](https://arxiv.org/abs/2310.01235) combines **LiDAR return intensity** with a LiDAR-inertial system. It projects LiDAR intensity returns into an intensity image and filters it to improve brightness consistency within and across observations.
 
-It records the brightness (intensity) of the camera pixel corresponding to each LiDAR point and assigns an intensity to each map point as well. During registration, the intensity difference is included in the cost together with the geometric distance (point-to-plane):
+The method identifies directions that are weakly constrained by point-cloud registration and selects intensity-image patches that provide complementary information. Their photometric residuals are fused with IMU measurements and point-to-plane residuals in an iterated EKF.
 
-$$e_k = \alpha \cdot d_{\text{geom}}(\mathbf{p}_k) + (1-\alpha) \cdot |I_{\text{obs}}(\mathbf{p}_k) - I_{\text{map}}(\mathbf{p}_k)|$$
-
-In geometrically degenerate environments — for example long tunnels or empty halls — the intensity information provides additional constraints and preserves accuracy. It is a pragmatic approach that exploits the camera's texture information while avoiding the complexity of a full VIO pipeline.
+In geometrically degenerate environments such as long tunnels or flat open fields, spatial variation in LiDAR intensity can provide additional constraints. Its benefit depends on the intensity patterns observable along those directions.
 
 ---
 
@@ -663,7 +661,7 @@ $$\mathbf{T}(t) = \prod_{i=0}^{k} \text{Exp}\left(B_i(t) \cdot \text{Log}(\mathb
 where $B_i(t)$ is a B-spline basis function. A cubic B-spline is $C^2$ across ordinary interior knots; repeated knots and boundary choices can reduce continuity.
 
 Advantages of a B-spline trajectory:
-1. **Query at arbitrary times**: At any time $t$, the pose, velocity, and acceleration can be obtained via differentiation. This enables natural handling of asynchronous sensor data.
+1. **Query at arbitrary times**: At any time $t$, the pose is obtained by evaluating the trajectory, while velocity and acceleration are obtained by differentiation. This enables natural handling of asynchronous sensor data.
 2. **Smooth trajectory**: continuity is controlled by the spline degree. Smoothness alone does not guarantee dynamic feasibility.
 3. **Local control**: Thanks to the locality of B-splines, modifying one control point does not affect the entire trajectory.
 
@@ -691,18 +689,11 @@ Solid-state LiDARs (e.g., the Livox series) use non-repetitive scan patterns rat
 
 **Impact of non-repetitive scanning on feature extraction**
 
-LOAM-style curvature-based feature extraction uses neighbors on the same scan line. However, solid-state LiDARs have no defined scan line and their points are distributed irregularly. Consequently:
-
-1. The existing line-based curvature computation does not apply.
-2. Instead, one must use KNN (K-Nearest Neighbors)-based local curvature, or abandon feature extraction altogether and use raw points.
+LOAM-style curvature-based feature extraction uses neighbors on the same scan line. However, solid-state LiDARs have no defined scan line and their points are distributed irregularly. The existing line-based curvature computation therefore does not apply; one must use KNN (K-Nearest Neighbors)-based local curvature or abandon feature extraction and use raw points.
 
 **Why FAST-LIO is strong on solid-state**
 
-FAST-LIO/FAST-LIO2 work well on solid-state LiDARs for three reasons:
-
-1. **No feature extraction needed**: Using raw points directly, the system is agnostic to the scan pattern.
-2. **Leverages the non-repetitive scan**: A solid-state LiDAR gradually fills the FoV more densely over time. FAST-LIO2's ikd-Tree map naturally accommodates this progressive densification, so map quality improves over time.
-3. **Compensates for the narrow FoV**: A narrow FoV means less information per scan, but tight coupling with the IMU compensates for this.
+FAST-LIO/FAST-LIO2 use raw points directly and are therefore agnostic to the scan pattern. A solid-state LiDAR gradually fills its FoV more densely over time, and FAST-LIO2's ikd-Tree map naturally accommodates this progressive densification, so map quality improves over time. A narrow FoV means less information per scan, but tight coupling with the IMU compensates for this.
 
 Livox sensors appear frequently in public work on drones, handheld devices, and small robots because of their non-repetitive scan pattern and compact form factor. FAST-LIO2 supports that pattern, so public examples and datasets using the pair are easy to find. Actual selection should compare field of view, range, time synchronization, point distribution, and the target platform in addition to price.
 
@@ -734,7 +725,7 @@ Learning-based LiDAR odometry still lags behind classical methods for four reaso
 Today, learning is more effective as auxiliary components than as LiDAR odometry itself:
 - **Loop closure detection**: Scan Context, PointNetVLAD, etc.
 - **Point cloud registration initialization**: GeoTransformer (see Ch.5)
-- **Semantic segmentation**: dynamic-object removal, road/building classification
+- **Semantic segmentation**: dynamic-object removal
 
 ---
 
@@ -760,7 +751,7 @@ LiDAR odometry systems published in 2023-2024 include the following.
 | LIO-SAM | Feature-based | Factor graph (iSAM2) | LiDAR + IMU + GPS | Modular multi-sensor integration |
 | FAST-LIO2 | Direct | IEKF | LiDAR + IMU | No feature extraction, ikd-Tree, paper reports up to 100 Hz |
 | Point-LIO | Direct | Point-wise EKF | LiDAR + IMU | Per-point update, fast motion |
-| COIN-LIO | Direct + intensity | IEKF | LiDAR + IMU + camera (intensity) | Intensity-based degeneration mitigation |
+| COIN-LIO | Direct + intensity | IEKF | LiDAR + IMU | LiDAR intensity complements weak geometry |
 | CT-ICP | Direct | Optimization | LiDAR only | Continuous-time motion model, no IMU needed |
 | KISS-ICP | Direct (P2P) | Iterative optimization | LiDAR only | Adaptive threshold, tuning-free, general-purpose |
 | MAD-ICP | Direct (P2Plane) | Iterative optimization | LiDAR only | PCA-based structural extraction, data-matching focus |

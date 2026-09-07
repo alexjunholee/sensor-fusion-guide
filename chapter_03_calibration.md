@@ -1,10 +1,10 @@
 # Ch.3 — Calibration Deep Dive
 
-Ch.2에서 각 센서의 관측 모델을 수학적으로 정의했다. 그런데 이 모델을 실제 센서 데이터에 적용하려면 한 가지 전제가 필요하다. 모델의 파라미터가 정확히 알려져 있어야 한다. 카메라의 초점 거리, LiDAR와 IMU 사이의 상대 위치, 센서 간 시간 오프셋. 이 값을 정밀하게 결정하는 과정이 캘리브레이션이다.
+Ch.2에서 각 센서의 관측 모델을 수학적으로 정의했다. 이 모델을 실제 센서 데이터에 적용하려면 파라미터를 정확히 알아야 한다. 카메라의 초점 거리, LiDAR와 IMU 사이의 상대 위치, 센서 간 시간 오프셋이 그 예다. 이 값을 정밀하게 정하는 과정이 캘리브레이션이다.
 
 > 캘리브레이션 오차는 센서 퓨전에 체계적인 편향을 만든다. 캘리브레이션의 범위는 카메라 내부 파라미터, 다중 센서 간 외부 파라미터, 시간 동기화까지 이어진다.
 
-캘리브레이션(calibration)은 센서 퓨전 파이프라인에서 먼저 확인해야 하는 문제다. 센서의 내부 모델이나 센서 간 상대 위치·자세가 부정확하면 상태 추정이 편향되고, 조건에 따라 필터나 최적화가 불안정해질 수 있다. LiDAR-카메라 퓨전에서 각도 오차가 1도라면 50m 거리에서 횡방향 오차의 소각 근사는 약 87cm다. 각 문제를 풀려면 수학적 기초와 실전 도구가 모두 필요하다.
+캘리브레이션(calibration)은 센서 퓨전 파이프라인에서 먼저 확인해야 한다. 센서의 내부 모델이나 센서 간 상대 위치·자세가 부정확하면 상태 추정이 편향되고, 조건에 따라 필터나 최적화가 불안정해질 수 있다. LiDAR-카메라 퓨전에서 각도 오차가 1도라면 50m 거리에서 횡방향 오차의 소각 근사는 약 87cm다. 이를 다루려면 수학적 기초와 실전 도구가 모두 필요하다.
 
 ---
 
@@ -24,7 +24,7 @@ $$
 
 여기서:
 - $f_x, f_y$: 픽셀 단위의 초점 거리 (focal length). $f_x = f / p_x$이며 $f$는 물리적 초점 거리(mm), $p_x$는 픽셀 크기(mm/pixel).
-- $(c_x, c_y)$: 주점. 이미지 센서의 중심과 광축(optical axis)의 교점.
+- $(c_x, c_y)$: 주점. 이미지 센서 평면과 광축(optical axis)의 교점.
 - $\gamma$: 비대칭 계수(skew coefficient). 현대 카메라에서는 거의 0.
 - $s = Z_c$: 스케일 팩터 (깊이값).
 
@@ -73,7 +73,7 @@ $$
 
 ### 3.1.3 Zhang's Method: 호모그래피 기반 캘리브레이션
 
-[Zhang (2000)](https://ieeexplore.ieee.org/document/888718)이 제안한 방법은 평면 패턴(체커보드)을 다양한 자세로 촬영한 이미지로부터 카메라 파라미터를 추정한다. 3D calibration rig 없이 평면 타깃으로 수행할 수 있어 널리 쓰이는 formulation이며, OpenCV의 `calibrateCamera()`로 같은 종류의 2D-3D 대응을 비선형 최적화할 수 있다.
+[Zhang (2000)](https://ieeexplore.ieee.org/document/888718)이 제안한 방법은 평면 패턴(체커보드)을 다양한 자세로 촬영한 이미지로부터 카메라 파라미터를 추정한다. 3D calibration rig 없이 평면 타깃으로 수행할 수 있어 널리 쓰이는 정식화이며, OpenCV의 `calibrateCamera()`로 같은 종류의 2D-3D 대응을 비선형 최적화할 수 있다.
 
 패턴이 $Z = 0$ 평면에 놓이면 3D-2D 투영이 호모그래피로 단순화된다.
 
@@ -119,10 +119,10 @@ $$
 1. **직교 조건**: $\mathbf{r}_1^\top \mathbf{r}_2 = 0$
    $$\mathbf{h}_1^\top \mathbf{K}^{-\top} \mathbf{K}^{-1} \mathbf{h}_2 = 0$$
 
-2. **등장 조건**: $\|\mathbf{r}_1\| = \|\mathbf{r}_2\|$
+2. **동일 노름 조건**: $\|\mathbf{r}_1\| = \|\mathbf{r}_2\|$
    $$\mathbf{h}_1^\top \mathbf{K}^{-\top} \mathbf{K}^{-1} \mathbf{h}_1 = \mathbf{h}_2^\top \mathbf{K}^{-\top} \mathbf{K}^{-1} \mathbf{h}_2$$
 
-$\mathbf{B} = \mathbf{K}^{-\top} \mathbf{K}^{-1}$로 정의하자. $\mathbf{B}$는 대칭 양의 정치(positive definite) 행렬이므로 6개의 독립 원소를 가진다:
+$\mathbf{B} = \mathbf{K}^{-\top} \mathbf{K}^{-1}$로 정의하자. $\mathbf{B}$는 대칭 양의 정부호(positive definite) 행렬이므로 6개의 독립 원소를 가진다:
 
 $$
 \mathbf{B} = \begin{bmatrix} B_{11} & B_{12} & B_{13} \\ B_{12} & B_{22} & B_{23} \\ B_{13} & B_{23} & B_{33} \end{bmatrix}
@@ -151,7 +151,7 @@ $$
 
 $n$장의 이미지가 있으면 $2n \times 6$ 시스템을 얻는다.
 
-**최소 이미지 수**: $\gamma = 0$으로 두면 ($B_{12} = 0$ 제약 추가) 5개 미지수에 대해 최소 3장. 일반적인 5-파라미터 모델도 선형 해를 구하려면 서로 다른 평면 포즈가 최소 3개 필요하다. 다만 이 수는 대수적 최솟값일 뿐이다. 실제 촬영 수는 이미지 수 자체보다 시야 전역의 위치·거리·기울기를 얼마나 잘 포괄하는지와 추정 문제의 조건수로 정한다.
+**최소 이미지 수**: $\gamma = 0$으로 두면 ($B_{12} = 0$ 제약 추가) 남은 5개 동차 성분은 스케일을 제외하고 4자유도이므로, 비퇴화 조건에서 최소 2장이 필요하다. 일반적인 5-파라미터 모델도 선형 해를 구하려면 서로 다른 평면 포즈가 최소 3개 필요하다. 다만 이 수는 대수적 최솟값일 뿐이다. 실제 촬영 수는 이미지 수 자체보다 시야 전역의 위치·거리·기울기를 얼마나 잘 포괄하는지와 추정 문제의 조건수로 정한다.
 
 #### Step 4: K 복원
 
@@ -339,7 +339,7 @@ $$
 \begin{bmatrix} u \\ v \end{bmatrix} = \begin{bmatrix} x_c \\ y_c \end{bmatrix} + \mathbf{A} \cdot \rho(\theta) \begin{bmatrix} \cos(\phi) \\ \sin(\phi) \end{bmatrix}
 $$
 
-여기서 $\mathbf{A}$는 affine 변환 행렬 (stretch와 non-square pixel 보정), $\rho(\theta)$는 입사각에 따른 이미지 반경이다.
+여기서 $\mathbf{A}$는 affine 변환 행렬(stretch와 non-square pixel 보정), $\rho(\theta)$는 입사각에 따른 이미지 반경이다.
 
 ### 3.1.7 Kalibr를 이용한 카메라 캘리브레이션
 
@@ -378,7 +378,7 @@ Kalibr의 내부 동작은 다음과 같다:
 4. 최적화 결과와 잔차(residuals) 분포를 시각화
 
 Kalibr가 OpenCV 기본 캘리브레이션보다 유리한 점은:
-- **B-spline 궤적 표현**: 연속 시간 모델로 모션 블러 효과를 자연스럽게 처리
+- **B-spline 궤적 표현**: camera-IMU 캘리브레이션에서 연속 시간 궤적으로 비동기 관측을 처리
 - **다양한 카메라 모델**: DS, EUCM 등 최신 모델 지원
 - **멀티카메라**: 여러 카메라의 상대 포즈를 동시에 추정 가능
 - **IMU 연동**: 3.4절에서 다룰 camera-IMU 캘리브레이션과 자연스럽게 연결
@@ -493,7 +493,7 @@ $$
 Z = \frac{f \cdot B}{d}
 $$
 
-여기서 $f$는 초점 거리(픽셀 단위), $B = \|\mathbf{t}\|$는 기선 길이(baseline)이다. $Q$ 행렬을 이용하면 디스패리티 맵에서 직접 3D 점군을 계산할 수 있다: $\mathbf{P}_{3D} = Q \cdot [u, v, d, 1]^\top$.
+여기서 $f$는 초점 거리(픽셀 단위), $B = \|\mathbf{t}\|$는 기선 길이(baseline)이다. $Q$ 행렬을 이용하면 디스패리티 맵에서 직접 3D 점군을 계산할 수 있다: $[X,Y,Z,W]^\top = Q \cdot [u,v,d,1]^\top$로 동차 좌표를 구한 뒤, $\mathbf{P}_{3D} = [X/W,Y/W,Z/W]^\top$로 정규화한다.
 
 ---
 
@@ -505,7 +505,7 @@ $$
 
 Target-based 캘리브레이션은 알려진 기하학적 타겟(체커보드, AprilTag 등)을 카메라와 LiDAR가 동시에 관측하여 대응점을 만든다.
 
-**원리**: 체커보드의 코너는 카메라 이미지에서 2D 점으로, LiDAR 점군에서 3D 평면으로 관측된다. 체커보드 평면에 맞는 LiDAR 점들을 추출하고, 평면의 법선과 경계를 이용하여 3D-2D 대응을 구축한다.
+**원리**: 체커보드의 코너는 카메라 이미지에서 2D 점으로 관측되고, 보드 표면은 LiDAR 점군에서 3D 평면으로 관측된다. 체커보드 평면에 맞는 LiDAR 점들을 추출하고, 평면의 법선과 경계를 이용하여 3D-2D 대응을 구축한다.
 
 **3D-2D 대응 기반 방법**:
 
@@ -516,7 +516,7 @@ Target-based 캘리브레이션은 알려진 기하학적 타겟(체커보드, A
 
 **평면 제약 기반 방법**:
 
-코너의 정확한 3D 위치를 추정하기 어려운 경우, 평면 제약만으로도 캘리브레이션이 가능하다. 카메라에서 검출한 코너를 역투영(back-project)하여 3D 광선을 만들고, 이 광선이 LiDAR에서 추정한 평면과 만나는 점을 대응점으로 사용한다.
+코너의 정확한 3D 위치를 추정하기 어려운 경우, 평면 제약만으로도 캘리브레이션이 가능하다. 카메라에서 검출한 코너와 알려진 체커보드 형상으로 카메라 좌표계의 평면을 추정한다. LiDAR의 체커보드 점을 미지의 외부 변환으로 카메라 좌표계에 옮겼을 때 이 평면 위에 놓이도록 제약한다.
 
 $n$개의 체커보드 포즈에서 평면 제약:
 
@@ -641,7 +641,7 @@ MI 기반 캘리브레이션의 최적화는 기울기가 명시적이지 않으
 
 **직관**: LiDAR 점군에서 추출한 깊이 불연속(depth discontinuity) 에지와 이미지에서 추출한 에지가 정합되도록 변환을 최적화한다.
 
-LiDAR 깊이 이미지에서 에지를 추출하고 $\mathbf{e}_L$, 카메라 이미지의 에지를 $\mathbf{e}_C$라 하면:
+LiDAR 깊이 이미지에서 추출한 에지를 $\mathbf{e}_L$, 카메라 이미지의 에지를 $\mathbf{e}_C$라 하면:
 
 $$
 \min_{\mathbf{R}, \mathbf{t}} \sum_i \text{dist}(\pi(\mathbf{R}\mathbf{p}_{L,i} + \mathbf{t}), \mathbf{e}_C)
@@ -669,7 +669,7 @@ SuperGlue가 LiDAR 강도 렌더링과 카메라 RGB 사이의 후보 대응점�
 
 **3단계: NID 기반 정밀 정합**
 
-초기 추정을 시작점으로 NID를 최소화하는 Nelder-Mead 최적화를 수행한다. 이 때 뷰 기반 은닉점 제거(hidden point removal)로 카메라에서 보이지 않는 LiDAR 점을 제거하여 정합 품질을 높인다.
+초기 추정을 시작점으로 NID를 최소화하는 Nelder-Mead 최적화를 수행한다. 이때 뷰 기반 은닉점 제거(hidden point removal)로 카메라에서 보이지 않는 LiDAR 점을 제거하여 정합 품질을 높인다.
 
 **논문 보고 결과**: 저자들의 평가 설정에서 평균 이동 오차 0.043m, 회전 오차 0.374도를 기록했다. 실험에는 회전식·솔리드스테이트 LiDAR와 핀홀·어안·전방향 카메라의 여러 조합이 포함됐다.
 
@@ -690,7 +690,7 @@ Koide et al. (2023)은 초기 target-based 결과를 기준값으로 두고 targ
 
 ## 3.4 Camera-IMU Extrinsic + Temporal Calibration
 
-카메라와 IMU 사이의 공간적 변위(extrinsic)뿐 아니라 시간적 오프셋(temporal offset)도 동시에 추정해야 한다. VINS-Mono, OpenVINS, Kalibr 등 대표적인 VIO(Visual-Inertial Odometry) 시스템은 모두 이 두 파라미터를 캘리브레이션 입력으로 요구한다.
+카메라와 IMU 사이의 공간적 변위(extrinsic)뿐 아니라 시간적 오프셋(temporal offset)도 동시에 추정해야 한다. VINS-Mono, OpenVINS 같은 VIO(Visual-Inertial Odometry) 시스템과 Kalibr 같은 캘리브레이션 도구는 모두 이 두 파라미터를 캘리브레이션 입력으로 요구한다.
 
 ### 3.4.1 왜 시간 오프셋이 중요한가
 
@@ -721,17 +721,17 @@ $$
 B-spline의 세 가지 특성:
 1. **미분 가능**: 임의 시간에서 속도, 가속도를 해석적으로 계산 가능 → IMU 관측 모델과 직접 연결
 2. **비동기 센서 처리**: 공통 프레임 시각으로 재표본화하지 않고 각 센서의 타임스탬프에서 궤적을 평가
-3. **국소성(locality)**: 각 기저 함수는 4개의 제어점에만 영향 → 희소(sparse) 최적화 가능
+3. **국소성(locality)**: 각 시각의 궤적은 인접한 4개의 제어점에만 의존 → 희소(sparse) 최적화 가능
 
 **관측 모델**:
 
 카메라 관측: 시간 $t_c + t_d$ (시간 오프셋 보정)에서의 궤적 포즈로 3D 랜드마크를 투영:
 
 $$
-\mathbf{e}_{\text{cam},k} = \mathbf{m}_k - \pi\left(\mathbf{T}_{CB} \cdot \mathbf{T}(t_{c,k} + t_d) \cdot \mathbf{p}_w\right)
+\mathbf{e}_{\text{cam},k} = \mathbf{m}_k - \pi\left(\mathbf{T}_{CB} \cdot \mathbf{T}(t_{c,k} + t_d)^{-1} \cdot \mathbf{p}_w\right)
 $$
 
-여기서 $\mathbf{T}_{CB}$는 카메라-IMU 외부 파라미터 (추정 대상).
+여기서 $\mathbf{T}(t)$는 IMU(body)→월드 변환이며, $\mathbf{T}_{CB}$는 IMU(body)→카메라 외부 변환 (추정 대상)이다.
 
 IMU 관측: 시간 $t_{\text{imu}}$에서의 궤적 미분으로 가속도와 각속도를 예측:
 
@@ -786,7 +786,7 @@ gyroscope_random_walk: 4.0e-06      # rad/s^2/sqrt(Hz)
 ```
 
 **데이터 수집**:
-1. **운동의 다양성**: 모든 6-DoF를 흥분(excite)해야 한다. 특히 각 축의 회전이 중요.
+1. **운동의 다양성**: 6-DoF의 모든 운동 성분을 충분히 여기(excite)해야 한다. 특히 각 축의 회전이 중요.
 2. **운동 속도**: 너무 느리면 IMU bias 추정이 어렵고, 너무 빠르면 이미지가 흐려진다.
 3. **타겟 가시성**: 카메라가 타겟을 지속적으로 검출하면서 각 축의 운동을 충분히 포함하도록 궤적을 설계한다.
 4. **시작과 끝**: 정지 상태에서 시작/끝나야 IMU bias 초기화가 용이하다.
@@ -939,7 +939,7 @@ plt.show()
 - **정지 데이터 수집**: IMU를 진동이 없는 단단한 표면 위에 놓는다. 기록 길이는 분석하려는 가장 긴 $\tau$에서 서로 겹치지 않는 cluster가 충분히 남도록 정한다. bias-instability 평탄부가 나타나지 않으면 시간을 늘리되, 고정된 시간만으로 식별을 보장하지는 않는다.
 - **데이터시트와의 비교**: 제조사 데이터시트의 noise density 값과 Allan variance에서 추출한 값을 비교하여 센서 상태를 검증한다.
 - **Kalibr와의 연결**: $-1/2$ 기울기 구간 전체를 적합해 white-noise 계수를 구한 뒤, Allan 편차의 정의와 단위가 Kalibr의 연속시간 noise-density 규약과 일치하는지 확인한다. $\tau=1$초에 가장 가까운 표본 하나를 그대로 복사하면 기울기 이탈과 단위 규약을 놓칠 수 있다.
-- **온도 안정화**: 전원을 켠 뒤 센서 온도와 출력 평균이 안정된 구간에서 측정을 시작하고 온도를 함께 기록한다. 필요한 워밍업 시간은 IMU와 장착·주변 조건에 따라 달라진다.
+- **온도 안정화**: 전원을 켠 뒤 센서 온도와 출력 평균이 안정된 구간에서 측정을 시작하고 온도를 함께 기록한다. 충분한 열적 평형에 도달하는 데 걸리는 시간은 IMU 패키징 형태와 외기 노출 상태에 좌우된다.
 
 ---
 
@@ -985,13 +985,13 @@ $$
 
 **[Tsai & Lenz (1989)](https://ieeexplore.ieee.org/document/34770)의 해법**:
 
-회전 방정식을 축-각(axis-angle) 표현으로 변환한다. $\mathbf{R}_A$의 회전축이 $\hat{\mathbf{a}}$이고 회전각이 $\alpha$이면, modified Rodrigues 파라미터를 사용하여:
+회전축과 회전각을 각각 $\hat{\mathbf{a}}_A, \alpha$와 $\hat{\mathbf{a}}_B, \beta$로 두고, $\mathbf{p}_A = 2\sin(\alpha/2)\hat{\mathbf{a}}_A$, $\mathbf{p}_B = 2\sin(\beta/2)\hat{\mathbf{a}}_B$를 사용하면:
 
 $$
-\text{skew}(\hat{\mathbf{a}}_A + \hat{\mathbf{a}}_B) \cdot \mathbf{r}_X = \hat{\mathbf{a}}_A - \hat{\mathbf{a}}_B
+\text{skew}(\mathbf{p}_A + \mathbf{p}_B) \cdot \mathbf{r}_X = \mathbf{p}_B - \mathbf{p}_A
 $$
 
-여기서 $\mathbf{r}_X$는 $\mathbf{R}_X$의 수정 로드리게스 벡터이다. 여러 운동 쌍에서 이 방정식을 쌓으면 선형 시스템 $\mathbf{C} \mathbf{r}_X = \mathbf{d}$를 얻고, 최소 2개의 (비평행 회전축을 가진) 운동 쌍이 있으면 풀 수 있다. 이동 벡터 $\mathbf{t}_X$도 유사한 선형 시스템으로 풀린다.
+여기서 $\mathbf{r}_X = \tan(\theta_X/2)\hat{\mathbf{a}}_X$는 $\mathbf{R}_X$의 로드리게스 벡터이다. 여러 운동 쌍에서 이 방정식을 쌓으면 선형 시스템 $\mathbf{C} \mathbf{r}_X = \mathbf{d}$를 얻고, 최소 2개의 (비평행 회전축을 가진) 운동 쌍이 있으면 풀 수 있다. 이동 벡터 $\mathbf{t}_X$도 유사한 선형 시스템으로 풀린다.
 
 **더 많은 운동 쌍의 활용**: 실전에서는 수십에서 수백 개의 운동 쌍을 사용하여 overdetermined system을 최소자승으로 풀고, LM 최적화로 정제한다.
 
@@ -1029,11 +1029,11 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
         if alpha < 1e-6 or beta < 1e-6:
             continue  # 작은 회전은 무시
 
-        # Modified Rodrigues parameters
-        a_prime = np.tan(alpha / 2) * rA / alpha
-        b_prime = np.tan(beta / 2) * rB / beta
+        # Scaled quaternion vector parts: 2 sin(angle / 2) * axis
+        a_prime = 2 * np.sin(alpha / 2) * rA / alpha
+        b_prime = 2 * np.sin(beta / 2) * rB / beta
 
-        # skew(a' + b') * rX = a' - b'
+        # skew(a' + b') * rX = b' - a'
         skew_sum = np.array([
             [0, -(a_prime[2]+b_prime[2]), a_prime[1]+b_prime[1]],
             [a_prime[2]+b_prime[2], 0, -(a_prime[0]+b_prime[0])],
@@ -1041,7 +1041,7 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
         ])
 
         C.append(skew_sum)
-        d.append(a_prime - b_prime)
+        d.append(b_prime - a_prime)
 
     C = np.vstack(C)
     d = np.concatenate(d)
@@ -1049,7 +1049,7 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
     # 최소자승 풀이
     rX, _, _, _ = np.linalg.lstsq(C, d, rcond=None)
 
-    # Modified Rodrigues → 회전 행렬
+    # Rodrigues 벡터 → 회전 행렬
     angle = 2 * np.arctan(np.linalg.norm(rX))
     if angle > 1e-6:
         axis = rX / np.linalg.norm(rX)
@@ -1080,9 +1080,9 @@ FAST-LIO2는 운용 중 LiDAR-IMU extrinsic을 추정할 수 있지만, 좋은 �
 2. 두 추정의 차이로부터 상대 변환을 반복적으로 정제
 3. Error-State Iterated Kalman Filter (ESIKF)의 상태 벡터에 LiDAR-IMU extrinsic을 포함하여 온라인 추정
 
-별도의 캘리브레이션 절차 없이, LIO 시스템 기동 직후 자동으로 외부 파라미터를 추정한다. 초기 수 초 동안 충분히 다양한 운동이 있으면 수렴한다.
+별도의 타겟이나 추가 센서 없이, LIO 기동 시 초기화 모듈이 외부 파라미터를 추정한다. 충분한 운동 여기가 필요하며, 공개 구현은 초기 정지 구간과 초기화 후 15–30초의 온라인 정제를 권장한다.
 
-**장점**: 별도 도구나 절차가 필요 없음. 현장에서 바로 사용 가능.
+**장점**: 별도의 캘리브레이션 타겟이나 추가 센서가 필요 없음. 현장에서 초기화 가능.
 **단점**: 초기 운동이 불충분하면 수렴하지 않거나 부정확할 수 있음. Target-based 방법보다 정밀도가 낮을 수 있음.
 
 **GRIL-Calib**: 지상 로봇처럼 운동이 평면에 제한되는 경우, 기존 방법은 일부 축의 관측 가능성이 떨어져 정밀도가 저하된다. [GRIL-Calib (Kim et al., 2024)](https://arxiv.org/abs/2312.14035)은 지면 평면 잔차(ground plane residual)를 LiDAR odometry에 활용하고, 지면 평면 운동(GPM) 제약을 최적화에 넣어 평면 운동만으로도 6-DoF 캘리브레이션 파라미터를 추정한다.
@@ -1137,7 +1137,7 @@ FoV가 겹치지 않으면 직접 정합이 불가능하다. 이 경우:
 - 평면 파라미터 $(n_i, d_i)$를 각 LiDAR 좌표계에서 계산
 - 대응 평면 쌍으로부터 상대 변환 추정
 
-최소 3개의 비공선(non-coplanar) 평면 대응이 필요하다.
+법선 벡터가 비공면(non-coplanar)인 평면 대응이 최소 3개 필요하다.
 
 지금까지 다룬 캘리브레이션(3.1~3.6)은 카메라, LiDAR, IMU 사이의 관계였다. 야외 환경에서 GNSS를 활용하는 시스템에서는 GNSS 안테나와 IMU 사이의 공간적 관계도 정밀하게 알아야 한다.
 
@@ -1157,7 +1157,7 @@ $$
 \mathbf{p}_{\text{IMU}} = \mathbf{p}_{\text{GNSS}} - \mathbf{R}_{\text{body}}^{\text{nav}} \cdot \mathbf{l}
 $$
 
-여기서 $\mathbf{R}_{\text{body}}^{\text{nav}}$는 body frame에서 navigation frame으로의 회전 행렬이다. 차량이 회전하면 GNSS 안테나 위치가 변하므로, lever arm을 보정하지 않으면 위치 오차가 발생한다. lever arm이 1m이고 차량이 10 deg 기울면, 약 17cm의 위치 오차가 생긴다.
+여기서 $\mathbf{R}_{\text{body}}^{\text{nav}}$는 body frame에서 navigation frame으로의 회전 행렬이다. 차량이 회전하면 GNSS 안테나 위치가 변하므로, lever arm을 보정하지 않으면 위치 오차가 발생한다. 예를 들어 회전축에 수직인 1m lever arm을 기준 자세에서만 보정하고 이후의 10 deg 회전을 반영하지 않으면, 약 17cm의 위치 오차가 생긴다.
 
 ### 3.7.2 Lever Arm 추정 방법
 
@@ -1321,7 +1321,7 @@ IEEE 1588 PTP는 이더넷 네트워크에서 클록을 동기화하는 프로�
 
 **관측 모델에서의 시간 오프셋 반영**:
 
-카메라 관측 시각 $t_c$에서의 실제 센서 포즈는 $t_c + t_d$이다. IMU preintegration에서 이를 반영:
+카메라 관측 시각 $t_c$에 대응하는 센서 포즈는 보정된 시각 $t_c + t_d$에서 평가한다. IMU preintegration에서 이를 반영:
 
 $$
 \mathbf{z}(t_c) = \pi(\mathbf{T}(t_c + t_d) \cdot \mathbf{p}_w)
@@ -1333,13 +1333,13 @@ $$
 \mathbf{T}(t_c + t_d) \approx \mathbf{T}(t_c) \cdot \text{Exp}(\boldsymbol{\xi} \cdot t_d)
 $$
 
-여기서 $\boldsymbol{\xi}$는 $t_c$에서의 body 속도 (angular + linear velocity)이다.
+여기서 $\boldsymbol{\xi}$는 $t_c$에서의 body 속도(angular + linear velocity)이다.
 
 이 근사를 통해 $t_d$에 대한 자코비안을 해석적으로 계산할 수 있고, EKF 또는 최적화 프레임워크에서 다른 상태 변수와 함께 추정할 수 있다.
 
-최근 [iKalibr (Chen et al., 2024)](https://arxiv.org/abs/2407.11420)는 이 아이디어를 다중 센서로 확장하여, LiDAR·카메라·IMU·radar 등 이종 센서 간의 시공간 파라미터를 B-spline 연속 시간 프레임워크에서 **한 번에** 추정하는 통합 캘리브레이션 도구를 제안했다 (IEEE T-RO 2025).
+최근 [iKalibr (Chen et al., 2024)](https://arxiv.org/abs/2407.11420)는 이 아이디어를 다중 센서로 확장하여, LiDAR·카메라·IMU·radar 등 이종 센서 간의 시공간 파라미터를 B-spline 연속 시간 프레임워크에서 **한 번에** 추정하는 통합 캘리브레이션 도구를 제안했다(IEEE T-RO 2025).
 
-**관측 가능성(Observability) 조건**: 시간 오프셋이 관측 가능하려면 플랫폼이 충분한 가속 운동을 해야 한다. 등속 직선 운동에서는 시간 오프셋을 추정할 수 없다 (시간 이동이 공간 이동과 구별 불가).
+**관측 가능성(Observability) 조건**: 시간 오프셋이 관측 가능하려면 플랫폼이 충분한 가속 운동을 해야 한다. 등속 직선 운동에서는 시간 오프셋을 추정할 수 없다(시간 이동이 공간 이동과 구별 불가).
 
 Kalibr(3.4.2절), OpenVINS, VINS-Mono 등 현대의 VIO 시스템은 모두 이 방법의 변형을 구현하고 있다.
 

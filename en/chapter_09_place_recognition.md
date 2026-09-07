@@ -268,21 +268,19 @@ $$
 
 Here $m$ is the margin, $p^+$ is a positive image, and $p^-$ is a hard-negative image.
 
-**Performance**: Approximately 84.3% Recall@1 on Pitts250k and about 86.3% Recall@1 on Pitts30k — a substantial improvement over the hand-crafted methods of the time. VGG-16 backbone.
+**Performance**: Recall@1 is approximately 84.3% on Pitts250k and 86.3% on Pitts30k, improving on the hand-crafted methods used for comparison at the time. The model uses a VGG-16 backbone.
 
 ### 9.2.4 AnyLoc: Foundation-Model-Based Universal VPR
 
-**[AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688)** asks whether place recognition can work across domains without VPR-specific training. Its answer is that features from a foundation model such as DINOv2 make this possible.
+**[AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688)** examines whether place recognition can work across domains without VPR-specific training. The paper demonstrates this possibility using features from a foundation model such as DINOv2.
 
-1. **DINOv2 feature extraction**: Extract **dense features** from a middle layer (the 31st layer) of DINOv2 ViT-G14. Use the features of all patches, not the CLS token (which summarizes the whole image into a single vector).
-
-   Why dense features? Patch features retain local information that a single CLS token can discard. AnyLoc reports an average gain under its compared datasets and metrics; the layer and magnitude depend on backbone and domain.
+1. **DINOv2 feature extraction**: Extract **dense features** from a middle layer of DINOv2 ViT-G/14. Use the features of all patches, not the CLS token, because patch features retain local information that a single CLS token can discard. AnyLoc reports an average gain under its compared datasets and metrics; the layer and magnitude depend on backbone and domain.
 
 2. **VLAD aggregation**: Cluster the dense features with k-means to build a visual vocabulary, and produce global descriptors with hard-assignment VLAD. Unlike NetVLAD, this is unsupervised VLAD without any training.
 
 3. **Domain-specific vocabularies**: the paper analyzes PCA groupings for Urban, Indoor, Aerial, SubT, Degraded, and Underwater data and uses domain-specific vocabularies. Its maximum reported gain belongs to that evaluation; vocabulary choice must be validated for a new domain.
 
-**Why does a Foundation Model work?**:
+**Why are foundation-model features useful for VPR?**
 
 [DINOv2 (Oquab et al., 2023)](https://arxiv.org/abs/2304.07193) was self-supervised on 142 million images. Features without place-recognition-label fine-tuning proved useful on several benchmarks, but do not guarantee discrimination in repetitive geometry, extreme viewpoint changes, or unseen sensor domains.
 
@@ -495,7 +493,7 @@ class ScanContext:
         rk_dists = [np.linalg.norm(rk_query - rk) for rk in self.ring_keys]
         candidate_indices = np.argsort(rk_dists)[:n_candidates]
         
-        # Stage 2: Scan Context column-shift matching
+        # Stage 2: Scan Context row-shift matching
         scores = []
         for idx in candidate_indices:
             sc_db = self.database[idx]
@@ -510,7 +508,7 @@ class ScanContext:
         return scores[:top_k]
 ```
 
-**Follow-up — Scan Context++**: Adds semantic segmentation, encoding semantic labels (buildings, roads, vegetation, etc.) instead of height. Semantic information is more robust to seasonal changes.
+**Follow-up — [Scan Context++](https://arxiv.org/abs/2109.13494)**: Extends structural descriptors to improve robustness to heading rotations and lateral displacement when roll and pitch changes are limited. Place retrieval is followed by a 1-DOF relative alignment estimate.
 
 ### 9.3.2 M2DP and ESF
 
@@ -523,12 +521,7 @@ These are weaker than Scan Context in preserving spatial structure, but have adv
 
 ### 9.3.3 Learning-based: PointNetVLAD
 
-**[PointNetVLAD (Uy & Lee, 2018)](https://arxiv.org/abs/1804.03492)** is an early influential system that combines PointNet and NetVLAD for end-to-end point-cloud place retrieval, using lazy triplet and quadruplet losses.
-
-**Architecture**:
-1. Extract local features from the point cloud with a **PointNet** backbone
-2. Aggregate local features into a global descriptor with a **NetVLAD layer**
-3. Train with lazy triplet loss
+**[PointNetVLAD (Uy & Lee, 2018)](https://arxiv.org/abs/1804.03492)** is an early influential system that combines PointNet and NetVLAD for end-to-end point-cloud place retrieval. A PointNet backbone extracts features, a NetVLAD layer aggregates them into a global descriptor, and lazy triplet and quadruplet losses train the model.
 
 $$
 \mathcal{L} = \max(0, m + \max_{p^+} d(q, p^+) - \min_{p^-} d(q, p^-))
@@ -546,18 +539,14 @@ $$
 
 **Range Image**: A rotating LiDAR scan is converted into a 2D image of size $(h, w)$. Each pixel value is the range in that direction. $h$ corresponds to the number of laser beams and $w$ to the horizontal resolution.
 
-**Architecture**:
-1. Process the range image with a lightweight CNN to extract a feature map
-2. Produce a global descriptor with a **NetVLAD** layer
-3. Incorporate overall context with a Transformer encoder
+The architecture first extracts local features from the range image with a lightweight CNN. A Transformer encoder incorporates context among these features, and a NetVLAD layer aggregates them into a global descriptor. This design uses 2D range images and a lightweight network for fast processing.
 
-**Advantages**: 2D CNN processing is much faster than 3D point cloud processing, and existing image-network architectures can be directly leveraged.
+**Related method — [OverlapNet](https://github.com/PRBonn/OverlapNet)**: Uses range-image representations of LiDAR scans to predict their overlap and relative yaw.
 
 ### 9.3.6 BEV-Based Methods
 
 Methods that project point clouds into a Bird's Eye View (BEV) 2D map and perform 2D image-based retrieval:
 
-- **OverlapNet**: Directly predicts the degree of overlap between BEV projection images
 - **BEVPlace**: Extracts NetVLAD descriptors from BEV images
 
 ---
@@ -623,6 +612,8 @@ A **modality-agnostic descriptor** aims to produce the same descriptor for a pla
 The appearance of the same place can change substantially over time. Illumination (day vs. night), seasons (green trees vs. snow-covered scenery), weather (clear vs. fog), and structural changes (new construction or demolition, road work) all shift the descriptor of the same place and reduce PR performance.
 
 ### 9.5.2 Strategies for Seasonal/Time-of-Day/Weather Changes
+
+Four approaches are used in combination.
 
 1. **Data Augmentation based**: Include images under diverse conditions during training. NetVLAD's use of Google Street View Time Machine is a canonical example.
 
@@ -776,7 +767,7 @@ Strategies for **re-ranking** the candidate list — originally ordered by descr
 
 VPR research includes both environment-specific training and foundation-model-based zero-shot recognition. AnyLoc reports competitive results without VPR-specific training across several environments selected in its paper.
 
-Two directions are under study. ViT-G14 has more than 1B parameters, which limits embedded deployment, so researchers are combining lightweight FMs (ViT-S/B) with domain adaptation. They are also using the patch-level dense correspondences provided by FMs directly for re-ranking or relative pose estimation.
+Two directions are under study. ViT-G/14 has more than 1B parameters, which limits embedded deployment, so researchers are combining lightweight FMs (ViT-S/B) with domain adaptation. They are also using the patch-level dense correspondences provided by FMs directly for re-ranking or relative pose estimation.
 
 ### 9.7.2 Semantic Place Recognition
 
@@ -843,6 +834,6 @@ Cross-modal PR faces a domain gap, and shared-embedding-space learning and modal
 
 Geometric verification tests whether a retrieved candidate satisfies geometric constraints and reduces false-positive risk. Visual systems use PnP or essential geometry with robust estimation; LiDAR systems use ICP-family or learned registration. None eliminates bad loop closures under every ambiguity.
 
-Recent trends include the lightweighting of Foundation-Model-based PR, semantic PR, and 4D radar PR, all of which are active areas of research.
+Recent trends include lightweight foundation-model-based PR, semantic PR, and 4D radar PR, all of which are active areas of research.
 
 Place Recognition answers the question "Have I seen this place before?", but a SLAM system still has to convert that answer into global consistency. **Loop Closure and global optimization** integrate PR results into the pose graph and correct drift.

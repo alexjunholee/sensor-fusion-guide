@@ -1,10 +1,10 @@
 # Ch.3 — Calibration Deep Dive
 
-Ch.2 defined the observation model of each sensor mathematically. However, applying these models to real sensor data requires one prerequisite — the parameters of the model must be known precisely. The camera's focal length, the relative position between LiDAR and IMU, the time offset between sensors — the process that determines these values precisely is calibration.
+Ch.2 defined the observation model of each sensor mathematically. Applying these models to real sensor data requires precise knowledge of their parameters. Examples include the camera's focal length, the relative position between LiDAR and IMU, and the time offset between sensors. Calibration is the process of determining these values precisely.
 
 > Calibration error introduces systematic bias into sensor fusion. Calibration spans camera intrinsics, multi-sensor extrinsics, and time synchronization.
 
-Calibration is one of the first checks in a sensor-fusion pipeline. An inaccurate sensor model or relative pose biases the estimate and can make a filter or optimizer unstable under some conditions. In LiDAR-camera fusion, for example, a one-degree angular error gives a small-angle lateral-error approximation of about 87 cm at 50 m. Calibration work therefore has two parts: the mathematical foundation of each problem, and code and tools that can be used directly in practice.
+Calibration is one of the first checks in a sensor-fusion pipeline. An inaccurate sensor model or relative pose biases the estimate and can make a filter or optimizer unstable under some conditions. In LiDAR-camera fusion, for example, a one-degree angular error gives a small-angle lateral-error approximation of about 87 cm at 50 m. Addressing these errors requires both mathematical foundations and practical tools.
 
 ---
 
@@ -24,7 +24,7 @@ $$
 
 Here:
 - $f_x, f_y$: focal length in pixel units. $f_x = f / p_x$, where $f$ is the physical focal length (mm) and $p_x$ is the pixel size (mm/pixel).
-- $(c_x, c_y)$: principal point. The intersection of the optical axis with the image sensor center.
+- $(c_x, c_y)$: principal point. The intersection of the optical axis with the image sensor plane.
 - $\gamma$: skew coefficient. Nearly 0 on modern cameras.
 - $s = Z_c$: scale factor (depth).
 
@@ -151,7 +151,7 @@ $$
 
 Given $n$ images, we obtain a $2n \times 6$ system.
 
-**Minimum number of images**: Setting $\gamma = 0$ (adding the constraint $B_{12} = 0$) leaves 5 unknowns, so a minimum of 3 images suffices. The general 5-parameter model likewise needs at least three distinct planar poses for its linear solution. This is only an algebraic minimum. In practice, collect enough views to cover positions, distances, and tilts across the image and to obtain a well-conditioned estimate.
+**Minimum number of images**: Setting $\gamma = 0$ (adding the constraint $B_{12} = 0$) leaves five homogeneous entries with four degrees of freedom after removing scale, so two nondegenerate views suffice. The general 5-parameter model likewise needs at least three distinct planar poses for its linear solution. This is only an algebraic minimum. In practice, collect enough views to cover positions, distances, and tilts across the image and to obtain a well-conditioned estimate.
 
 #### Step 4: Recovering K
 
@@ -275,7 +275,7 @@ Calibration quality depends strongly on data collection. The following condition
 
 **Illumination Conditions**: uniform lighting stabilizes corner contrast. Strong shadows and glare can move or hide detections, so use a matte target and inspect the exposed images.
 
-**Interpreting Reprojection Error**: no single pixel threshold establishes success. The expected error depends on resolution, lens model, target size, and detector uncertainty. Inspect the global RMS together with per-image residuals, directional patterns across the image, straightness after rectification, and error on held-out validation images.
+**Interpreting Reprojection Error**: no single pixel threshold establishes success. The expected error depends on resolution, lens model, target size, and detector uncertainty. Inspect the global RMS together with per-image residuals, directional patterns across the image, straight-line curvature before and after correction, and error on held-out validation images.
 
 **Detecting Outlier Images**: compare per-image errors using the `errors` array above. Do not discard a high-error image automatically; first inspect it for a failed detection, motion blur, glare, or a non-planar target. Compare parameter stability and held-out error before and after exclusion.
 
@@ -378,7 +378,7 @@ Kalibr's internal operation proceeds as follows:
 4. Visualize the optimization result and the distribution of residuals
 
 Kalibr's advantages over OpenCV's default calibration are:
-- **B-spline trajectory representation**: a continuous-time model that naturally handles motion blur effects
+- **B-spline trajectory representation**: a continuous-time trajectory handles asynchronous observations in camera-IMU calibration
 - **Variety of camera models**: supports modern models such as DS and EUCM
 - **Multi-camera**: can simultaneously estimate the relative poses of several cameras
 - **IMU integration**: connects naturally to the camera-IMU calibration covered in Section 3.4
@@ -493,7 +493,7 @@ $$
 Z = \frac{f \cdot B}{d}
 $$
 
-Here $f$ is the focal length (in pixel units) and $B = \|\mathbf{t}\|$ is the baseline length. Using the $Q$ matrix, 3D point clouds can be computed directly from the disparity map: $\mathbf{P}_{3D} = Q \cdot [u, v, d, 1]^\top$.
+Here $f$ is the focal length (in pixel units) and $B = \|\mathbf{t}\|$ is the baseline length. Using the $Q$ matrix, 3D point clouds can be computed directly from the disparity map: first compute homogeneous coordinates $[X,Y,Z,W]^\top = Q \cdot [u,v,d,1]^\top$, then normalize to $\mathbf{P}_{3D} = [X/W,Y/W,Z/W]^\top$.
 
 ---
 
@@ -505,7 +505,7 @@ Multi-modal sensor fusion requires estimating the extrinsic parameters $(\mathbf
 
 Target-based calibration creates correspondences by observing a known geometric target (checkerboard, AprilTag, etc.) simultaneously with the camera and LiDAR.
 
-**Principle**: The corners of a checkerboard are observed as 2D points in the camera image and as a 3D plane in the LiDAR point cloud. We extract the LiDAR points that fit the checkerboard plane and use the plane's normal and boundary to build 3D-2D correspondences.
+**Principle**: Checkerboard corners are observed as 2D points in the camera image, while the board surface is observed as a 3D plane in the LiDAR point cloud. We extract the LiDAR points that fit the checkerboard plane and use the plane's normal and boundary to build 3D-2D correspondences.
 
 **3D-2D correspondence-based method**:
 
@@ -516,7 +516,7 @@ Target-based calibration creates correspondences by observing a known geometric 
 
 **Plane-constraint-based method**:
 
-When the precise 3D positions of corners are hard to estimate, calibration is possible using only plane constraints. Back-project the corners detected by the camera to form 3D rays, and use as correspondences the points where those rays intersect the plane estimated by the LiDAR.
+When the precise 3D positions of corners are hard to estimate, calibration is possible using only plane constraints. Estimate the target plane in camera coordinates from detected corners and the known checkerboard geometry. Constrain LiDAR points on the checkerboard to lie on this plane after applying the unknown extrinsic transform.
 
 Plane constraints from $n$ checkerboard poses:
 
@@ -587,7 +587,7 @@ $$
 \text{MI}(X; Y) = H(X) + H(Y) - H(X, Y)
 $$
 
-If $X$ and $Y$ are independent, $\text{MI} = 0$. If one variable is a deterministic function of the other, their mutual information is bounded by the smaller entropy; equality with both entropies requires an invertible one-to-one relation.
+If $X$ and $Y$ are independent, $\text{MI} = 0$. If one variable is a deterministic function of the other, their mutual information is bounded by the smaller entropy; for an invertible one-to-one relation, $\text{MI} = H(X) = H(Y)$.
 
 **Normalized Information Distance (NID)**:
 
@@ -684,23 +684,23 @@ Starting from the initial estimate, a Nelder-Mead optimization minimizes the NID
 
 Recently, [MFCalib (2024)](https://arxiv.org/abs/2409.00992) combined depth-continuity, depth-discontinuity, and intensity-discontinuity edges. Its authors model LiDAR-beam formation to address edge inflation and report lower calibration errors than the compared methods under the paper's datasets and metrics.
 
-One operational design uses a target-based result as the initial reference and a targetless metric to monitor change during operation. Recalibration should be triggered only after validating how that metric relates to task error.
+Koide et al. (2023) propose using an initial target-based result as the reference and targetless NID to monitor change during operation. Whether to recalibrate should be decided from a validated relationship between NID changes and task error.
 
 ---
 
 ## 3.4 Camera-IMU Extrinsic + Temporal Calibration
 
-Camera-IMU calibration estimates both the spatial displacement (extrinsic) and the temporal offset. Modern VIO (Visual-Inertial Odometry) systems depend on both parameters.
+The spatial displacement (extrinsic) and temporal offset between the camera and IMU must be estimated together. Representative VIO (Visual-Inertial Odometry) systems and calibration tools, including VINS-Mono, OpenVINS, and Kalibr, require both as calibration inputs.
 
 ### 3.4.1 Why Time Offset Matters
 
 The camera and the IMU generate data on different clocks. When a time offset $t_d$ exists between the two sensors, the IMU data corresponding to a camera timestamp $t_c$ is actually from time $t_c + t_d$.
 
-Furgale et al.'s experiments included camera-IMU time offsets from several to tens of milliseconds. Ignoring an offset can increase reprojection error during rapid rotation. For example, a 10 ms offset at 100 deg/s corresponds to a one-degree mismatch in observation time.
+Furgale et al. (2013) included camera-IMU time offsets from several to tens of milliseconds in their experiments. Ignoring an offset can increase reprojection error during rapid rotation. For example, a 10 ms offset at 100 deg/s corresponds to a one-degree mismatch in observation time.
 
 ### 3.4.2 Kalibr: Continuous-Time B-Spline-Based Calibration
 
-Kalibr, proposed by [Furgale et al. (2013)](https://ieeexplore.ieee.org/document/6696514), is used by public VIO implementations including VINS-Mono and OpenVINS.
+Kalibr, proposed by [Furgale et al. (2013)](https://ieeexplore.ieee.org/document/6696514), has been adopted as a calibration tool for major VIO systems including VINS-Mono, OpenVINS, and MSCKF.
 
 The trajectory is represented not as a sequence of discrete poses but as a continuous-time B-spline. This representation handles sensors with different sampling rates (camera: 20-30 Hz, IMU: 200-1000 Hz).
 
@@ -721,17 +721,17 @@ Here:
 Three properties of the B-spline:
 1. **Differentiable**: velocity and acceleration at any time can be computed analytically → direct connection to the IMU observation model
 2. **Asynchronous sensor handling**: evaluate the trajectory at each sensor timestamp without resampling everything to common frame times
-3. **Locality**: each basis function affects only 4 control points → sparse optimization is possible
+3. **Locality**: the trajectory at each time depends on only 4 neighboring control points → sparse optimization is possible
 
 **Observation model**:
 
 Camera observation: project a 3D landmark using the trajectory pose at time $t_c + t_d$ (time-offset-corrected):
 
 $$
-\mathbf{e}_{\text{cam},k} = \mathbf{m}_k - \pi\left(\mathbf{T}_{CB} \cdot \mathbf{T}(t_{c,k} + t_d) \cdot \mathbf{p}_w\right)
+\mathbf{e}_{\text{cam},k} = \mathbf{m}_k - \pi\left(\mathbf{T}_{CB} \cdot \mathbf{T}(t_{c,k} + t_d)^{-1} \cdot \mathbf{p}_w\right)
 $$
 
-Here $\mathbf{T}_{CB}$ is the camera-IMU extrinsic (the target of estimation).
+Here $\mathbf{T}(t)$ maps the IMU (body) frame to the world, and $\mathbf{T}_{CB}$ maps the IMU (body) frame to the camera (the target of estimation).
 
 IMU observation: predict acceleration and angular velocity from the derivatives of the trajectory at time $t_{\text{imu}}$:
 
@@ -786,7 +786,7 @@ gyroscope_random_walk: 4.0e-06      # rad/s^2/sqrt(Hz)
 ```
 
 **Data collection**:
-1. **Motion diversity**: excite all 6-DoF. Rotation about each axis is especially important.
+1. **Motion diversity**: provide sufficient excitation in all 6-DoF motion components. Rotation about each axis is especially important.
 2. **Motion speed**: too slow makes IMU bias hard to estimate, too fast blurs the images.
 3. **Target visibility**: design a trajectory that keeps the target detectable while providing motion about all relevant axes.
 4. **Start and end**: begin and end at rest to facilitate IMU bias initialization.
@@ -985,13 +985,13 @@ The rotation equation is independent of $\mathbf{t}_X$, so we first solve for $\
 
 **[Tsai & Lenz (1989)](https://ieeexplore.ieee.org/document/34770) solution**:
 
-Convert the rotation equation into angle-axis representation. If the rotation axis of $\mathbf{R}_A$ is $\hat{\mathbf{a}}$ and the rotation angle is $\alpha$, then using modified Rodrigues parameters:
+Let the rotation axes and angles be $\hat{\mathbf{a}}_A, \alpha$ and $\hat{\mathbf{a}}_B, \beta$. Define $\mathbf{p}_A = 2\sin(\alpha/2)\hat{\mathbf{a}}_A$ and $\mathbf{p}_B = 2\sin(\beta/2)\hat{\mathbf{a}}_B$. Then:
 
 $$
-\text{skew}(\hat{\mathbf{a}}_A + \hat{\mathbf{a}}_B) \cdot \mathbf{r}_X = \hat{\mathbf{a}}_A - \hat{\mathbf{a}}_B
+\text{skew}(\mathbf{p}_A + \mathbf{p}_B) \cdot \mathbf{r}_X = \mathbf{p}_B - \mathbf{p}_A
 $$
 
-Here $\mathbf{r}_X$ is the modified Rodrigues vector of $\mathbf{R}_X$. Stacking this equation over many motion pairs yields a linear system $\mathbf{C} \mathbf{r}_X = \mathbf{d}$, solvable with a minimum of 2 motion pairs (with non-parallel rotation axes). The translation vector $\mathbf{t}_X$ is solved by a similar linear system.
+Here $\mathbf{r}_X = \tan(\theta_X/2)\hat{\mathbf{a}}_X$ is the Rodrigues vector of $\mathbf{R}_X$. Stacking this equation over many motion pairs yields a linear system $\mathbf{C} \mathbf{r}_X = \mathbf{d}$, solvable with a minimum of 2 motion pairs (with non-parallel rotation axes). The translation vector $\mathbf{t}_X$ is solved by a similar linear system.
 
 **Leveraging more motion pairs**: in practice, dozens to hundreds of motion pairs are used; the resulting overdetermined system is solved by least squares and refined by LM optimization.
 
@@ -1029,11 +1029,11 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
         if alpha < 1e-6 or beta < 1e-6:
             continue  # Ignore small rotations
 
-        # Modified Rodrigues parameters
-        a_prime = np.tan(alpha / 2) * rA / alpha
-        b_prime = np.tan(beta / 2) * rB / beta
+        # Scaled quaternion vector parts: 2 sin(angle / 2) * axis
+        a_prime = 2 * np.sin(alpha / 2) * rA / alpha
+        b_prime = 2 * np.sin(beta / 2) * rB / beta
 
-        # skew(a' + b') * rX = a' - b'
+        # skew(a' + b') * rX = b' - a'
         skew_sum = np.array([
             [0, -(a_prime[2]+b_prime[2]), a_prime[1]+b_prime[1]],
             [a_prime[2]+b_prime[2], 0, -(a_prime[0]+b_prime[0])],
@@ -1041,7 +1041,7 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
         ])
 
         C.append(skew_sum)
-        d.append(a_prime - b_prime)
+        d.append(b_prime - a_prime)
 
     C = np.vstack(C)
     d = np.concatenate(d)
@@ -1049,7 +1049,7 @@ def hand_eye_calibration_tsai(A_rotations, A_translations,
     # Least-squares solve
     rX, _, _, _ = np.linalg.lstsq(C, d, rcond=None)
 
-    # Modified Rodrigues → rotation matrix
+    # Rodrigues vector → rotation matrix
     angle = 2 * np.arctan(np.linalg.norm(rX))
     if angle > 1e-6:
         axis = rX / np.linalg.norm(rX)
@@ -1080,9 +1080,9 @@ FAST-LIO2 can estimate LiDAR-IMU extrinsics during operation, but it still requi
 2. Iteratively refine the relative transform from the difference of the two estimates
 3. Include the LiDAR-IMU extrinsic in the state vector of the Error-State Iterated Kalman Filter (ESIKF) to estimate it online
 
-This approach estimates the extrinsic parameters automatically at the start of the LIO system, with no separate calibration procedure. Convergence occurs after a few seconds of sufficiently diverse motion.
+The initialization module estimates extrinsics when LIO starts, without a separate target or additional sensor. Sufficient motion excitation is required; the public implementation recommends an initial stationary period and 15–30 seconds of online refinement after initialization.
 
-**Advantages**: no separate tools or procedures needed. Immediately usable in the field.
+**Advantages**: no separate calibration target or additional sensor needed. Initialization can be performed in the field.
 **Disadvantages**: may not converge or may be inaccurate if initial motion is insufficient. Accuracy can be lower than with target-based methods.
 
 **GRIL-Calib**: When motion is confined to a plane, as with ground robots, existing methods suffer reduced accuracy because some axes are poorly observable. [GRIL-Calib (Kim et al., 2024)](https://arxiv.org/abs/2312.14035) leverages the ground-plane residual in LiDAR odometry and integrates a ground-plane motion (GPM) constraint into the optimization, enabling 6-DoF calibration parameters to be estimated from planar motion alone.
@@ -1137,7 +1137,7 @@ In structured environments (buildings, roads, etc.), geometric features such as 
 - Compute the plane parameters $(n_i, d_i)$ in each LiDAR frame
 - Estimate the relative transform from pairs of corresponding planes
 
-A minimum of 3 non-coplanar plane correspondences is required.
+At least 3 plane correspondences with non-coplanar normal vectors are required.
 
 The calibrations covered so far (3.1-3.6) concerned relations among cameras, LiDARs, and IMUs. In outdoor systems that exploit GNSS, the spatial relation between the GNSS antenna and the IMU must also be known precisely.
 
@@ -1157,13 +1157,13 @@ $$
 \mathbf{p}_{\text{IMU}} = \mathbf{p}_{\text{GNSS}} - \mathbf{R}_{\text{body}}^{\text{nav}} \cdot \mathbf{l}
 $$
 
-Here $\mathbf{R}_{\text{body}}^{\text{nav}}$ is the rotation matrix from the body frame to the navigation frame. As the vehicle rotates, the GNSS antenna's position changes, so failing to correct for the lever arm produces position errors. If the lever arm is 1 m and the vehicle tilts by 10 deg, a position error of about 17 cm results.
+Here $\mathbf{R}_{\text{body}}^{\text{nav}}$ is the rotation matrix from the body frame to the navigation frame. As the vehicle rotates, the GNSS antenna's position changes, so failing to correct for the lever arm produces position errors. For example, if a 1 m lever arm perpendicular to the rotation axis is corrected only at a reference attitude and a subsequent 10 deg rotation is ignored, the position error is about 17 cm.
 
 ### 3.7.2 Lever Arm Estimation Methods
 
 **Method 1: Physical measurement**
 
-The most direct method uses a tape measure, laser rangefinder, or similar tool. Derive the required accuracy from the antenna-to-IMU distance, expected rotation, and allowable position error. A several-centimeter measurement is adequate only when it fits that error budget; otherwise use precision surveying or estimation.
+The most direct method uses a tape measure, laser rangefinder, or similar tool. Derive the required accuracy from the antenna-to-IMU distance, expected rotation, and allowable position error. Direct measurement is adequate if an error of several centimeters fits that error budget; otherwise use precision surveying or estimation.
 
 **Method 2: Filter-based online estimation**
 
@@ -1217,7 +1217,7 @@ For long-duration systems (autonomous vehicles, robots), strategies for detectin
 
 3. **Online fine-tuning**: use the current calibration as the initial value and continuously optimize within a small range.
 
-Recently, [CalibRefine (2025)](https://arxiv.org/abs/2502.17648) proposed a deep-learning-based framework that takes raw LiDAR point clouds and camera images directly as input, performs online targetless calibration, and improves accuracy through iterative post-refinement automatically.
+Recently, [CalibRefine (2025)](https://arxiv.org/abs/2502.17648) proposed an automated deep-learning-based framework that takes raw LiDAR point clouds and camera images directly as input, performs online targetless calibration, and improves accuracy through iterative post-refinement.
 
 ### 3.8.3 OpenCalib: An Integrated Calibration Framework for Autonomous Driving
 
@@ -1321,7 +1321,7 @@ When hardware synchronization is not available, time alignment is done in softwa
 
 **Reflecting the time offset in the observation model**:
 
-The actual sensor pose at camera observation time $t_c$ is at $t_c + t_d$. Reflecting this in the IMU preintegration:
+The sensor pose corresponding to camera observation time $t_c$ is evaluated at the corrected time $t_c + t_d$. Reflecting this in the IMU preintegration:
 
 $$
 \mathbf{z}(t_c) = \pi(\mathbf{T}(t_c + t_d) \cdot \mathbf{p}_w)
@@ -1398,3 +1398,5 @@ Example of indirect computation: the camera-LiDAR transform can be obtained as $
 - [GRIL-Calib (Kim et al., 2024)](https://arxiv.org/abs/2312.14035): targetless IMU-LiDAR calibration in ground-robot settings using planar-motion constraints. 6-DoF estimation is possible even from constrained motion.
 - [MFCalib (2024)](https://arxiv.org/abs/2409.00992): single-shot targetless LiDAR-camera calibration that leverages multi-feature edges (depth continuity/discontinuity, intensity discontinuity). The edge inflation problem is solved with a LiDAR beam model.
 - [iKalibr (Chen et al., 2024)](https://arxiv.org/abs/2407.11420): temporal — unified spatio-temporal calibration of heterogeneous multi-sensors (LiDAR, camera, IMU, radar) based on B-spline continuous time (IEEE T-RO 2025).
+
+Once the sensor models and calibration parameters are in place, the robot's state can be estimated from sensor data. Ch.4, **State Estimation Theory**, explains this computation from Kalman filters through factor graphs.

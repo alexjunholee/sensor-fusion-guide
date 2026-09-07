@@ -2,7 +2,7 @@
 
 In Ch.9 we covered place recognition — recognizing previously visited locations. Those recognition results must enter the SLAM system before they can correct accumulated drift.
 
-In a SLAM system, odometry inevitably accumulates drift. No matter how precise the sensors are, small errors in relative pose estimation build up over time and break global consistency. Loop closure is the mechanism that recognizes "we have revisited a previously visited place" and uses that information to correct the accumulated drift all at once.
+In a SLAM system, odometry inevitably accumulates drift. No matter how precise the sensors are, small errors in relative pose estimation build up over time and break global consistency. Loop closure is the mechanism that recognizes "we have revisited a previously visited place" and uses that information to correct the accumulated drift.
 
 The loop closure pipeline runs detection → verification → correction, and pose graph optimization sits at the center of the correction step. The same structure extends to global relocalization and multi-session SLAM.
 
@@ -10,7 +10,7 @@ The loop closure pipeline runs detection → verification → correction, and po
 
 ## 10.1 Loop Closure Pipeline
 
-Loop closure consists of three stages: **Detection** (candidate search), **Verification** (geometric verification), and **Correction** (graph correction). Each stage plays a distinct role, and failure in any one of them can break the consistency of the entire system.
+Loop closure consists of three stages: **Detection** (candidate search), **Verification** (geometric verification), and **Correction** (graph correction). Missing a candidate loses an opportunity for correction, while accepting a false loop can break the consistency of the entire system.
 
 ### 10.1.1 Detection: Candidate Search
 
@@ -193,7 +193,7 @@ def sampson_error(E, pts1, pts2):
 
 ### 10.1.3 The Danger of False Positives and How to Prevent Them
 
-A false positive loop closure is dangerous for a concrete reason.
+The corridor example below shows why a false positive loop closure is dangerous.
 
 **Scenario**: Suppose the robot traverses two similar-looking corridors. If an incorrect loop closure is formed between keyframe $i$ in corridor A and keyframe $j$ in corridor B, the pose graph optimizer pulls these two poses close together. As a result, all poses between the two corridors are distorted, and the entire map folds or twists.
 
@@ -374,7 +374,7 @@ $$w_i = \rho'(s_i), \quad s_i = \mathbf{e}_i^\top \boldsymbol{\Omega}_i \mathbf{
 
 Here $\rho'$ is the derivative with respect to $s$ of the $\rho(s)$ defined in the table above. Outlier edges are assigned small weights so that their influence is reduced automatically.
 
-**[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel (2012) introduced a binary switch variable $s_{ij} \in [0, 1]$ on each loop closure factor, allowing the optimizer to deactivate inconsistent loop closures ($s_{ij} \to 0$):
+**[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel (2012) introduced a continuous switch variable $s_{ij} \in [0, 1]$ on each loop closure factor, allowing the optimizer to deactivate inconsistent loop closures ($s_{ij} \to 0$):
 
 $$\rho_{\text{switch}}(\mathbf{e}_{ij}, s_{ij}) = s_{ij}^2 \mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij} + \lambda (1 - s_{ij})^2$$
 
@@ -426,7 +426,7 @@ When a new variable or measurement is added, iSAM2 identifies the range over whi
 
 **Bayes tree**: iSAM2 uses this data structure. Variable elimination on a factor graph yields a clique tree, and the Bayes tree is this clique tree endowed with direction.
 
-MAP estimation on a factor graph is decomposed as follows:
+The posterior distribution used for MAP estimation on a factor graph is decomposed as follows:
 
 $$p(\mathbf{x} | \mathbf{z}) \propto \prod_k f_k(\mathbf{x}_k)$$
 
@@ -522,30 +522,17 @@ class SimpleIncrementalOptimizer:
 
 ## 10.3 Global Relocalization
 
-Global relocalization is the problem of finding the robot's location on a pre-built map (prior map). If loop closure is about recognizing "a place I have visited before," relocalization asks, "Where am I within a map built by someone else?"
+Global relocalization is the problem of finding the robot's location on a pre-built map (prior map). If loop closure is about recognizing "a place I have visited before," relocalization asks, "Where am I within a pre-built map?"
 
 ### 10.3.1 Map-Based Localization
 
 When a pre-built map is available, the current pose is estimated by registering new sensor observations to this map.
 
-**Visual relocalization pipeline**:
+**Visual relocalization pipeline**: Extract feature points from the current image, find 2D-3D correspondences with the map's 3D points via visual words or direct matching, estimate the pose with PnP + RANSAC, and resume tracking from that pose.
 
-1. Extract feature points from the current image.
-2. Find 2D-3D correspondences with the 3D points of the map (via visual words or direct matching).
-3. Estimate the pose with PnP + RANSAC.
-4. Resume tracking using the estimated pose as a starting point.
+ORB-SLAM3 retrieves candidate keyframes with DBoW2, obtains 2D-3D correspondences via ORB matching, estimates the pose with EPnP + RANSAC, and then finds additional matches through guided search to improve accuracy.
 
-ORB-SLAM3's relocalization performs this procedure as follows:
-- Retrieve candidate keyframes with DBoW2.
-- Obtain 2D-3D correspondences via ORB matching.
-- Estimate the pose with EPnP + RANSAC.
-- Improve accuracy by finding additional matches via guided search.
-
-**LiDAR relocalization**: Register the current LiDAR scan to a prior (point cloud) map.
-
-1. Use a **global descriptor** (Scan Context, PointNetVLAD, etc.) to search for nearby regions in the map.
-2. **Coarse registration**: Perform initial registration with FPFH + RANSAC or GeoTransformer.
-3. **Fine registration**: Refine alignment with ICP/GICP.
+**LiDAR relocalization**: Register the current LiDAR scan to a prior point-cloud map. First search for nearby regions with a global descriptor such as Scan Context or PointNetVLAD, then perform coarse registration with FPFH + RANSAC or GeoTransformer, and finally refine the alignment with ICP/GICP.
 
 ### 10.3.2 Prior Map + Online Sensor
 
@@ -553,13 +540,13 @@ In autonomous driving, it is common to localize in real time with live sensor da
 
 - **Discrepancies between the map and the current environment**: Over time, buildings change and foliage grows. We must handle differences between the prior map and current observations.
 - **Cross-modal matching**: The HD map may have been built with LiDAR while the current sensor is only a camera. Registration across heterogeneous sensors is required.
-- **No initial pose**: If the robot does not know where in the map it starts, place recognition must be performed against the entire map.
+- **No initial pose**: If the robot does not know where in the map it starts, place recognition against the entire map can be used to find the starting location.
 
 ### 10.3.3 Monte Carlo Localization (MCL)
 
 MCL is a particle-filter-based global localization method. It represents the robot's possible poses as particles and updates particle weights according to sensor observations.
 
-MCL repeats four steps.
+After initialization, MCL repeats prediction, update, and resampling.
 
 1. **Initialization**: Distribute particles uniformly over the entire map (global uncertainty).
 2. **Prediction**: Move particles according to the robot's motion model:
@@ -747,7 +734,7 @@ $${}^{A}\mathbf{T}_{B} = \arg\min_{\mathbf{T}} \sum_k \| \mathbf{p}_k^A - \mathb
 
 Once map anchoring provides an initial alignment, inter-session loop closure performs the precise registration. The principle is the same as standard loop closure, but two additional challenges arise:
 
-1. **Appearance change**: Over time, lighting, season, and furniture arrangement change. Foundation-model-based descriptors such as AnyLoc are robust to this problem.
+1. **Appearance change**: Over time, lighting and seasons change. Foundation-model-based descriptors such as AnyLoc are robust to this problem.
 
 2. **Frame misalignment**: Because the initial alignment may be inaccurate, the tolerance of geometric verification must be increased.
 
@@ -880,14 +867,14 @@ Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally,
 
 ---
 
-## 10.5 Recent Research (2024-2025)
+## 10.5 Recent Research
 
 **[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)** integrates [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605) into an incremental robust backend. The paper reports results above 90% outlier rate and comparisons with offline baselines under its synthetic and experimental setups; this is not a guarantee for other outlier structures or initializations.
 
-**[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)**: The next-generation version of the Kimera SLAM library, which replaces the backend's outlier rejection from PCM with GNC, significantly improving robustness. It has been validated on diverse platforms such as drones, quadruped robots, and autonomous vehicles, and includes comprehensive improvements for the practical deployment of metric-semantic SLAM.
+**[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)**: The next-generation version of the Kimera SLAM library, which replaces the backend's outlier rejection from PCM with GNC to improve robustness. It has been validated on diverse platforms such as drones and autonomous vehicles, and includes comprehensive improvements for the practical deployment of metric-semantic SLAM.
 
 **[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)**: Extends PCM's pairwise consistency to group-k consistency and applies a stricter outlier test. In multi-robot map merging, it further suppresses false positives relative to PCM.
 
 ---
 
-Through loop closure and global optimization, a SLAM system produces a globally consistent trajectory and map. But what form does this "map" take? Is it a point cloud, a grid, or a neural network? That question leads to **spatial representation**, the final output of sensor fusion.
+Through loop closure and global optimization, a SLAM system produces a globally consistent trajectory and map. But what form does this "map" take? Is it a point cloud or a neural network? That question leads to **spatial representation**, the final output of sensor fusion.

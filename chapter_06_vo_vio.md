@@ -4,13 +4,13 @@ Visual Odometry(VO)와 Visual-Inertial Odometry(VIO)는 Ch.4의 상태 추정 �
 
 VO는 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하고, VIO는 여기에 IMU를 결합해 스케일 관측 가능성과 강건성을 확보한다. 두 계열은 내부 구조와 설계 선택에서 갈린다.
 
-VO의 기원은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)로 거슬러 올라간다. 이 논문은 "Visual Odometry"라는 용어를 처음 정의하고, 스테레오·단안 카메라로 실시간 자기 운동 추정 시스템을 제시했다. 스테레오 접근에서는 좌우 카메라에서 삼각측량한 3D 점을 3-point 알고리즘으로 프레임 간 강체 변환을 추정했고, 단안 접근에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 특징점 검출, 매칭, RANSAC, 모션 추정으로 이어지는 이 파이프라인은 20년이 지난 지금도 feature-based VO의 뼈대다.
+VO의 기원은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)로 거슬러 올라간다. 이 논문은 "Visual Odometry"라는 용어를 처음 정의하고, 스테레오·단안 카메라로 실시간 자기 운동 추정 시스템을 제시했다. 스테레오 접근에서는 좌우 카메라에서 삼각측량한 3D 점에 3-point 알고리즘을 적용해 프레임 간 강체 변환을 추정했고, 단안 접근에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 특징점 검출, 매칭, RANSAC, 모션 추정으로 이어지는 이 파이프라인은 20년이 지난 지금도 feature-based VO의 뼈대다.
 
 VO·VIO 시스템은 세 축으로 분류된다.
 
 1. **Feature-based vs Direct**: 기하학적 특징점(corner, edge)을 추출하여 매칭하는가, 아니면 픽셀 밝기 자체를 직접 사용하는가
 2. **Filter vs Optimization**: 상태 추정에 칼만 필터 계열을 쓰는가, 비선형 최적화를 쓰는가
-3. **Loosely coupled vs Tightly coupled**: IMU와 카메라를 독립적으로 처리한 뒤 결과를 합치는가, raw measurement를 하나의 최적화 문제에 넣는가
+3. **Loosely coupled vs Tightly coupled**: IMU와 카메라를 독립적으로 처리한 뒤 결과를 합치는가, raw measurement를 하나의 추정 프레임워크에서 결합하는가
 
 이 축들의 조합에 따라 시스템의 내부 구조와 동작 특성이 달라진다.
 
@@ -26,7 +26,7 @@ Feature-based VO의 프론트엔드는 세 가지 작업을 수행한다.
 
 **특징점 검출 (Feature Detection)**
 
-프레임에서 추적 가능한 점을 찾는 단계다. 이상적인 특징점은 반복 가능성(repeatability)이 높아야 한다 — 같은 3D 점이 다른 시점에서 촬영되어도 비슷한 위치에서 검출되어야 한다.
+프레임에서 추적 가능한 점을 찾는 단계다. 이상적인 특징점은 반복 가능성(repeatability)이 높아야 한다 — 같은 3D 점이 다른 시점에서 촬영되어도 각 영상에서 그 점의 투영 위치가 반복해서 검출되어야 한다.
 
 Harris corner detector는 이미지 패치의 자기상관 행렬(autocorrelation matrix, 또는 second moment matrix) $\mathbf{M}$을 기반으로 코너를 검출한다:
 
@@ -114,7 +114,7 @@ $$\mathbf{T} \leftarrow \exp(\boldsymbol{\xi}^{\wedge}) \cdot \mathbf{T}$$
 
 $$\{\mathbf{T}_i^*, \mathbf{P}_j^*\} = \underset{\{\mathbf{T}_i, \mathbf{P}_j\}}{\arg\min} \sum_{i,j} \rho\left(\left\|\mathbf{u}_{ij} - \pi(\mathbf{T}_i \cdot \mathbf{P}_j)\right\|^2_{\Sigma_{ij}}\right)$$
 
-이것이 Bundle Adjustment(BA)의 기본 형태다. "Bundle"은 각 3D 점에서 카메라들로 향하는 광선(ray)의 다발을 의미한다. BA의 정규 방정식(normal equations)은 특수한 희소 구조(Schur complement structure)를 가진다:
+이는 Bundle Adjustment(BA)의 기본 형태다. "Bundle"은 각 3D 점에서 카메라들로 향하는 광선(ray)의 다발을 의미한다. BA의 정규 방정식(normal equations)은 특수한 희소 구조(Schur complement structure)를 가진다:
 
 $$\begin{bmatrix} \mathbf{H}_{cc} & \mathbf{H}_{cp} \\ \mathbf{H}_{pc} & \mathbf{H}_{pp} \end{bmatrix} \begin{bmatrix} \delta\boldsymbol{\xi} \\ \delta\mathbf{p} \end{bmatrix} = \begin{bmatrix} \mathbf{b}_c \\ \mathbf{b}_p \end{bmatrix}$$
 
@@ -132,9 +132,9 @@ $$(\mathbf{H}_{cc} - \mathbf{H}_{cp}\mathbf{H}_{pp}^{-1}\mathbf{H}_{pc})\delta\b
 
 ORB-SLAM3는 세 개의 병렬 스레드로 구성된다:
 
-1. **Tracking Thread**: 매 프레임에서 ORB 특징점을 추출하고, 기존 맵포인트와 매칭하여 현재 포즈를 추정한다. Motion-only BA로 포즈를 정제한다.
-2. **Local Mapping Thread**: 새 키프레임이 삽입되면 새 맵포인트를 삼각측량하고, local BA를 수행한다. 중복 키프레임/맵포인트를 제거(culling)하여 맵을 컴팩트하게 유지한다.
-3. **Loop Closing & Map Merging Thread**: DBoW2로 루프 후보를 검출하고, Sim(3) (또는 SE(3)) 정합으로 검증한다. 확인되면 pose graph optimization 후 full BA를 수행한다.
+1. **Tracking Thread**: 매 프레임에서 ORB 특징점을 추출하고, 기존 맵포인트와 매칭하여 현재 포즈를 추정한다. 포즈 정제에는 Motion-only BA를 활용한다.
+2. **Local Mapping Thread**: 새 키프레임이 삽입되면 새 맵포인트를 삼각측량하고 local BA를 수행한다. 중복 키프레임과 맵포인트를 선별 제거(culling)하여 맵 크기를 적정 수준으로 유지하는 역할이다.
+3. **Loop Closing & Map Merging Thread**: DBoW2로 루프 후보를 검출한 뒤 Sim(3) (또는 SE(3)) 정합으로 기하학적 유효성을 검증한다. 루프가 확인되면 pose graph optimization과 full BA를 차례로 실행한다.
 
 **Tracking Thread 상세**
 
@@ -249,7 +249,7 @@ Photometric error의 장점은 명시적 특징점 매칭이 불필요하다는 
 
 1. **Direct**: 특징점 없이 픽셀 밝기를 직접 사용
 2. **Sparse**: 이미지 전체가 아니라, 그래디언트가 있는 영역에서 균등하게 점을 샘플링
-3. **Joint Optimization**: 포즈, 역깊이, 카메라 내부 파라미터(affine brightness parameters)를 동시 최적화
+3. **Joint Optimization**: 포즈, 역깊이, 카메라 내부 파라미터와 affine brightness parameters를 동시 최적화
 
 **완전한 Photometric Calibration**
 
@@ -337,7 +337,7 @@ def dso_track(frame, window, camera):
 
 **SVO의 세 단계**
 
-1. **Sparse Model-based Image Alignment**: 기존 3D 맵포인트를 현재 프레임에 투영하고, 각 투영점 주위의 패치에 대해 photometric error를 최소화하여 프레임 포즈를 추정한다. 이는 DSO처럼 이미지 그래디언트를 직접 사용하지만, 전체 이미지가 아닌 이미 알고 있는 맵포인트 주위만 사용하므로 매우 빠르다.
+1. **Sparse Model-based Image Alignment**: 기존 3D 맵포인트를 현재 프레임에 투영하고, 각 투영점 주위의 패치에 대해 photometric error를 최소화하여 프레임 포즈를 추정한다. 이는 DSO처럼 이미지 그래디언트를 직접 사용한다. 전체 이미지가 아닌 이미 알고 있는 맵포인트 주위만 처리하여 계산량을 줄인다.
 
 2. **Feature Alignment**: 포즈가 추정된 후, 각 맵포인트의 투영 위치를 서브픽셀 정밀도로 정제한다. 이때도 패치 기반 direct 정합을 사용한다.
 
@@ -653,11 +653,11 @@ Filter vs Optimization 논쟁은 VIO 분야에서 가장 오래된 것 중 하�
 
 **Filter 기반 (MSCKF, OpenVINS)**
 
-- 현재 상태만 유지하고, 새 측정이 올 때마다 순차적으로 업데이트
-- 과거 상태는 현재 상태의 분포(mean + covariance)에 "흡수"됨
+- 현재 유지하는 상태(일부 과거 카메라 포즈 포함)를 새 측정이 올 때마다 순차적으로 업데이트
+- 제거한 과거 상태의 정보는 유지하는 상태의 분포(mean + covariance)에 "흡수"됨
 - 계산 복잡도: 업데이트당 $O(N^2)$ (N은 상태 차원)
 - 장점: 일정한 계산 비용, 구현 간단
-- 단점: 선형화 오차 누적 (한번 선형화하면 교정 불가), 일관성(consistency) 문제
+- 단점: 선형화 오차 누적 (한 번 선형화하면 교정 불가), 일관성(consistency) 문제
 
 **Optimization 기반 (VINS-Mono, ORB-SLAM3, Basalt)**
 
@@ -715,13 +715,13 @@ $$\mathbf{P} = \mathbf{T}_{\text{anchor}} \cdot \frac{1}{\rho} [\bar{u}, \bar{v}
 
 ## 6.5 학습 기반 VO/VIO
 
-전통적 VO/VIO는 "사람이 설계한 파이프라인"에 의존한다: 특징점 검출 → 매칭 → RANSAC → BA. 학습 기반 접근은 이 파이프라인의 일부 또는 전체를 신경망으로 대체하려 한다.
+전통적 VO/VIO는 "사람이 설계한 파이프라인"에 의존한다. Feature-based 방식의 예는 특징점 검출 → 매칭 → RANSAC → BA다. 학습 기반 접근은 이 파이프라인의 일부 또는 전체를 신경망으로 대체하려 한다.
 
 ### 6.5.1 Supervised: DeepVO 계열
 
 초기 학습 기반 VO ([DeepVO, Wang et al., 2017](https://doi.org/10.1109/ICRA.2017.7989236))는 연속 이미지 쌍을 입력으로 받아 상대 포즈를 직접 예측하는 end-to-end 네트워크를 훈련했다. CNN으로 시각 특징을 추출하고, LSTM으로 시간적 의존성을 모델링한다.
 
-한계는 명백하다:
+남은 한계는 다음과 같다:
 - 학습 데이터의 환경에 과적합 (generalization 부족)
 - 기하학적 제약(에피폴라 기하 등)을 활용하지 않아 정확도가 전통 방법에 못 미침
 - 스케일 드리프트가 심함

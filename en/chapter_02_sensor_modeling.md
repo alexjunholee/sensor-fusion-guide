@@ -23,14 +23,14 @@ Here $\mathbf{K}$ is the camera intrinsic matrix:
 $$\mathbf{K} = \begin{bmatrix} f_x & 0 & c_x \\ 0 & f_y & c_y \\ 0 & 0 & 1 \end{bmatrix}$$
 
 Meaning of each parameter:
-- $f_x, f_y$: focal length. The physical focal length $f$ divided by the pixel size $(\Delta x, \Delta y)$: $f_x = f / \Delta x$, $f_y = f / \Delta y$. Typically $f_x \approx f_y$, but the two values can differ for non-square pixels.
+- $f_x, f_y$: focal length. The physical focal length $f$ divided by the pixel size $(\Delta x, \Delta y)$: $f_x = f / \Delta x$, $f_y = f / \Delta y$. For square pixels ($\Delta x = \Delta y$), $f_x = f_y$; for rectangular pixels, the two values differ.
 - $c_x, c_y$: principal point. The pixel coordinates at which the optical axis intersects the image plane. Ideally the image center, but manufacturing tolerances can shift it by several pixels.
 
 In homogeneous coordinates:
 
 $$s \begin{bmatrix} u \\ v \\ 1 \end{bmatrix} = \mathbf{K} [\mathbf{R} | \mathbf{t}] \begin{bmatrix} X_w \\ Y_w \\ Z_w \\ 1 \end{bmatrix}$$
 
-Here $[\mathbf{R} | \mathbf{t}]$ is the extrinsic parameters mapping the world frame to the camera frame, and $s = Z_c$ is the depth scale factor.
+Here $[\mathbf{R} | \mathbf{t}]$ represents the extrinsic parameters mapping the world frame to the camera frame, and $s = Z_c$ is the depth scale factor.
 
 Denoting the projection function as $\pi(\cdot)$:
 
@@ -90,13 +90,13 @@ The distorted radius $r_d$ is modeled as an odd polynomial in $\theta$:
 
 $$r_d = k_1 \theta + k_2 \theta^3 + k_3 \theta^5 + k_4 \theta^7 + k_5 \theta^9$$
 
-In a pure equidistant projection, $r_d = f \cdot \theta$, corresponding to $k_1 = f$, $k_2 = k_3 = \cdots = 0$.
+Here $r_d$ is a dimensionless normalized radius. In a pure equidistant projection, $r_d = \theta$, corresponding to $k_1 = 1$, $k_2 = k_3 = \cdots = 0$. The focal lengths in pixels are applied as $f_x$ and $f_y$ in the projection below.
 
 Projected coordinates:
 
 $$\begin{bmatrix} u \\ v \end{bmatrix} = \begin{bmatrix} f_x \cdot r_d \cdot \frac{x_n}{\sqrt{x_n^2 + y_n^2}} + c_x \\ f_y \cdot r_d \cdot \frac{y_n}{\sqrt{x_n^2 + y_n^2}} + c_y \end{bmatrix}$$
 
-Fisheye lenses offer a wide FoV that benefits perception of the surrounding environment, and they are supported by VIO systems such as [VINS-Mono](https://arxiv.org/abs/1708.03852) and Basalt. For calibration we use OCamCalib of [Scaramuzza et al. (2006)](https://rpg.ifi.uzh.ch/docs/IROS06_scaramuzza.pdf) or Kalibr.
+Fisheye lenses offer a wide FoV that benefits perception of the surrounding environment, and they are supported by VIO systems such as [VINS-Mono](https://arxiv.org/abs/1708.03852) and Basalt. For calibration, OCamCalib of [Scaramuzza et al. (2006)](https://rpg.ifi.uzh.ch/docs/IROS06_scaramuzza.pdf) or Kalibr can be used.
 
 ```python
 import numpy as np
@@ -187,10 +187,10 @@ $$\min_{\{\mathbf{T}_i\}, \{\mathbf{P}_j\}} \sum_{i,j} \rho\left(\| \mathbf{p}_{
 
 where:
 - $\mathbf{p}_{ij}$: image coordinates of landmark $j$ observed by camera $i$
-- $\mathbf{\Sigma}_{ij}$: observation noise covariance (typically $\sigma^2 \mathbf{I}_2$, $\sigma \approx 1$ pixel)
+- $\mathbf{\Sigma}_{ij}$: observation noise covariance (in an isotropic model, $\sigma^2 \mathbf{I}_2$, $\sigma \approx 1$ pixel)
 - $\rho(\cdot)$: robust kernel (Huber, Cauchy, etc.) — suppresses the influence of outliers
 
-The distribution of the reprojection error is typically modeled as Gaussian with $\sigma = 0.5$ to 2 pixels. This value depends on the precision of the feature detector; with sub-pixel corner detection it can drop to $\sigma \approx 0.5$ pixel. More recently, foundation models such as [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414) and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) estimate dense depth from a single image, and are being leveraged to extend the camera observation model from 2D reprojection errors to 3D depth observations.
+The distribution of the reprojection error is typically modeled as Gaussian with $\sigma = 0.5 \sim 2$ pixels. This value depends on the precision of the feature detector; with sub-pixel corner detection it can drop to $\sigma \approx 0.5$ pixel. More recently, foundation models such as [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414) and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) estimate dense depth from a single image, and are being leveraged to extend the camera observation model from 2D reprojection errors to 3D depth observations.
 
 ### 2.1.4 Rolling Shutter Model
 
@@ -200,7 +200,7 @@ The exposure time of row $k$ is:
 
 $$t_k = t_0 + k \cdot t_r$$
 
-where $t_0$ is the exposure time of the first row and $t_r$ is the row readout time. The total readout time across the whole image is $H \cdot t_r$ ($H$: image height), which ranges from a few to tens of milliseconds.
+where $t_0$ is the exposure time of the first row and $t_r$ is the row readout time. The exposure-start offset between the first and last rows is $(H-1) \cdot t_r$ ($H$: image height), which differs from each row's exposure duration. The total readout period is approximately $H \cdot t_r$, ranging from a few to tens of milliseconds.
 
 When a rolling-shutter image is captured while the camera moves, the following artifacts arise:
 - **Geometric distortion**: vertical lines tilt, and moving objects deform as if made of jelly.
@@ -210,11 +210,11 @@ In a rolling-shutter-aware projection model, the camera pose at the time corresp
 
 $$\mathbf{p}_i = \pi\left(\mathbf{T}(t_{v_i}) \cdot \mathbf{P}_i\right)$$
 
-where $\mathbf{T}(t_{v_i})$ is the camera pose at the time corresponding to row $v_i$ of the $i$-th feature. This pose is typically obtained by interpolation using IMU measurements:
+where $\mathbf{T}(t_{v_i})$ is the world-to-camera transform at the time corresponding to row $v_i$ of the $i$-th feature. Given the first- and last-row poses, constant-twist interpolation approximates the transform between them as follows ($H>1$):
 
-$$\mathbf{T}(t_{v_i}) = \mathbf{T}(t_0) \cdot \text{Exp}\left(\frac{v_i}{H} \cdot \text{Log}(\mathbf{T}(t_0)^{-1} \mathbf{T}(t_0 + H \cdot t_r))\right)$$
+$$\mathbf{T}(t_{v_i}) = \mathbf{T}(t_0) \cdot \text{Exp}\left(\frac{v_i}{H-1} \cdot \text{Log}(\mathbf{T}(t_0)^{-1} \mathbf{T}(t_0 + (H-1) \cdot t_r))\right)$$
 
-Here $\text{Exp}$ and $\text{Log}$ are the exponential and logarithmic maps on the $SE(3)$ Lie group.
+Here $\text{Exp}$ and $\text{Log}$ are the exponential and logarithmic maps on the $SE(3)$ Lie group. The code below instead accepts camera-to-world transforms and approximates motion with separate rotational SLERP and linear translation interpolation.
 
 Rolling-shutter correction is optionally supported in VIO systems such as [VINS-Mono](https://arxiv.org/abs/1708.03852) and [ORB-SLAM3](https://arxiv.org/abs/2007.11898), and it is especially important for combinations of high-speed motion and low-cost sensors, such as smartphone or drone-mounted cameras.
 
@@ -240,7 +240,7 @@ def rolling_shutter_project(P_w, T_start, T_end, K, H, v_row):
     Returns:
         (2,) image coordinates [u, v]
     """
-    alpha = v_row / H  # interpolation ratio in [0, 1]
+    alpha = v_row / (H - 1) if H > 1 else 0.0  # first row 0, last row 1
     
     # Rotation interpolation (SLERP)
     R_start = Rotation.from_matrix(T_start[:3, :3])
@@ -353,11 +353,11 @@ def undistort_scan(points, timestamps, T_start, T_end, t_start, t_end):
 
 **Mechanical spinning LiDAR** (Velodyne, Ouster, Hesai) provides a 360° horizontal FoV, with each scan forming a complete annular point cloud. Algorithms in the LOAM family are designed around this property — extracting edge and planar features along horizontal scan lines and estimating 6-DoF pose from omnidirectional observations.
 
-**Solid-state LiDAR** (Livox Mid-40/70, Avia, HAP, etc.) has no mechanical rotating part and uses a non-repetitive scan pattern within a restricted FoV (for example, roughly 70.4° circular for the Livox Mid-70). A characteristic feature is that coverage of the FoV grows gradually over time.
+**Limited-FoV Livox LiDARs** (Mid-40/70, Avia, HAP, etc.) offer non-repetitive scanning modes. The Mid-40 steers its beam with internal rotating prisms, so it is not free of mechanical rotating parts. Avia also supports repetitive scanning. In non-repetitive mode, coverage within the restricted FoV (for example, roughly 70.4° circular for the Mid-70) grows over time.
 
-The impact of this difference on fusion algorithms:
+The table below compares spinning LiDAR with limited-FoV non-repetitive scanning modes:
 
-| Property | Spinning LiDAR | Solid-State LiDAR |
+| Property | Spinning LiDAR | Limited-FoV Non-repetitive Mode |
 |------|-------------|-------------------|
 | FoV | 360° horizontal | Limited (40° to 120°) |
 | Scan pattern | Repetitive (horizontal lines) | Non-repetitive (rosette, Lissajous, etc.) |
@@ -384,7 +384,7 @@ Meaning of each term:
 - $\mathbf{b}_g$: **bias** — a nearly constant offset that varies slowly in time
 - $\mathbf{n}_g$: **measurement noise** — additive white Gaussian noise (AWGN)
 
-**Bias dynamics.** The bias is not a constant but drifts slowly over time. We model it as a **random walk**:
+**Bias dynamics.** The bias varies slowly over time and is modeled as a **random walk**:
 
 $$\dot{\mathbf{b}}_g = \mathbf{n}_{bg}$$
 
@@ -411,7 +411,7 @@ Meaning of each term:
 - $\mathbf{b}_a$: accelerometer bias
 - $\mathbf{n}_a \sim \mathcal{N}(\mathbf{0}, \sigma_a^2 \mathbf{I})$: measurement noise
 
-**Role of gravity.** The fact that the accelerometer "feels" gravity is of great importance in IMU-based fusion. Even at rest, the accelerometer measures $[0, 0, g]^\top$ (when z is up). From this gravity observation we can estimate roll and pitch. Yaw, however, is a rotation about the gravity vector and is therefore unobservable — this is why VIO/LIO systems require additional observations (e.g., motion of visual features) to estimate yaw during initialization.
+**Role of gravity.** The fact that the accelerometer "feels" gravity is of great importance in IMU-based fusion. Even at rest, the accelerometer measures $[0, 0, g]^\top$ (when z is up). From this gravity observation we can estimate roll and pitch. Yaw, however, is a rotation about the gravity vector and is therefore unobservable from gravity. VIO/LIO sets an arbitrary initial yaw and estimates relative rotations. Global yaw requires observations tied to an external heading reference, such as a magnetometer or a known map.
 
 **Bias dynamics.** As with the gyroscope, we model the bias as a random walk:
 
@@ -445,7 +445,7 @@ On a log-log plot, the slope of the Allan deviation $\sigma(\tau)$ identifies th
 
 1. **Angular random walk (ARW)**: units $°/\sqrt{\text{hr}}$ or $\text{rad/s}/\sqrt{\text{Hz}}$. Read the value at $\tau = 1\,\text{s}$ on the Allan deviation plot, or read from the slope-$-1/2$ region. This corresponds to $\sigma_g$.
 2. **Velocity random walk (VRW)**: units $\text{m/s}/\sqrt{\text{hr}}$ or $\text{m/s}^2/\sqrt{\text{Hz}}$. The white-noise density of the accelerometer. This corresponds to $\sigma_a$.
-3. **In-run bias stability**: the minimum of the Allan deviation plot. The theoretical lower bound on the bias estimate that the system can reach.
+3. **In-run bias stability**: the minimum of the Allan deviation plot. It characterizes the stability of time-averaged stationary sensor output, rather than a theoretical lower bound on the bias-estimation error of a fusion system.
 4. **Rate random walk**: the rate at which the bias changes over time. This corresponds to $\sigma_{bg}, \sigma_{ba}$.
 
 ```python
@@ -529,7 +529,7 @@ def extract_imu_params(taus, adevs):
 
 ### 2.3.4 Strapdown Navigation Equation
 
-The equations that integrate IMU measurements into pose (position, velocity, attitude) are called the strapdown navigation equations. "Strapdown" refers to the sensor being rigidly fixed (strapped down) to the platform, so that coordinate transformations are carried out in software rather than by a mechanical gimbal.
+The equations that integrate IMU measurements into a navigation state (position, velocity, attitude) are called the strapdown navigation equations. "Strapdown" refers to the sensor being rigidly fixed (strapped down) to the platform, so that coordinate transformations are carried out in software rather than by a mechanical gimbal.
 
 Continuous-time dynamics of the state $[\mathbf{R}, \mathbf{v}, \mathbf{p}]$ in the world (or navigation) frame:
 
@@ -658,11 +658,11 @@ def imu_strapdown(gyro_data, accel_data, dt, R0, v0, p0, bg, ba, gravity):
 - After 10 s: $\frac{1}{2} \times 0.01 \times 100 = 0.5\,\text{m}$
 - After 60 s: $\frac{1}{2} \times 0.01 \times 3600 = 18\,\text{m}$
 
-This example shows that position error in an unaided, low-cost MEMS inertial estimate can quickly exceed a mission budget even over a short interval. The useful duration depends on IMU performance, thermal environment, motion, initialization, and the mission's error budget. Higher-performance INS units can operate unaided for longer, but drift still accumulates. VIO/LIO systems **include** the biases $\mathbf{b}_g, \mathbf{b}_a$ **in the state vector** and update them from observations by other sensors. Research on deep-learning-based inertial odometry has also been active. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659) strengthens the observability of IMU features and reports an accuracy improvement of more than 50 % over prior learning-based inertial odometry in drone settings.
+This example shows that position error in an unaided, low-cost MEMS inertial estimate can quickly exceed a mission budget even over a short interval. The useful duration depends on IMU performance, thermal environment, motion, initialization, and the mission's error budget. Higher-performance INS units can operate unaided for longer, but drift still accumulates. VIO/LIO systems **include** the biases $\mathbf{b}_g, \mathbf{b}_a$ **in the state vector** and update them from observations by other sensors. Research on deep-learning-based inertial odometry has also been active. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659) strengthens the observability of IMU features and reports an accuracy improvement of more than 50% over prior learning-based inertial odometry in drone settings.
 
 ### 2.3.5 IMU Grade Classification
 
-Labels such as navigation grade, tactical grade, industrial, and consumer do not have uniform boundaries across vendors or fields. MEMS also names a fabrication technology rather than one exclusive performance grade. Select a device from its named specifications and tests on the target platform instead of relying on a grade label or fixed price table.
+Labels such as navigation grade, tactical grade, industrial, and consumer do not have uniform boundaries across vendors or fields. MEMS denotes a fabrication technology, not a single performance grade. Select a device from its named specifications and tests on the target platform instead of relying on a grade label or fixed price table.
 
 | Selection criterion | What to inspect | Validation evidence | Design impact |
 |----------|------------|----------|----------|
@@ -706,7 +706,7 @@ $$\Phi^s = r^s + c \cdot \delta t_r - c \cdot \delta t^s + \lambda N^s - I^s + T
 
 where:
 - $\lambda$: carrier wavelength
-- $N^s$: **integer ambiguity** — the integer number of full wavelengths between receiver and satellite. RTK/PPP must resolve this unknown integer accurately.
+- $N^s$: **integer ambiguity** — the integer number of full wavelengths between receiver and satellite. Fixed RTK and PPP-AR resolve integer ambiguities, while conventional PPP estimates real-valued ambiguities.
 - $\epsilon_\Phi \approx 1\text{–}5\,\text{mm}$: carrier-phase noise (about 1/100 of the pseudorange noise)
 
 The ionospheric delay enters with the opposite sign from the pseudorange (group velocity versus phase velocity). Dual-frequency combinations can estimate or mitigate the first-order ionospheric term, while higher-order terms and other error sources remain.
@@ -737,7 +737,7 @@ PPP is a technique that achieves centimeter-level positioning with a single rece
 **Using GNSS in sensor fusion.** Global position observations from GNSS can bound or correct long-term VIO/LIO drift. Drift and bias can remain during outages or under multipath, frame-alignment, lever-arm, and time-offset errors. [LIO-SAM (Shan et al., 2020)](https://arxiv.org/abs/2007.00258) is a representative system that can add qualified GNSS measurements to its factor graph. Three checks apply when incorporating GNSS observations into fusion:
 
 1. **Coordinate frame transformation**: GNSS is output in WGS84 (latitude, longitude, ellipsoidal height), while robotics systems use a local frame such as ENU (East-North-Up) or NED (North-East-Down). A transformation is required.
-2. **Use of covariance**: The DOP (Dilution of Precision) values or position covariances output by the GNSS receiver should be used as the observation covariance in the fusion system.
+2. **Use of covariance**: Transform the receiver's position covariance into the observation frame for use in fusion. DOP (Dilution of Precision) is a dimensionless geometry measure, so it cannot be inserted directly as a covariance; use it with a measurement-error scale to estimate position uncertainty.
 3. **Outlier handling**: In multipath environments, GNSS positioning can have errors of tens of meters, so robust kernels or $\chi^2$ tests must be used to detect and reject anomalous observations.
 
 ```python
@@ -845,7 +845,7 @@ where $f_d$ is the Doppler frequency and $\lambda$ is the carrier wavelength. Fo
 
 Traditional automotive radar provides three-dimensional information — range, velocity, and azimuth — with very poor vertical resolution. **4D imaging radar** is a next-generation radar that provides four dimensions — range, Doppler, azimuth, and **elevation** — at high resolution.
 
-4D imaging radar implements a large virtual antenna array with MIMO (Multiple Input Multiple Output) technology. For example, 12 transmit antennas × 16 receive antennas = 192 virtual antennas, which achieves sufficient angular resolution both horizontally and vertically.
+4D imaging radar implements a large virtual antenna array with MIMO (Multiple Input Multiple Output) technology. For example, 12 transmit antennas × 16 receive antennas = 192 virtual channels can be formed. Horizontal and vertical angular resolution depend on the aperture and layout of the virtual array in each direction.
 
 **4D Radar vs LiDAR:**
 
@@ -856,7 +856,7 @@ Traditional automotive radar provides three-dimensional information — range, v
 | Velocity measurement | Direct (Doppler) | Not available (requires two-frame differencing) |
 | Angular resolution | $\sim 1°$ | $\sim 0.1°$ |
 | Cost | Low to medium | Medium to high |
-| Static-object detection | Limited (Doppler = 0) | Excellent |
+| Static-object detection | Possible (depends on detection and clutter-removal settings) | Excellent |
 
 **Using radar in sensor fusion.** Radar's Doppler measurement provides unique value in sensor fusion:
 
@@ -905,7 +905,7 @@ def estimate_ego_velocity(bearings, doppler_velocities):
     return v_ego
 ```
 
-Radar measures velocity directly, information that other sensors cannot easily provide. This property is increasing its use in the multi-sensor fusion architectures covered in Ch.8.
+Radar measures velocity directly, information that other sensors cannot easily provide. This property is driving increased use of radar in the multi-sensor fusion architectures covered in Ch.8.
 
 ---
 
@@ -935,7 +935,7 @@ $$s = \frac{v_{\text{wheel}} - v_{\text{actual}}}{v_{\text{actual}}}$$
 
 Under heavy slip, the reliability of wheel odometry drops sharply. In sensor fusion we handle this with an **adaptive observation covariance** — when slip is detected, the uncertainty of wheel odometry is enlarged so that other sensors dominate.
 
-**Role in sensor fusion.** Wheel odometry is used in VIO/LIO systems as an additional velocity/position observation. Its short-term accuracy is particularly high on straight-line motion, so it compensates for IMU drift in environments with few visual features (tunnels, long straight roads). There have been works that extend VINS-Mono by adding a wheel-odometry factor.
+**Role in sensor fusion.** Wheel odometry is used in VIO/LIO systems as an additional velocity/position observation. Its short-term accuracy is particularly high on straight-line motion, so it compensates for IMU drift in environments with few visual features (tunnels, long straight roads). Studies have extended VINS-Mono by adding a wheel-odometry factor.
 
 ### 2.6.2 Barometer
 
@@ -957,7 +957,7 @@ Simplified approximation (low altitude):
 
 $$\Delta h \approx -\frac{\Delta P}{\rho g} \approx -\frac{\Delta P}{12.0}\,[\text{m}], \quad (\Delta P\text{ in Pa})$$
 
-Near sea level, a pressure change of about $8.5\,\text{Pa}$ corresponds to an altitude change of $1\,\text{m}$.
+Near sea level, a pressure change of about $12.0\,\text{Pa}$ corresponds to an altitude change of $1\,\text{m}$.
 
 **Noise characteristics:**
 - Short-term precision: $\pm 0.1\text{–}0.5\,\text{m}$ (excellent)
@@ -1067,4 +1067,4 @@ The table summarizes each sensor's observation model and main characteristics.
 | Magnetometer | Magnetic field $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | Hard/soft iron | Calibration residual + magnetic-interference test at the operating site |
 | UWB | Range $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | Per-anchor LOS/NLOS range residuals |
 
-Accurately understanding each sensor's observation model is the first step of sensor fusion. Using sensors together requires **calibration**, the process of determining the geometric and temporal relationships between them. No matter how accurate the observation models, fusion performance degrades substantially if the relative sensor positions and time synchronization are inaccurate.
+Even with accurate observation models, fusion performance breaks down when the relative sensor positions or time synchronization are wrong. Using sensors together requires **calibration**, which determines their geometric and temporal relationships.

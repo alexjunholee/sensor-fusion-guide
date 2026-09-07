@@ -11,7 +11,7 @@ The first decision in designing a multi-sensor fusion system is **at what level 
 
 ### 8.1.1 Loosely Coupled
 
-**Intuition**: Each sensor is viewed as an independent "expert." Each expert draws its own conclusion (pose, velocity, etc.) from its own data, and a higher-level stage then synthesizes these conclusions.
+Each sensor is viewed as an independent "expert." Each expert produces an independent estimate (pose, velocity, etc.) from its own data, and a higher-level stage then combines the results.
 
 Concretely, the LiDAR odometry module independently estimates $\mathbf{T}_{L}$ from LiDAR scans and the Visual odometry module independently estimates $\mathbf{T}_{V}$ from images, and a higher-level fusion module combines these two estimates.
 
@@ -27,12 +27,12 @@ Here $\mathbf{P}_{L}$ and $\mathbf{P}_{V}$ are the covariances reported by each 
 - If one sensor fails, the others continue to operate.
 
 **Disadvantages**:
-- Because each subsystem combines its output after information has already been lost, the full benefit of complementary interaction between sensors cannot be exploited. For example, LiDAR's precise geometric information can resolve a camera's scale ambiguity, but in a loosely coupled design this interaction is limited.
+- Because fusion occurs only after each subsystem has already compressed its measurements into an output estimate, the full benefit of complementary interaction between sensors cannot be exploited. For example, LiDAR's precise geometric information can resolve a camera's scale ambiguity, but in a loosely coupled design this interaction is limited.
 - The consistency of the covariances reported by each subsystem is not guaranteed. If a subsystem reports an overly optimistic covariance, the fusion result is distorted.
 
 ### 8.1.2 Tightly Coupled
 
-**Intuition**: All sensors' **raw measurements** are fed directly into a single estimator. Instead of consulting "experts," a single "chief analyst" inspects all raw data directly.
+All sensors' **raw measurements** are fed directly into a single estimator.
 
 From a factor graph perspective, each sensor's raw measurements are inserted as independent factors:
 
@@ -51,13 +51,13 @@ Here $\mathbf{r}^{\text{IMU}}_i$ is the IMU preintegration residual, $\mathbf{r}
 - Anomalous data from one sensor can contaminate the entire estimate (outlier handling is essential).
 - Achieving real-time performance is difficult.
 
-**Representative systems**: [LIO-SAM](https://arxiv.org/abs/2007.00258) (LiDAR+IMU+GPS), VINS-Mono (Camera+IMU), [R3LIVE](https://arxiv.org/abs/2109.07982) (Camera+LiDAR+IMU).
+**Representative systems**: [LIO-SAM (Shan et al. 2020)](https://arxiv.org/abs/2007.00258) (LiDAR+IMU+GPS), VINS-Mono (Camera+IMU), [R3LIVE (Lin et al. 2022)](https://arxiv.org/abs/2109.07982) (Camera+LiDAR+IMU).
 
 ### 8.1.3 Ultra-Tightly Coupled (Signal-Level Coupling)
 
-**Intuition**: Not the sensor's measurements but the **signals themselves** are combined. This is the most extreme form of integration.
+Not the sensor's measurements but the **signals themselves** are combined. This is the most extreme form of integration.
 
-A representative example is GNSS-INS ultra-tight coupling. A typical GNSS receiver extracts pseudoranges from satellite signals and then combines them with the INS, but in the ultra-tight approach the position and velocity estimated by the INS directly aid the GNSS receiver's code/carrier tracking loops. Doing so lets the receiver keep tracking GNSS signals longer even in weak-signal environments (urban canyons, right after entering indoors).
+A representative example is GNSS-INS ultra-tight coupling. A typical tightly coupled GNSS-INS system combines receiver-derived pseudoranges with the inertial navigation solution, but in the ultra-tight approach the position and velocity estimated by the INS directly aid the GNSS receiver's code/carrier tracking loops. Doing so lets the receiver keep tracking GNSS signals longer even in weak-signal environments (urban canyons, right after entering indoors).
 
 $$
 \text{NCO frequency} = f_{\text{nominal}} + \Delta f_{\text{INS-aided}}
@@ -178,7 +178,7 @@ R3LIVE's shared state can continue receiving valid updates when one modality tem
 
 [LVI-SAM](https://arxiv.org/abs/2104.10831) (Shan et al., 2021) is an extension of LIO-SAM that couples a Visual-Inertial subsystem and a LiDAR-Inertial subsystem **bidirectionally**.
 
-**The essence of bidirectional coupling**:
+**Bidirectional coupling**:
 
 - **VIS → LIS direction**: The pose estimated by the Visual-Inertial subsystem is used as the initial guess for LiDAR scan matching. Especially when the LiDAR alone yields an inaccurate initial guess (high-speed rotation, featureless environments), VIS provides the initial guess and helps LiDAR registration converge.
 
@@ -240,7 +240,7 @@ FAST-LIVO2 uses a single voxel map based on a hash table plus an octree. The LiD
 
 **Design 3 — Affine warping using LiDAR normals**:
 
-When comparing image patches in a camera direct method, affine warping that accounts for surface tilt improves accuracy. FAST-LIVO2 leverages the planar normal vectors extracted from the LiDAR to perform accurate affine warping without any separate normal estimation. This is a concrete example of LiDAR-camera complementarity.
+When comparing image patches in a camera direct method, affine warping that accounts for surface tilt improves accuracy. FAST-LIVO2 leverages the planar normal vectors extracted from the LiDAR to perform accurate affine warping without any separate normal estimation. This illustrates LiDAR-camera complementarity.
 
 **Design 4 — Real-time exposure compensation**:
 
@@ -393,7 +393,7 @@ In real robot operation, GNSS signals are repeatedly lost and recovered (tunnels
 
 Traditionally, automotive radar was considered unsuitable for SLAM/odometry because of its low resolution. However, the emergence of **4D imaging radar** is changing the situation.
 
-**What is 4D radar**: Whereas conventional automotive radars measured three quantities — range, Doppler velocity, and azimuth — 4D imaging radar adds **elevation** to produce a 3D point cloud. Its resolution is lower than LiDAR (hundreds to thousands of points vs. hundreds of thousands), but it provides three additional properties.
+**What is 4D radar**: Whereas conventional automotive radars measured three quantities — range, Doppler velocity, and azimuth — 4D imaging radar adds **elevation** to produce a 3D point cloud. Its point count is lower than that of LiDAR (hundreds to thousands of points vs. hundreds of thousands).
 
 Radar provides the following properties:
 
@@ -405,7 +405,7 @@ Radar provides the following properties:
 
 ### 8.4.2 Radar Odometry
 
-Odometry using 4D radar directly uses radar Doppler measurements for ego-motion estimation.
+The number of papers on odometry using 4D radar has grown rapidly since 2022. These methods directly use radar Doppler measurements for ego-motion estimation.
 
 Each measurement point of an FMCW radar provides $(r, \theta, \phi, v_d)$ — range, azimuth, elevation, Doppler velocity. Given the robot's linear velocity $\mathbf{v}$ and angular velocity $\boldsymbol{\omega}$, the Doppler velocity observed at a point in direction $\mathbf{d}_i = [\cos\phi_i \cos\theta_i, \cos\phi_i \sin\theta_i, \sin\phi_i]^T$ is:
 
@@ -563,7 +563,7 @@ class DistributedPoseGraphNode:
 
 ## 8.6 System Design in Practice
 
-Beyond theory and algorithms, we address the practical problems encountered when designing and deploying a real multi-sensor fusion system.
+Designing and deploying a real multi-sensor fusion system also introduces problems beyond theory and algorithms.
 
 ### 8.6.1 Sensor Suite Selection Guide
 
@@ -648,7 +648,7 @@ def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_off
 
 ### 8.6.3 Failure Modes and Degradation Handling
 
-In real systems, sensors inevitably fail. A robust system must achieve **graceful degradation** — that is, it must continue to operate with the remaining sensors, even at reduced performance, when one sensor fails.
+In real systems, sensors inevitably fail. A robust system must achieve **graceful degradation**: when one sensor fails, it must continue operating with the remaining sensors, even at reduced performance.
 
 **Failure modes and responses**:
 
@@ -727,12 +727,12 @@ def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality,
     return lidar_weight, camera_weight
 ```
 
-### 8.6.5 Recent Systems and Research (2024-2025)
+### 8.6.4 Recent Systems and Research (2024-2025)
 
 - **[Gaussian-LIC (Lang et al., ICRA 2025)](https://arxiv.org/abs/2404.06926)**: A system that integrates 3D Gaussian Splatting into tightly-coupled LiDAR-Inertial-Camera SLAM. By fusing the precise geometric information from the LiDAR with the camera's texture using a Gaussian representation, it achieves photo-realistic scene reconstruction concurrently with SLAM.
 - **[Snail-Radar (Huai et al., IJRR 2025)](https://arxiv.org/abs/2407.11705)**: A large-scale diversity benchmark for evaluating 4D radar SLAM. It systematically compares 4D radar-based odometry/SLAM algorithms across diverse environments (indoor/outdoor, urban/suburban) and platforms.
 
-### 8.6.4 System Design Checklist
+### 8.6.5 System Design Checklist
 
 Items that must always be checked when designing a real multi-sensor fusion system:
 
@@ -763,10 +763,10 @@ Items that must always be checked when designing a real multi-sensor fusion syst
 
 ## Chapter 8 Summary
 
-Multi-sensor fusion architectures are broadly classified as loosely/tightly/ultra-tightly coupled, and in modern robotics **tightly coupled** is the mainstream choice. Triple Camera+LiDAR+IMU fusion is implemented in systems such as R3LIVE, LVI-SAM, and FAST-LIVO2, which use a dual subsystem, factor graph, and sequential update, respectively.
+Multi-sensor fusion architectures are broadly classified as loosely/tightly/ultra-tightly coupled, and in modern robotics **tightly coupled** is the mainstream choice. Three-sensor fusion with camera, LiDAR, and IMU is implemented in systems such as R3LIVE, LVI-SAM, and FAST-LIVO2, which use a dual subsystem, factor graph, and sequential update, respectively.
 
 GNSS integration constrains drift with a global-coordinate observation, while 4D radar can add weather tolerance and radial-velocity measurements. Multi-robot systems such as Kimera-Multi and Swarm-SLAM combine distributed estimation with cross-robot place recognition under communication constraints.
 
 In practical system design, sensor selection, time synchronization, and failure-mode handling matter as much as the algorithms. Engineering decisions in these areas affect deployment results.
 
-The odometry/fusion systems covered in Ch.6-8 are highly accurate locally, but drift accumulates over long-duration operation. Correcting that drift requires the ability to recognize previously visited places: **Place Recognition**.
+The odometry/fusion systems covered in Ch.6-8 are highly accurate locally, but drift accumulates over long-duration operation. Correcting that drift through loop closure requires the ability to recognize previously visited places: **Place Recognition**.

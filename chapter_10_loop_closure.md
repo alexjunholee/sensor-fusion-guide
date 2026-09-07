@@ -1,8 +1,8 @@
 # Ch.10 — Loop Closure & Global Optimization
 
-Ch.9에서 Place Recognition — 과거 방문 장소의 인식 — 을 보았다. 그 인식 결과를 SLAM 시스템에 넣어야 누적 드리프트가 실제로 줄어든다.
+Ch.9에서 Place Recognition—과거 방문 장소의 인식—을 보았다. 그 인식 결과를 SLAM 시스템에 넣어야 누적 드리프트가 실제로 줄어든다.
 
-SLAM 시스템에서 odometry는 필연적으로 드리프트(drift)를 누적한다. 아무리 정밀한 센서를 쓰더라도, 상대 pose 추정의 작은 오차들이 시간에 따라 쌓여 전역 일관성을 무너뜨린다. Loop closure는 "과거에 방문했던 장소를 재방문했음"을 인식하고, 그 정보를 활용하여 누적된 드리프트를 보정하는 메커니즘이다.
+SLAM 시스템에서 odometry는 필연적으로 드리프트(drift)를 누적한다. 아무리 정밀한 센서를 쓰더라도, 상대 pose 추정의 작은 오차들이 시간에 따라 쌓여 전역 일관성을 무너뜨린다. Loop closure는 이전에 거쳐 갔던 지점으로의 재방문을 식별하여, 그 기하학적 구속조건으로 누적 드리프트를 상쇄하는 핵심 메커니즘이다.
 
 Loop closure 파이프라인은 detection → verification → correction으로 이어지고, 보정의 중심에는 pose graph optimization이 있다. 같은 틀은 global relocalization과 multi-session SLAM까지 확장된다.
 
@@ -10,7 +10,7 @@ Loop closure 파이프라인은 detection → verification → correction으로 
 
 ## 10.1 Loop Closure Pipeline
 
-Loop closure는 Detection(후보 탐지), Verification(기하학적 검증), Correction(그래프 보정), 세 단계로 이어진다. 어느 하나라도 실패하면 전체 시스템의 일관성이 깨진다.
+Loop closure는 Detection(후보 탐지), Verification(기하학적 검증), Correction(그래프 보정)의 세 단계로 이어진다. 후보를 놓치면 보정 기회를 잃고, 잘못된 루프를 받아들이면 전체 시스템의 일관성이 깨질 수 있다.
 
 ### 10.1.1 Detection: 후보 탐지
 
@@ -193,7 +193,7 @@ def sampson_error(E, pts1, pts2):
 
 ### 10.1.3 False Positive의 위험과 방지
 
-False positive loop closure가 왜 그토록 위험한지 구체적으로 보자.
+False positive loop closure의 위험은 복도 예시로 확인할 수 있다.
 
 로봇이 두 개의 비슷하게 생긴 복도를 지나간다고 하자. 복도 A의 키프레임 $i$와 복도 B의 키프레임 $j$ 사이에 잘못된 loop closure가 발생하면, pose graph optimizer는 이 두 pose를 가깝게 끌어당긴다. 두 복도 사이의 모든 pose가 왜곡되어, 맵 전체가 접히거나 뒤틀린다.
 
@@ -232,7 +232,7 @@ Pose graph는 그래프 $\mathcal{G} = (\mathcal{V}, \mathcal{E})$로 표현된�
 
 각 에지 $(i, j) \in \mathcal{E}$는 측정된 상대 변환 $\tilde{\mathbf{T}}_{ij}$와 정보 행렬(information matrix) $\boldsymbol{\Omega}_{ij}$를 갖는다.
 
-**SE(3)에서의 오차 정의**: pose graph의 오차는 유클리드 공간이 아니라 Lie group SE(3) 위에서 정의한다.
+**SE(3)에서의 오차 정의**: pose graph의 오차는 평탄한 유클리드 벡터 공간 대신 Lie group SE(3) 매니폴드 위에서 엄밀히 정의한다.
 
 $$\mathbf{e}_{ij} = \text{Log}(\tilde{\mathbf{T}}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j) \in \mathbb{R}^6$$
 
@@ -355,7 +355,7 @@ def pose_graph_cost(poses, edges, measurements, information_matrices):
 
 실제 SLAM 시스템에서는 이상치(outlier) 측정이 불가피하다. 잘못된 loop closure, 센서 오류, 동적 객체가 원인이다. 표준 least squares 비용 함수 $\rho(x) = x^2$는 이상치에 극도로 민감하다 — 큰 오차가 비용을 지배하여 전체 해를 왜곡한다.
 
-**Robust kernel** (M-estimator)은 큰 잔차의 영향을 제한하여 이상치에 대한 민감도를 줄인다.
+**Robust kernel**(M-estimator)은 큰 잔차의 영향을 제한하여 이상치에 대한 민감도를 줄인다.
 
 | Kernel | $\rho(s)$ ($s = e^2$) | 특성 |
 |--------|----------------------|------|
@@ -374,7 +374,7 @@ $$w_i = \rho'(s_i), \quad s_i = \mathbf{e}_i^\top \boldsymbol{\Omega}_i \mathbf{
 
 여기서 $\rho'$은 위 테이블에 정의된 $\rho(s)$의 $s$에 대한 도함수이다. 이상치 에지는 작은 가중치를 받아 그 영향이 자동으로 줄어든다.
 
-**[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel (2012)은 각 loop closure factor에 이진 스위치 변수 $s_{ij} \in [0, 1]$을 도입하여, optimizer가 일관성이 없는 loop closure를 비활성화($s_{ij} \to 0$)할 수 있게 했다.
+**[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel (2012)은 각 loop closure factor에 연속 스위치 변수 $s_{ij} \in [0, 1]$을 도입하여, optimizer가 일관성이 없는 loop closure를 비활성화($s_{ij} \to 0$)할 수 있게 했다.
 
 $$\rho_{\text{switch}}(\mathbf{e}_{ij}, s_{ij}) = s_{ij}^2 \mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij} + \lambda (1 - s_{ij})^2$$
 
@@ -426,7 +426,7 @@ def robust_pose_graph_cost(poses, edges, measurements, info_matrices,
 
 **Bayes tree**: iSAM2는 이 자료구조를 사용한다. Factor graph를 variable elimination하면 clique tree가 되는데, Bayes tree는 이 clique tree에 방향성을 부여한 것이다.
 
-Factor graph의 MAP 추정은 다음과 같이 분해된다.
+Factor graph에서 MAP 추정에 사용하는 사후분포는 다음과 같이 분해된다.
 
 $$p(\mathbf{x} | \mathbf{z}) \propto \prod_k f_k(\mathbf{x}_k)$$
 
@@ -448,7 +448,7 @@ $$p(\mathbf{x} | \mathbf{z}) = \prod_i p(x_i | \text{Sep}(x_i))$$
 
 **변수 재정렬(variable reordering)**: 새 변수 추가 시 전체 elimination order를 재계산하지 않고, 영향받는 부분만 incremental하게 재정렬한다.
 
-GTSAM 라이브러리는 iSAM2를 제공하며 [LIO-SAM](https://arxiv.org/abs/2007.00258)이 이를 백엔드에 사용한다. ORB-SLAM3는 iSAM2가 아니라 수정된 g2o로 비선형 최적화를 수행한다. iSAM2는 새 factor의 영향을 받는 Bayes-tree 부분을 갱신해 매번 전체 batch 문제를 다시 푸는 비용을 줄인다.
+GTSAM 라이브러리는 iSAM2를 제공하며 [LIO-SAM](https://arxiv.org/abs/2007.00258)이 이를 백엔드에 사용한다. 한편 ORB-SLAM3의 경우 자체 커스텀 g2o 엔진을 기반으로 비선형 최적화를 수행한다. iSAM2는 새 factor의 영향을 받는 Bayes-tree 부분을 갱신해 매번 전체 batch 문제를 다시 푸는 비용을 줄인다.
 
 ```python
 class SimpleIncrementalOptimizer:
@@ -522,7 +522,7 @@ class SimpleIncrementalOptimizer:
 
 ## 10.3 Global Relocalization
 
-Global relocalization은 로봇이 사전에 구축된 맵(prior map) 위에서 자신의 위치를 찾는 문제다. loop closure가 "이전에 내가 방문했던 곳"을 인식한다면, relocalization은 "다른 사람이 만든 맵에서 나는 어디인가"를 묻는다.
+Global relocalization은 로봇이 사전에 구축된 맵(prior map) 위에서 자신의 위치를 찾는 문제다. loop closure가 "이전에 내가 방문했던 곳"을 인식한다면, relocalization은 "사전에 구축된 맵에서 나는 어디인가"를 묻는다.
 
 ### 10.3.1 Map-Based Localization
 
@@ -540,15 +540,15 @@ ORB-SLAM3의 relocalization은 DBoW2로 후보 키프레임을 검색하고, ORB
 
 - **맵과 환경의 불일치**: 시간이 지나면 건물이 바뀌고, 나뭇잎이 자란다. Prior map과 현재 관측 사이의 차이를 처리해야 한다.
 - **Cross-modal matching**: HD map이 LiDAR로 만들어졌는데 현재 센서는 카메라뿐일 수 있다. 이종 센서 간 정합이 필요하다.
-- **Initial pose 없음**: 로봇이 맵의 어디서 시작하는지 모를 때, 전체 맵에 대해 place recognition을 수행해야 한다.
+- **Initial pose 없음**: 로봇이 맵의 어디서 시작하는지 모를 때, 전체 맵에 대한 place recognition으로 시작 위치를 찾을 수 있다.
 
 ### 10.3.3 Monte Carlo Localization (MCL)
 
 MCL은 particle filter 기반의 global localization 방법이다. 로봇의 가능한 pose를 particle들로 표현하고, 센서 관측에 따라 particle 가중치를 갱신한다.
 
-MCL은 네 단계로 반복된다.
+MCL은 초기화 뒤 Prediction·Update·Resampling의 세 단계를 반복한다.
 
-1. **초기화**: 맵 전체에 particle을 균일하게 분포시킨다 (global uncertainty).
+1. **초기화**: 맵 전체에 particle을 균일하게 분포시킨다(global uncertainty).
 2. **Prediction**: 로봇 모션 모델에 따라 particle들을 이동시킨다:
 $$x_t^{[k]} \sim p(x_t | u_t, x_{t-1}^{[k]})$$
 3. **Update**: 현재 센서 관측과 맵에서의 예상 관측을 비교하여 각 particle의 가중치를 계산한다:
@@ -863,11 +863,11 @@ class MultiMapAtlas:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$에 대해서만 정보를 교환한다. ADMM (Alternating Direction Method of Multipliers)이나 Gauss-Seidel iteration으로 분산적으로 수렴한다.
+각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$에 대해서만 정보를 교환한다. ADMM(Alternating Direction Method of Multipliers)이나 Gauss-Seidel iteration으로 분산적으로 수렴한다.
 
 ---
 
-## 10.5 최근 연구 (2024-2025)
+## 10.5 최근 연구
 
 **[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)**: iSAM2에 [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605)를 통합한 incremental robust backend다. 저자들은 논문의 합성·실험 설정에서 90%를 넘는 outlier 비율과 offline baseline 비교 결과를 보고한다. 이 수치는 outlier 구조와 초기값이 다른 문제의 보장이 아니다.
 

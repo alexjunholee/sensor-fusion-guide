@@ -8,7 +8,7 @@
 
 ## 2.1 카메라 관측 모델
 
-카메라는 3D 세계의 점을 2D 이미지 평면에 투영하는 센서이다. 이 투영 과정을 수학으로 나타낸 것이 카메라 관측 모델이다.
+카메라는 3D 세계의 점을 2D 이미지 평면에 투영하는 센서이다. 카메라 관측 모델은 이 투영 과정을 수학으로 나타낸다.
 
 ### 2.1.1 핀홀 카메라 모델 (Pinhole Camera Model)
 
@@ -44,11 +44,11 @@ $$\frac{\partial \pi}{\partial \mathbf{P}_c} = \begin{bmatrix} \frac{f_x}{Z_c} &
 
 ### 2.1.2 렌즈 왜곡 모델 (Lens Distortion Model)
 
-실제 카메라의 렌즈는 핀홀 모델의 이상적 투영에서 벗어나는 왜곡(distortion)을 도입한다. 왜곡을 무시하면 재투영 오차(reprojection error)가 수 픽셀에서 수십 픽셀까지 증가하므로, 정밀한 센서 퓨전을 위해서는 반드시 보정해야 한다.
+실제 카메라의 렌즈는 핀홀 모델의 이상적 투영에서 벗어나는 왜곡(distortion)을 일으킨다. 왜곡을 무시하면 재투영 오차(reprojection error)가 수 픽셀에서 수십 픽셀까지 증가하므로, 정밀한 센서 퓨전을 위해서는 반드시 보정해야 한다.
 
 #### Radial-Tangential 왜곡 (Brown-Conrady 모델)
 
-OpenCV가 지원하는 대표적인 왜곡 모델이며, pinhole camera를 쓰는 SLAM·VIO에서 흔히 선택된다. Wide-FoV lens에는 fisheye나 omnidirectional model이 더 적합할 수 있다.
+OpenCV에서 기본 지원하는 왜곡 모델로, pinhole camera 기반 SLAM·VIO 파이프라인에서 널리 활용된다. Wide-FoV lens에는 fisheye나 omnidirectional model이 더 적합할 수 있다.
 
 정규화된 이미지 좌표 $\mathbf{p}_n = [x_n, y_n]^\top = [X_c/Z_c, \, Y_c/Z_c]^\top$에 대해:
 
@@ -90,7 +90,7 @@ $$\theta = \arctan\left(\frac{\sqrt{X_c^2 + Y_c^2}}{Z_c}\right)$$
 
 $$r_d = k_1 \theta + k_2 \theta^3 + k_3 \theta^5 + k_4 \theta^7 + k_5 \theta^9$$
 
-순수 등거리(equidistant) 투영에서는 $r_d = f \cdot \theta$이며, 이는 $k_1 = f$, $k_2 = k_3 = \cdots = 0$에 해당한다.
+여기서 $r_d$는 무차원 정규화 반경이다. 순수 등거리(equidistant) 투영에서는 $r_d = \theta$이며, 이는 $k_1 = 1$, $k_2 = k_3 = \cdots = 0$에 해당한다. 픽셀 단위 초점 거리는 아래 투영식의 $f_x$, $f_y$로 적용한다.
 
 투영 좌표:
 
@@ -199,7 +199,7 @@ $k$번째 행의 노출 시각은:
 
 $$t_k = t_0 + k \cdot t_r$$
 
-여기서 $t_0$은 첫 번째 행의 노출 시각, $t_r$은 행 간 시간 간격(row readout time)이다. 전체 이미지 노출에 걸리는 시간은 $H \cdot t_r$ ($H$: 이미지 높이)이며, 이는 수 밀리초에서 수십 밀리초에 달한다.
+여기서 $t_0$은 첫 번째 행의 노출 시각, $t_r$은 행 간 시간 간격(row readout time)이다. 첫 행과 마지막 행의 노출 시작 시각 차이는 $(H-1) \cdot t_r$ ($H$: 이미지 높이)이며, 각 행의 노출 지속 시간과는 다르다. 전체 readout 기간은 대략 $H \cdot t_r$로, 수 밀리초에서 수십 밀리초에 달한다.
 
 카메라가 움직이는 동안 롤링 셔터로 이미지를 취득하면 다음과 같은 아티팩트가 발생한다:
 - **기하학적 왜곡**: 수직선이 기울어지거나, 움직이는 물체가 젤리처럼 변형된다.
@@ -209,11 +209,11 @@ $$t_k = t_0 + k \cdot t_r$$
 
 $$\mathbf{p}_i = \pi\left(\mathbf{T}(t_{v_i}) \cdot \mathbf{P}_i\right)$$
 
-여기서 $\mathbf{T}(t_{v_i})$는 $i$번째 특징점의 행 $v_i$에 대응하는 시각의 카메라 포즈이다. 이 포즈는 IMU 측정을 이용한 보간(interpolation)으로 구한다:
+여기서 $\mathbf{T}(t_{v_i})$는 $i$번째 특징점의 행 $v_i$에 대응하는 시각의 월드→카메라 변환이다. 첫 행과 마지막 행의 포즈가 주어지면, 두 시각 사이에서 일정한 twist를 가정해 다음과 같이 근사 보간할 수 있다 ($H>1$):
 
-$$\mathbf{T}(t_{v_i}) = \mathbf{T}(t_0) \cdot \text{Exp}\left(\frac{v_i}{H} \cdot \text{Log}(\mathbf{T}(t_0)^{-1} \mathbf{T}(t_0 + H \cdot t_r))\right)$$
+$$\mathbf{T}(t_{v_i}) = \mathbf{T}(t_0) \cdot \text{Exp}\left(\frac{v_i}{H-1} \cdot \text{Log}(\mathbf{T}(t_0)^{-1} \mathbf{T}(t_0 + (H-1) \cdot t_r))\right)$$
 
-여기서 $\text{Exp}$와 $\text{Log}$는 $SE(3)$ 리 군 위의 지수/로그 맵이다.
+여기서 $\text{Exp}$와 $\text{Log}$는 $SE(3)$ 리 군 위의 지수/로그 맵이다. 아래 코드는 카메라→월드 변환을 입력받고, 회전 SLERP와 이동의 선형 보간을 따로 적용하는 근사 예제이다.
 
 롤링 셔터 보정은 VIO 시스템([VINS-Mono](https://arxiv.org/abs/1708.03852), [ORB-SLAM3](https://arxiv.org/abs/2007.11898))에서 선택적으로 지원되며, 특히 스마트폰이나 드론 탑재 카메라처럼 고속 모션과 저가 센서의 조합에서 중요하다.
 
@@ -238,7 +238,7 @@ def rolling_shutter_project(P_w, T_start, T_end, K, H, v_row):
     Returns:
         (2,) 이미지 좌표 [u, v]
     """
-    alpha = v_row / H  # 보간 비율 [0, 1]
+    alpha = v_row / (H - 1) if H > 1 else 0.0  # 첫 행 0, 마지막 행 1
     
     # 회전 보간 (SLERP)
     R_start = Rotation.from_matrix(T_start[:3, :3])
@@ -293,7 +293,7 @@ $$\mathbf{P}_L = \begin{bmatrix} r \cos\omega \cos\alpha \\ r \cos\omega \sin\al
 
 ### 2.2.2 Motion Distortion (모션 왜곡)
 
-기계식 스피닝(spinning) LiDAR는 센서가 360° 회전하면서 레이저를 발사한다. Velodyne VLP-16의 경우 1회전에 약 100ms가 소요된다. 이 100ms 동안 플랫폼(차량, 드론)이 이동하면, 한 스캔 내의 포인트들이 서로 다른 좌표계에서 측정된 것이 된다. 이것이 **모션 왜곡(motion distortion)** 또는 **ego-motion compensation** 문제이다.
+기계식 스피닝(spinning) LiDAR는 센서가 360° 회전하면서 레이저를 발사한다. Velodyne VLP-16의 경우 1회전에 약 100ms가 소요된다. 이 100ms 동안 플랫폼(차량, 드론)이 이동하면, 한 스캔 내의 포인트들이 서로 다른 좌표계에서 측정된다. 이것이 **모션 왜곡(motion distortion)** 또는 **ego-motion compensation** 문제이다.
 
 이 문제는 카메라의 롤링 셔터와 구조가 같다. 스캔의 $i$번째 포인트가 시각 $t_i$에 측정되었다면, 이 포인트를 기준 시각 $t_0$의 좌표계로 변환해야 한다:
 
@@ -350,11 +350,11 @@ def undistort_scan(points, timestamps, T_start, T_end, t_start, t_end):
 
 **기계식 스피닝 LiDAR** (Velodyne, Ouster, Hesai)는 360° 수평 FoV를 제공하며, 한 스캔이 완전한 환형 포인트 클라우드를 구성한다. LOAM 계열 알고리즘은 이 특성을 전제로 만들어졌다 — edge/planar feature를 수평 스캔 라인에서 추출하고, 전방위 관측으로 6-DoF 포즈를 추정한다.
 
-**솔리드 스테이트 LiDAR** (Livox Mid-40/70, Avia, HAP 등)는 기계적 회전부가 없으며, 제한된 FoV(예: Livox Mid-70은 약 70.4° 원형) 내에서 비반복(non-repetitive) 스캔 패턴을 사용한다. 시간이 지남에 따라 FoV 내의 커버리지가 점진적으로 증가하는 특성이 있다.
+**제한된 FoV의 Livox LiDAR** (Mid-40/70, Avia, HAP 등)는 비반복(non-repetitive) 스캔 모드를 제공한다. 이 가운데 Mid-40은 내부의 회전 프리즘으로 빔을 조향하므로 기계적 회전부가 없는 센서는 아니다. Avia는 반복 스캔 모드도 지원한다. 비반복 모드에서는 제한된 FoV(예: Mid-70은 약 70.4° 원형) 내 커버리지가 시간이 지남에 따라 증가한다.
 
-이 차이가 퓨전 알고리즘에 미치는 영향:
+아래 표는 스피닝 LiDAR와 제한된 FoV의 비반복 스캔 모드를 비교한다:
 
-| 특성 | 스피닝 LiDAR | 솔리드 스테이트 LiDAR |
+| 특성 | 스피닝 LiDAR | 제한된 FoV의 비반복 스캔 모드 |
 |------|-------------|-------------------|
 | FoV | 360° 수평 | 제한적 (40°~120°) |
 | 스캔 패턴 | 반복적 (수평 라인) | 비반복적 (로제트, 리사주 등) |
@@ -408,7 +408,7 @@ $$\tilde{\mathbf{a}} = \mathbf{R}_{bw}(\mathbf{a}_w - \mathbf{g}_w) + \mathbf{b}
 - $\mathbf{b}_a$: 가속도계 바이어스
 - $\mathbf{n}_a \sim \mathcal{N}(\mathbf{0}, \sigma_a^2 \mathbf{I})$: 측정 노이즈
 
-**중력의 역할.** 가속도계가 중력을 "느끼는" 것은 IMU 기반 퓨전에서 매우 중요하다. 정지 상태에서도 가속도계는 $[0, 0, g]^\top$ (위 방향을 z로 놓은 경우)을 측정한다. 이 중력 관측으로부터 롤(roll)과 피치(pitch)를 추정할 수 있다. 그러나 요(yaw)는 중력 벡터에 대한 회전이므로 관측 불가능(unobservable)하다. 이 때문에 VIO/LIO 초기화에서 요 각도를 추정하려면 시각적 특징점의 이동 등 추가 관측이 필요하다.
+**중력의 역할.** 가속도계가 중력을 "느끼는" 것은 IMU 기반 퓨전에서 매우 중요하다. 정지 상태에서도 가속도계는 $[0, 0, g]^\top$ (위 방향을 z로 놓은 경우)을 측정한다. 이 중력 관측으로부터 롤(roll)과 피치(pitch)를 추정할 수 있다. 그러나 요(yaw)는 중력 벡터에 대한 회전이므로 관측 불가능(unobservable)하다. VIO/LIO는 초기 요를 임의의 기준으로 정하고 상대 회전을 추정한다. 전역 요를 정하려면 자력계나 알려진 지도처럼 외부 방향 기준을 제공하는 관측이 필요하다.
 
 **바이어스 동역학.** 자이로스코프와 동일하게 랜덤 워크로 모델링한다:
 
@@ -442,7 +442,7 @@ log-log 플롯에서 Allan Deviation $\sigma(\tau)$의 기울기로 노이즈 �
 
 1. **각도 랜덤 워크(Angular Random Walk, ARW)**: 단위 $°/\sqrt{\text{hr}}$ 또는 $\text{rad/s}/\sqrt{\text{Hz}}$. Allan Deviation 플롯에서 $\tau = 1\,\text{s}$일 때의 값, 또는 기울기 $-1/2$ 구간에서 읽는다. 이것이 $\sigma_g$에 해당한다.
 2. **속도 랜덤 워크(Velocity Random Walk, VRW)**: 단위 $\text{m/s}/\sqrt{\text{hr}}$ 또는 $\text{m/s}^2/\sqrt{\text{Hz}}$. 가속도계의 백색 노이즈 밀도. 이것이 $\sigma_a$에 해당한다.
-3. **바이어스 안정성(In-run Bias Stability)**: Allan Deviation 플롯의 최솟값. 시스템이 도달할 수 있는 바이어스 추정의 이론적 하한이다.
+3. **바이어스 안정성(In-run Bias Stability)**: Allan Deviation 플롯의 최솟값. 정지 측정에서 시간 평균한 센서 출력의 안정성을 나타내며, 융합 시스템의 바이어스 추정 오차에 대한 이론적 하한은 아니다.
 4. **레이트 랜덤 워크(Rate Random Walk)**: 바이어스가 시간에 따라 변하는 속도. 이것이 $\sigma_{bg}, \sigma_{ba}$에 해당한다.
 
 ```python
@@ -526,7 +526,7 @@ def extract_imu_params(taus, adevs):
 
 ### 2.3.4 Strapdown Navigation Equation
 
-IMU 측정으로부터 포즈(위치, 속도, 자세)를 적분하는 방정식을 스트랩다운 관성 항법 방정식(Strapdown Navigation Equation)이라 한다. "스트랩다운(strapdown)"이란 센서가 플랫폼에 직접 고정(strapped down)되어 있어, 기계식 짐벌 없이 소프트웨어로 좌표 변환을 수행한다는 의미이다.
+IMU 측정으로 항법 상태(위치, 속도, 자세)를 적분하는 방정식을 스트랩다운 관성 항법 방정식(Strapdown Navigation Equation)이라 한다. "스트랩다운(strapdown)"은 센서가 플랫폼에 직접 고정(strapped down)되어 기계식 짐벌 없이 소프트웨어로 좌표 변환을 수행한다는 뜻이다.
 
 월드 프레임(또는 항법 프레임)에서의 상태 $[\mathbf{R}, \mathbf{v}, \mathbf{p}]$의 연속 시간 동역학:
 
@@ -649,13 +649,13 @@ def imu_strapdown(gyro_data, accel_data, dt, R0, v0, p0, bg, ba, gravity):
     return Rs, vs, ps
 ```
 
-**드리프트의 수치적 의미.** 위의 스트랩다운 적분을 바이어스 보정 없이 수행하면 어떻게 오차가 누적되는지 단순한 가정으로 계산해보자. 설명을 위해 일정한 가속도계 바이어스를 $b_a = 0.01\,\text{m/s}^2$ (약 $1\,\text{mg}$)로 둔다.
+**드리프트의 수치적 의미.** 위의 스트랩다운 적분을 바이어스 보정 없이 수행하면 어떻게 오차가 누적되는지 단순한 가정으로 계산해 보자. 설명을 위해 일정한 가속도계 바이어스를 $b_a = 0.01\,\text{m/s}^2$ (약 $1\,\text{mg}$)로 둔다.
 
 - 1초 후 위치 오차: $\frac{1}{2} \times 0.01 \times 1^2 = 0.005\,\text{m}$ (5mm)
 - 10초 후: $\frac{1}{2} \times 0.01 \times 100 = 0.5\,\text{m}$
 - 60초 후: $\frac{1}{2} \times 0.01 \times 3600 = 18\,\text{m}$
 
-이 예는 보조 센서가 없는 저가형 MEMS 관성 추정의 위치 오차가 짧은 임무에서도 빠르게 허용 범위를 넘을 수 있음을 보여준다. 실제 지속 시간은 IMU 성능, 온도 환경, 운동, 초기화, 임무의 오차 예산에 따라 달라진다. 더 높은 성능의 INS는 보조 없이 더 오래 운용할 수 있지만 드리프트 자체는 계속 누적된다. VIO/LIO 시스템에서는 바이어스 $\mathbf{b}_g, \mathbf{b}_a$를 **상태 벡터의 일부로 포함**하고 다른 센서의 관측으로 갱신한다. 한편, 최근 딥러닝 기반 관성 오도메트리 연구도 활발하다. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659)는 IMU 특징의 관측 가능성을 강화하여 드론 환경에서 기존 학습 기반 관성 오도메트리 대비 50% 이상의 정확도 향상을 보고하고 있다.
+이 예는 보조 센서가 없는 저가형 MEMS 관성 추정의 위치 오차가 짧은 임무에서도 빠르게 허용 범위를 넘을 수 있음을 보여준다. 실제 지속 가능한 시간은 IMU 성능 등급, 주변 온도, 운동 형태, 오차 허용 한계에 따라 차이가 난다. 고성능 INS의 경우 외부 보조 없이 더 오래 버틸 수 있으나 시간 경과에 따른 드리프트 누적 자체를 완전히 피하기는 어렵다. 이에 따라 VIO/LIO 시스템에서는 바이어스 $\mathbf{b}_g, \mathbf{b}_a$를 **상태 벡터의 일부로 포함**하여 다른 센서 관측을 통해 주기적으로 갱신하도록 구성한다. 한편, 최근 딥러닝 기반 관성 오도메트리 연구도 활발하다. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659)는 IMU 특징의 관측 가능성을 강화하여 드론 환경에서 기존 학습 기반 관성 오도메트리 대비 50% 이상의 정확도 향상을 보고하고 있다.
 
 ### 2.3.5 IMU 등급 분류
 
@@ -703,14 +703,14 @@ $$\Phi^s = r^s + c \cdot \delta t_r - c \cdot \delta t^s + \lambda N^s - I^s + T
 
 여기서:
 - $\lambda$: 반송파 파장
-- $N^s$: **정수 모호성(integer ambiguity)** — 수신기와 위성 사이의 전체 파장 수. RTK/PPP는 이 미지의 정수값을 정확히 결정해야 한다.
+- $N^s$: **정수 모호성(integer ambiguity)** — 수신기와 위성 사이의 전체 파장 수. RTK의 fixed 해와 PPP-AR는 모호성을 정수로 결정하며, 전통적인 PPP는 모호성을 실수값으로 추정한다.
 - $\epsilon_\Phi \approx 1\text{–}5\,\text{mm}$: 반송파 위상 노이즈 (의사거리 노이즈의 약 1/100)
 
-전리층 지연의 부호는 의사거리와 반대이다(군속도 vs 위상속도). 이중 주파수 조합으로 1차 전리층 항을 추정·완화할 수 있지만, higher-order term과 다른 오차원은 남는다.
+전리층 지연의 부호는 의사거리와 반대이다(군속도 vs 위상속도). 이중 주파수 조합으로 1차 전리층 항을 추정·완화할 수 있지만, 고차 항(higher-order term)과 다른 오차 원인은 남는다.
 
 ### 2.4.3 RTK (Real-Time Kinematic)
 
-RTK는 기준국 또는 network correction과의 **차분(differencing)** 관측으로 공통 오차를 줄이고 carrier-phase integer ambiguity를 실시간으로 해결하는 기법이다. Baseline이 길어질수록 대기 오차의 상관이 약해지며, ambiguity가 fixed되고 신호·correction 품질이 좋은 조건에서 centimeter-class 결과를 낼 수 있다.
+RTK는 기준국 또는 network correction과의 **차분(differencing)** 관측으로 공통 오차를 줄이고 carrier-phase integer ambiguity를 실시간으로 해결하는 기법이다. 기준선(baseline)이 길어질수록 대기 오차의 상관이 약해지며, 정수 모호성이 고정(fix)되고 신호·보정 정보(correction)의 품질이 좋은 조건에서는 센티미터급(centimeter-class) 결과를 낼 수 있다.
 
 **이중 차분(Double Difference).** 위성 $s$와 기준 위성 $r$에 대한 기준국-이동국 간 이중 차분:
 
@@ -720,7 +720,7 @@ $$\nabla\Delta\Phi_{br}^{sr} = \nabla\Delta r_{br}^{sr} + \lambda \nabla\Delta N
 
 ### 2.4.4 PPP (Precise Point Positioning)
 
-PPP는 기준국 없이 단일 수신기로 센티미터 급 측위를 달성하는 기법이다. 정밀 궤도력(precise orbit)과 정밀 시계 보정(precise clock)을 외부 서비스에서 수신하여 위성 관련 오차를 제거하고, 전리층/대류권 오차를 상태 벡터에 포함하여 추정한다.
+PPP는 기준국 없이 단일 수신기로 센티미터급 측위를 달성하는 기법이다. 정밀 궤도력(precise orbit)과 정밀 시계 보정(precise clock)을 외부 서비스에서 수신하여 위성 관련 오차를 제거하고, 전리층/대류권 오차를 상태 벡터에 포함하여 추정한다.
 
 **RTK vs PPP:**
 
@@ -731,10 +731,10 @@ PPP는 기준국 없이 단일 수신기로 센티미터 급 측위를 달성하
 | 정밀도 (수렴 후) | $\sim 2\,\text{cm}$ | $\sim 5\,\text{cm}$ |
 | 커버리지 | 기준국 근처 | 전지구 |
 
-**센서 퓨전에서의 GNSS 활용.** GNSS의 global position observation은 VIO/LIO의 장기 drift를 제한하거나 보정할 수 있다. 다만 outage·multipath·frame alignment·lever arm·time offset이 남으면 drift와 bias도 남는다. [LIO-SAM (Shan et al., 2020)](https://arxiv.org/abs/2007.00258)은 조건을 만족하는 GNSS measurement를 factor graph에 추가할 수 있는 대표적 예다. GNSS 관측을 fusion에 포함할 때는 세 가지를 확인해야 한다:
+**센서 퓨전에서의 GNSS 활용.** GNSS의 전역 위치 관측(global position observation)은 VIO/LIO의 장기 드리프트를 제한하거나 보정할 수 있다. 다만 outage·multipath·frame alignment·lever arm·time offset이 남으면 드리프트와 바이어스도 남는다. [LIO-SAM (Shan et al., 2020)](https://arxiv.org/abs/2007.00258)은 조건을 만족하는 GNSS 관측을 factor graph에 추가할 수 있는 대표적 예다. GNSS 관측을 fusion에 포함할 때는 세 가지를 확인해야 한다:
 
 1. **좌표계 변환**: GNSS는 WGS84(위도, 경도, 타원체고)로 출력되며, 로보틱스 시스템은 ENU(East-North-Up) 또는 NED(North-East-Down) 로컬 프레임을 사용한다. 변환이 필요하다.
-2. **공분산 활용**: GNSS 수신기가 출력하는 DOP(Dilution of Precision) 값이나 위치 공분산을 퓨전 시스템의 관측 공분산으로 활용한다.
+2. **공분산 활용**: GNSS 수신기가 출력하는 위치 공분산을 관측 좌표계로 변환해 퓨전 시스템에 활용한다. DOP(Dilution of Precision)는 무차원 기하 지표이므로 공분산에 직접 대입하지 않으며, 관측 오차 규모와 함께 위치 불확실성을 추정하는 데 사용한다.
 3. **아웃라이어 처리**: 다중경로 환경에서 GNSS 측위 결과가 수십 미터 오차를 가질 수 있으므로, 로버스트 커널이나 $\chi^2$ 테스트로 이상 관측을 탐지/제거해야 한다.
 
 ```python
@@ -842,7 +842,7 @@ $$v_r = \frac{\lambda \cdot f_d}{2}$$
 
 전통적인 자동차 레이더는 거리, 속도, 수평 각도의 3차원 정보를 제공하며, 수직 방향 분해능은 매우 낮았다. **4D 이미징 레이더(4D Imaging Radar)**는 거리, 속도(도플러), 수평 각도, **수직 각도**의 4차원 정보를 높은 분해능으로 제공하는 차세대 레이더이다.
 
-4D 이미징 레이더는 MIMO(Multiple Input Multiple Output) 기술로 대규모 가상 안테나 어레이(virtual antenna array)를 구현한다. 예를 들어, 12개 송신 안테나 × 16개 수신 안테나 = 192개 가상 안테나로, 수평/수직 모두에서 충분한 각도 분해능을 달성한다.
+4D 이미징 레이더는 MIMO(Multiple Input Multiple Output) 기술로 대규모 가상 안테나 어레이(virtual antenna array)를 구현한다. 예를 들어, 12개 송신 안테나 × 16개 수신 안테나 = 192개 가상 채널을 구성할 수 있다. 수평·수직 각도 분해능은 가상 배열의 각 방향 개구와 배치에 따라 달라진다.
 
 **4D Radar vs LiDAR:**
 
@@ -853,7 +853,7 @@ $$v_r = \frac{\lambda \cdot f_d}{2}$$
 | 속도 측정 | 직접 측정 (도플러) | 불가 (두 프레임 차분 필요) |
 | 각도 분해능 | $\sim 1°$ | $\sim 0.1°$ |
 | 비용 | 저~중 | 중~고 |
-| 정적 물체 감지 | 제한적 (도플러 = 0) | 우수 |
+| 정적 물체 감지 | 가능 (검출·클러터 제거 설정에 영향받음) | 우수 |
 
 **센서 퓨전에서의 레이더 활용.** 레이더의 도플러 측정은 센서 퓨전에서 고유한 가치를 제공한다:
 
@@ -954,7 +954,7 @@ $$h = \frac{T_0}{L}\left(1 - \left(\frac{P}{P_0}\right)^{\frac{RL}{g_0}}\right)$
 
 $$\Delta h \approx -\frac{\Delta P}{\rho g} \approx -\frac{\Delta P}{12.0}\,[\text{m}], \quad (\Delta P\text{는 Pa 단위})$$
 
-해수면 근처에서 약 $8.5\,\text{Pa}$의 기압 변화가 $1\,\text{m}$의 고도 변화에 해당한다.
+해수면 근처에서 약 $12.0\,\text{Pa}$의 기압 변화가 $1\,\text{m}$의 고도 변화에 해당한다.
 
 **노이즈 특성:**
 - 단기 정밀도: $\pm 0.1\text{–}0.5\,\text{m}$ (매우 우수)
@@ -964,7 +964,7 @@ $$\Delta h \approx -\frac{\Delta P}{\rho g} \approx -\frac{\Delta P}{12.0}\,[\te
 
 ### 2.6.3 자력계 (Magnetometer)
 
-자력계는 3축 자기장 벡터를 측정한다. Roll·pitch 보정과 hard/soft-iron calibration이 유효하고 주변 자기 교란이 작다면, 지구 자기장에 대한 heading을 얻을 수 있다. True north가 필요하면 지역 magnetic declination도 보정해야 한다.
+자력계는 3축 자기장 벡터를 측정한다. 롤(Roll)·피치(pitch) 보정과 hard/soft-iron calibration(하드·소프트 아이언 보정)이 유효하고 주변 자기 교란이 작다면, 지구 자기장에 대한 방위를 얻을 수 있다. 진북(True north)이 필요하면 지역 자기 편차(magnetic declination)도 보정해야 한다.
 
 **관측 모델.** 자력계 측정값은:
 
@@ -1002,7 +1002,7 @@ $$d = \frac{c \cdot (t_{\text{round}} - t_{\text{reply}})}{2} + n_d$$
 
 **NLOS(Non-Line-of-Sight) 문제.** UWB는 직접 가시선(LOS)이 확보된 환경에서는 높은 정밀도를 보이지만, 벽이나 장애물을 통과하면(NLOS) 신호가 지연되어 실제보다 먼 거리를 보고한다. UWB 기반 측위에서는 NLOS를 탐지하고 그 영향을 줄여야 한다.
 
-**센서 퓨전에서의 역할.** UWB anchor를 환경에 미리 설치하면, 각 anchor까지의 range로 anchor frame 안의 position을 추정할 수 있다. Anchor 좌표를 survey해 global frame에 묶은 경우에만 global absolute position이 된다. VIO와 결합하면 geometry와 NLOS 조건이 충분한 구간에서 drift를 제한할 수 있다.
+**센서 퓨전에서의 역할.** UWB 앵커(Anchor)를 환경에 미리 설치하면, 각 앵커까지의 거리(range)로 앵커 좌표계(anchor frame) 안의 위치를 추정할 수 있다. 앵커 좌표를 측량해 전역 좌표계(global frame)에 묶은 경우에만 전역 절대 위치(global absolute position)가 된다. VIO와 결합하면 기하 배치와 NLOS 조건이 충분히 양호한 구간에서 드리프트를 제한할 수 있다.
 
 **관측 방정식 (삼변측량):**
 

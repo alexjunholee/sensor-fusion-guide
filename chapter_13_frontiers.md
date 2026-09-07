@@ -8,7 +8,7 @@ Foundation model의 공간 지능(spatial AI)으로의 확장, end-to-end 학습
 
 ## 13.1 Foundation Models for Spatial AI
 
-Foundation model — 대규모 데이터로 사전학습된 범용 모델(DINOv2, CLIP, SAM 등) — 의 표현을 센서 퓨전과 SLAM pipeline에 사용하는 연구가 이어지고 있다. 이 모델의 feature를 retrieval·matching·semantic prior에 넣을 수 있지만, geometry와 uncertainty 처리를 자동으로 대신하는 것은 아니다.
+Foundation model—대규모 데이터로 사전학습된 범용 모델(DINOv2, CLIP, SAM 등)—의 표현을 센서 퓨전과 SLAM pipeline에 사용하는 연구가 이어지고 있다. 이 모델의 feature를 retrieval·matching·semantic prior에 넣을 수 있지만, geometry와 uncertainty 처리를 자동으로 대신하는 것은 아니다.
 
 ### 13.1.1 DINOv2/CLIP Feature를 SLAM에 활용
 
@@ -136,11 +136,11 @@ CLIP의 vision-language alignment을 3D 맵에 확장하면, 로봇이 자연어
 **현재의 한계**:
 - CLIP feature의 공간적 해상도가 낮다 (패치 단위). 작은 객체의 정확한 위치 파악이 어렵다.
 - 3D 일관성 보장이 어렵다 — 같은 객체가 다른 시점에서 다른 feature를 가질 수 있다.
-- Computational cost: 모든 이미지에서 FM feature를 추출하는 것은 비용이 크다.
+- 계산 비용(Computational cost): 모든 이미지에서 FM feature를 추출하는 것은 비용이 크다.
 
 ### 13.1.3 모듈별 근거와 경계
 
-Foundation-model integration의 근거 수준은 task와 benchmark마다 다르다. 다음 구분은 대체 순위가 아니라, 어떤 주장을 검증해야 하는지 보여준다.
+파운데이션 모델 통합(Foundation-model integration)의 근거 수준은 과제와 벤치마크마다 다르다. 다음 구분은 대체 순위가 아니라, 어떤 주장을 검증해야 하는지 보여준다.
 
 **논문 benchmark에서 활용 근거가 있는 영역**:
 - **Visual place recognition**: AnyLoc은 DINOv2+VLAD를 여러 domain에서 평가해 강한 recall을 보고했다. DBoW2와 입력 feature·학습 조건·계산량이 달라 보편적 대체 관계로 해석하지 않고, 목표 환경에서 false-positive rate와 latency를 함께 비교한다.
@@ -211,7 +211,7 @@ $$\hat{\mathbf{T}}^* = \arg\min_{\hat{\mathbf{T}}} \| I_{\text{real}} - \text{Re
 **한계**:
 - **일반화**: 학습 분포 밖의 camera, motion, 조명, 동적 장면에서 성능이 달라질 수 있다. DROID-SLAM의 원 논문은 synthetic-to-real generalization을 평가하지만 모든 환경과 sensor modality를 포괄하지는 않는다.
 - **검증 범위**: 전통적 pipeline은 residual과 각 module을 따로 검사하기 쉽지만, 학습된 update operator의 거동은 training distribution과 평가 protocol에 더 강하게 묶인다. 어느 쪽도 일반적인 비선형 SLAM 문제에서 전역 수렴이나 일관성을 자동으로 보장하지 않는다.
-- **Computational cost**: 학습 기반 시스템은 대부분 GPU가 필요해 임베디드 환경에서 실시간으로 동작하기 어렵다.
+- **계산 비용(Computational cost)**: 학습 기반 시스템은 대부분 GPU가 필요해 임베디드 환경에서 실시간으로 동작하기 어렵다.
 - **Interpretability**: 실패 시 원인 분석이 어렵다. 전통 시스템은 "어느 모듈에서 실패했는가"를 추적할 수 있지만, end-to-end 시스템은 블랙박스에 가깝다.
 
 **가능성**:
@@ -352,7 +352,7 @@ class PersistentSpatialMemory:
 
 1. "거실" → Room 노드 탐색
 2. "소파 옆의 테이블" → Room 내 Object 노드의 관계 탐색
-3. "리모콘" → 해당 Table 근처의 Object 탐색
+3. "리모콘" → 해당 Table 위에 있는 관계를 만족하는 리모콘 Object 탐색
 4. 경로 계획 및 manipulation
 
 **Scene Graph + LLM**: GPT-4 같은 LLM이 scene graph를 입력으로 받아 고수준 추론을 수행한다. "이 방에 사람이 넘어지면 가장 가까운 전화기는 어디에 있는가?" 같은 질의에 답할 수 있다.
@@ -389,9 +389,9 @@ Contrastive learning은 같은 장소/객체의 다른 모달리티 관측을 �
 
 $$\mathcal{L}_{\text{contrastive}} = -\log \frac{\exp(\text{sim}(f_L(\mathbf{x}_L), f_C(\mathbf{x}_C)) / \tau)}{\sum_{j} \exp(\text{sim}(f_L(\mathbf{x}_L), f_C(\mathbf{x}_C^j)) / \tau)}$$
 
-여기서 $f_L$은 LiDAR encoder, $f_C$는 카메라 encoder, $\tau$는 temperature, $(\mathbf{x}_L, \mathbf{x}_C)$는 같은 장소의 LiDAR-카메라 쌍, $\mathbf{x}_C^j$는 negative sample이다.
+여기서 $f_L$은 LiDAR encoder, $f_C$는 카메라 encoder, $\tau$는 temperature, $(\mathbf{x}_L, \mathbf{x}_C)$는 같은 장소의 LiDAR-카메라 쌍, $\mathbf{x}_C^j$는 분모의 후보 표본이다. 합은 양성 표본 $\mathbf{x}_C$와 negative sample을 모두 포함한다.
 
-**Cross-modal place recognition**에서의 응용: LiDAR로 만든 맵에서 카메라만으로 localization하는 시나리오. LiDAR descriptor와 camera descriptor가 같은 공간에 있으면, 카메라 query로 LiDAR 맵을 검색할 수 있다.
+**Cross-modal place recognition**에서의 응용: LiDAR로 만든 맵에서 카메라만으로 localization하는 시나리오. LiDAR descriptor와 camera descriptor가 같은 공간에 있으면, 카메라 질의로 LiDAR 맵을 검색할 수 있다.
 
 **LC$^2$** (Lee et al. 2023): LiDAR-Camera cross-modal place recognition. LiDAR BEV 이미지와 카메라 이미지의 feature를 공통 공간으로 정렬한다.
 
@@ -409,7 +409,7 @@ $$\mathcal{L}_{\text{contrastive}} = -\log \frac{\exp(\text{sim}(f_L(\mathbf{x}_
 
 2. **Temporal alignment**: 다른 모달리티의 관측은 시간적으로 완벽히 동기화되지 않는다. 비동기 관측을 어떻게 공통 표현으로 융합할 것인가?
 
-3. **Partial observation**: 하나의 센서가 일시적으로 실패(LiDAR가 비에 영향, 카메라가 어둠에 영향)할 때, 사용 가능한 모달리티만으로 일관된 표현을 유지하는 방법이다.
+3. **Partial observation**: 하나의 센서가 일시적으로 실패(LiDAR가 비의 영향을 받고 카메라가 어둠의 영향을 받는 경우)할 때, 사용 가능한 모달리티만으로 일관된 표현을 유지하는 방법이다.
 
 ---
 
@@ -439,7 +439,7 @@ $$|\log I(x, y, t) - \log I(x, y, t_{\text{last}})| \geq C$$
 | 동적 범위 | ~60 dB | >120 dB |
 | 모션 블러 | 있음 | 거의 없음 |
 | 데이터 출력 | 균일 프레임 | 비동기 이벤트 |
-| 정적 장면 | 정보 제공 | 이벤트 없음 (정보 없음) |
+| 픽셀 밝기 변화 없음 | 프레임 정보 제공 | 이상적으로 이벤트 없음 |
 | 전력 소비 | 높음 | 매우 낮음 |
 
 Event camera는 고속 회전, 급격한 조명 변화(터널 진입/출구), 저조도 환경에서도 정보를 제공하여 전통 카메라와 다른 센서의 취약점을 보완한다.
@@ -450,7 +450,7 @@ Event camera와 전통 프레임 카메라는 다음과 같이 결합한다.
 
 **Event-enhanced frame tracking**: 프레임 간의 고속 모션을 이벤트로 추적하여, 프레임 기반 VO의 프레임 간격 사이를 채운다. 빠른 카메라 모션에서도 tracking이 끊기지 않는다.
 
-**Event-aided HDR**: 이벤트의 높은 동적 범위를 활용하여, 프레임 이미지의 under/over-exposed 영역의 정보를 보완한다.
+**Event-aided HDR**: 이벤트의 높은 동적 범위를 활용하여, 프레임 이미지의 노출 부족/과다(under/over-exposed) 영역 정보를 보완한다.
 
 ### 13.5.3 Event + IMU 퓨전
 
@@ -584,7 +584,7 @@ class EventProcessor:
 
 ## 13.6 4D Radar 퓨전
 
-4D imaging radar는 거리(range), 방위각(azimuth), 고도(elevation), 도플러 속도(Doppler velocity)의 4차원 정보를 제공한다. 전통적 automotive radar가 제공하던 거리와 각도에 고도와 도플러 속도가 더해진다.
+4D imaging radar는 거리(range), 방위각(azimuth), 고각(elevation), 도플러 속도(Doppler velocity)의 4차원 정보를 제공한다. 거리·방위각·도플러를 측정하는 automotive radar에 고각 분해능을 더해 3차원 공간 위치와 방사 방향 속도를 함께 관측한다.
 
 **FMCW radar의 거리/속도 측정 원리**: 4D radar의 대부분은 FMCW(Frequency-Modulated Continuous Wave) 방식을 사용한다. 송신 신호의 주파수를 시간에 따라 선형으로 증가(chirp)시키고, 반사 신호와의 비트 주파수(beat frequency)로 거리를, chirp 간 위상 변화로 속도를 측정한다:
 
@@ -633,13 +633,13 @@ Radar odometry는 2020년 이후 활발하게 연구되고 있다:
 
 **FMCW radar odometry**: scanning FMCW radar (Navtech 등)에서의 odometry. Range-azimuth 이미지에서 특징점을 추출하고 매칭하여 ego-motion을 추정한다.
 
-**4D radar odometry**: 4D radar 포인트 클라우드에서의 odometry. LiDAR odometry와 유사한 접근(ICP, feature matching)이 가능하지만, 해상도가 낮고 노이즈가 크다는 도전이 있다.
+**4D radar odometry**: 4D radar 포인트 클라우드에서의 odometry. LiDAR odometry와 유사한 접근(ICP, feature matching)이 가능하지만, 해상도가 낮고 노이즈가 크다는 어려움이 있다.
 
 **Doppler 기반 ego-velocity estimation**: 정적 포인트의 Doppler 측정으로 ego-velocity를 직접 추정한다. RANSAC으로 동적 포인트를 제거하고, 정적 포인트의 Doppler로 $\mathbf{v}_{\text{ego}}$를 추정하는 방식:
 
 $$v_r^{(k)} = -\mathbf{v}_{\text{ego}} \cdot \hat{\mathbf{r}}^{(k)} \quad \text{(정적 포인트)}$$
 
-여기서 $k$는 포인트 인덱스. 최소 3개의 비공선(non-collinear) 포인트로 3D 속도 벡터를 추정할 수 있다.
+여기서 $k$는 포인트 인덱스를 뜻한다. 3D 속도 벡터를 추정하려면 최소 3개의 정적 포인트가 필요하며, 이들의 시선 방향 단위 벡터가 선형 독립이어야 한다.
 
 ```python
 def estimate_ego_velocity_from_doppler(radar_points, doppler_values, 

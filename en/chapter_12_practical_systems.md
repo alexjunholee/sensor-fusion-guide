@@ -119,11 +119,7 @@ Sensor fusion for drones operates under substantially different constraints than
 
 ### 12.2.1 Visual-Inertial-Centric Systems
 
-**Camera + IMU** is a common sensor combination on drones. Reasons:
-
-- **Weight/size constraints**: Small drones cannot easily carry a LiDAR (though this is changing with compact solid-state LiDARs such as the Livox Mid-360).
-- **Power constraints**: Cameras and IMUs consume little power.
-- **Vibration**: Propeller vibration adds noise to IMU data. Vibration-isolating mounts and software filtering are required.
+Camera + IMU is a common sensor combination on drones. Small drones cannot easily carry a LiDAR because of weight and power constraints, whereas cameras and IMUs satisfy both constraints; compact solid-state LiDARs such as the Livox Mid-360 are changing the available options. Propeller vibration is a separate issue because it adds noise to IMU data, so vibration-isolating mounts and software filtering are both required.
 
 Representative VIO systems used on drones include the following:
 - **VINS-Mono/Fusion**: tightly-coupled optimization-based. Can be integrated with PX4.
@@ -143,12 +139,9 @@ The available approaches depend on whether prior infrastructure is available:
 
 ### 12.2.3 Real-Time Constraints
 
-Set a drone's sensor rates and latency budget from maximum angular rate and acceleration, control bandwidth, exposure, estimator delay, and communication delay.
+Set a drone's sensor rates and latency budget from maximum angular rate and acceleration, control bandwidth, exposure, estimator delay, and communication delay. The IMU rate must limit aliasing and integration error under the specified motion, while camera exposure balances allowable image motion against low-light noise. The end-to-end state-estimation latency must come from closed-loop stability analysis and flight testing; 30 ms is not universal.
 
-- **IMU rate**: high enough to limit aliasing and integration error under the specified motion.
-- **Camera exposure**: short enough for the allowed image motion, balanced against low-light noise.
-- **Processing latency**: an end-to-end bound derived from closed-loop stability analysis and flight testing; 30 ms is not universal.
-- **Point-LIO**: An LIO that reduces latency by processing points individually without waiting for scan completion. It can be used for high-agility drone maneuvers.
+**Point-LIO** reduces latency by processing points individually without waiting for scan completion. It can be used for high-agility drone maneuvers.
 
 ```python
 class DroneVIOConfig:
@@ -240,7 +233,7 @@ Survey mapping begins with the contract specification and validation procedure:
 
 Deployed sensor fusion systems must address the following problems:
 
-1. **Degenerate environments**: Long corridors, empty rooms, and other environments lacking geometric features. Drift that occurs in LiDAR-only systems is compensated by cameras or IMU. Multi-modal systems such as R3LIVE and FAST-LIVO2 are effective.
+1. **Degenerate environments**: Long corridors, empty rooms, and other environments lacking geometric features. Drift that occurs in LiDAR-only systems is compensated by cameras or an IMU. Multi-modal systems such as R3LIVE and FAST-LIVO2 are effective.
 
 2. **Multi-story buildings**: Loop closure is essential when moving between floors via elevators or stairs. With no GNSS, z-axis drift is especially problematic. A barometer serves as a useful auxiliary sensor.
 
@@ -277,11 +270,11 @@ Characteristics and uses of each dataset:
 
 **Newer College** — Collected by visiting the Oxford University campus multiple times, this dataset is well suited to multi-session SLAM and long-term mapping research. Captured with a handheld LiDAR, it contains challenging motion patterns.
 
-**Recent benchmark trends (2024-2025)**:
+**Additional benchmarks since 2022**:
 
 - **[Hilti-Oxford](https://arxiv.org/abs/2208.09825)** (2022): A construction-environment SLAM benchmark with millimeter-level ground truth used for the 2022 challenge.
-- **[Boreas](https://arxiv.org/abs/2203.10168)** (Burnett et al. 2023): An autonomous driving dataset collected by repeatedly driving the same route over a year. It includes LiDAR, radar, and cameras and captures all four seasons as well as adverse weather conditions.
-- **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (Huai et al., IJRR 2025): A large-scale benchmark for evaluating 4D radar SLAM that systematically compares 4D radar odometry/SLAM across diverse environments and platforms.
+- **[Boreas](https://arxiv.org/abs/2203.10168)** (Burnett et al. 2023): An autonomous driving dataset collected by repeatedly driving the same route over a year. It includes LiDAR, radar, and cameras and captures all four seasons.
+- **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (Huai et al., IJRR 2025): A benchmark for evaluating 4D radar SLAM that provides 4D radar odometry/SLAM results across diverse environments and platforms.
 
 ### 12.4.2 Evaluation Metrics
 
@@ -535,7 +528,7 @@ def simple_pose_graph_gtsam():
 - A nonlinear least squares optimization library developed by Google
 - C++ only (Python bindings are limited)
 - Supports automatic differentiation
-- Used by VINS-Mono, ORB-SLAM, and others
+- Used by VINS-Mono and others
 - Defines the optimization problem directly, without a factor graph abstraction
 
 **g2o** (General Graph Optimization):

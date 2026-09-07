@@ -11,7 +11,7 @@
 
 ### 8.1.1 Loosely Coupled (느슨한 결합)
 
-각 센서를 독립적인 "전문가"로 본다. 각 전문가가 자기 데이터로 독립적으로 결론을 내린 뒤, 상위 레벨에서 이 결론들을 종합한다.
+각 센서를 독립적인 "전문가"로 본다. 각 전문가는 자기 데이터로 독립 추정한 뒤, 상위 레벨에서 그 결과를 종합한다.
 
 구체적으로, LiDAR odometry 모듈이 LiDAR 스캔으로부터 $\mathbf{T}_{L}$을, Visual odometry 모듈이 이미지로부터 $\mathbf{T}_{V}$를 각각 독립적으로 추정하고, 상위의 fusion 모듈이 이 두 추정치를 결합한다.
 
@@ -47,7 +47,7 @@ $$
 
 센서의 측정값이 아니라 **신호 자체**를 결합한다. 가장 극단적인 통합이다.
 
-대표적으로 GNSS-INS ultra-tight coupling이 있다. 일반적인 GNSS 수신기는 위성 신호에서 의사거리(pseudorange)를 추출한 뒤 이를 INS와 결합하지만, ultra-tight에서는 INS가 추정한 위치/속도로 GNSS 수신기의 코드/반송파 추적 루프(tracking loop)를 직접 보조한다. 이렇게 하면 약한 신호 환경(도심 캐니언, 실내 진입 직후)에서도 GNSS 신호를 더 오래 추적할 수 있다.
+대표적으로 GNSS-INS ultra-tight coupling이 있다. 일반적인 tightly coupled GNSS-INS 구성에서는 수신기가 위성 신호에서 추출한 의사거리(pseudorange)를 INS와 결합하지만, ultra-tight에서는 INS가 추정한 위치/속도로 GNSS 수신기의 코드/반송파 추적 루프(tracking loop)를 직접 보조한다. 이렇게 하면 약한 신호 환경(도심 캐니언, 실내 진입 직후)에서도 GNSS 신호를 더 오래 추적할 수 있다.
 
 $$
 \text{NCO frequency} = f_{\text{nominal}} + \Delta f_{\text{INS-aided}}
@@ -135,7 +135,7 @@ print(f"Fused:  {x_fused}, P_diag: {np.diag(P_fused)}")
 | 스케일 관측 | ✗ (단안) | ✓ | ✗ |
 | 색상/시맨틱 | ✓ | ✗ | ✗ |
 
-이 세 센서를 통합한 시스템은 다음과 같다.
+이 세 센서를 효과적으로 결합하기 위해 다양한 밀결합 융합 아키텍처가 제안되었다.
 
 ### 8.2.1 R3LIVE / R3LIVE++
 
@@ -161,7 +161,7 @@ $$
 
 여기서 $\mathbf{I}(\cdot)$는 이미지의 픽셀 강도, $\pi(\cdot)$는 3D→2D 투영 함수, $\mathbf{T}_{CW}$는 월드에서 카메라로의 변환, $\mathbf{p}^W_i$는 맵 포인트의 3D 좌표, $\mathbf{c}_i^{\text{map}}$는 맵에 저장된 해당 포인트의 색상이다.
 
-R3LIVE의 공유 상태는 한 modality의 유효 잔차가 줄어들 때 다른 update를 계속 사용할 수 있다. 그러나 LiDAR 차단 때 visual update가 유지되는 범위는 기존 colored map의 가시성에, 어두운 영상에서 LIO가 유지되는 범위는 LiDAR 기하와 IMU 품질에 달려 있다. 논문은 이 구조로 online colored 3D mapping을 시연한다.
+R3LIVE의 공유 상태는 한 모달리티에서 사용할 수 있는 잔차의 수가 줄어들 때도 다른 갱신을 계속 사용할 수 있다. 그러나 LiDAR 차단 때 visual update가 유지되는 범위는 기존 colored map의 가시성에, 어두운 영상에서 LIO가 유지되는 범위는 LiDAR 기하와 IMU 품질에 달려 있다. 논문은 이 구조로 online colored 3D mapping을 시연한다.
 
 ### 8.2.2 LVI-SAM
 
@@ -229,7 +229,7 @@ FAST-LIVO2는 해시 테이블 + 옥트리 기반의 단일 복셀 맵을 사용
 
 **설계 3 — LiDAR 법선 활용 어파인 워핑**:
 
-카메라의 direct method에서 이미지 패치를 비교할 때, 표면의 기울기를 고려한 어파인 워핑이 정확도를 높인다. FAST-LIVO2는 LiDAR에서 추출한 평면 법선 벡터를 활용하여, 별도의 법선 추정 없이 정확한 어파인 워핑을 수행한다. 이것이 LiDAR-카메라 상호 보완의 구체적 예이다.
+카메라의 direct method에서 이미지 패치를 비교할 때, 표면의 기울기를 고려한 어파인 워핑이 정확도를 높인다. FAST-LIVO2는 LiDAR에서 추출한 평면 법선 벡터를 활용하여, 별도의 법선 추정 없이 정확한 어파인 워핑을 수행한다. 이는 LiDAR-카메라 상호 보완의 구체적 예다.
 
 **설계 4 — 실시간 노출 보정**:
 
@@ -299,7 +299,7 @@ def sequential_ekf_update(x_pred, P_pred, z_lidar, H_lidar, R_lidar, z_cam, H_ca
 
 ## 8.3 GNSS 통합
 
-GNSS (Global Navigation Satellite System)는 전역 좌표계의 절대 위치 참조를 제공한다. 이 장에서 다룬 IMU, LiDAR odometry, visual odometry는 주로 **상대적(relative)** 운동을 제공하므로 장시간 주행하면 드리프트가 누적된다. GNSS는 이 드리프트를 교정하는 앵커가 될 수 있다. 측량 기준점, UWB beacon, motion capture처럼 다른 절대 참조원도 있으므로 GNSS만이 유일한 전역 센서인 것은 아니다.
+GNSS(Global Navigation Satellite System)는 전역 좌표계의 절대 위치 참조를 제공한다. 이 장에서 다룬 IMU, LiDAR odometry, visual odometry는 주로 **상대적(relative)** 운동을 제공하므로 장시간 주행하면 드리프트가 누적된다. GNSS는 이 드리프트를 교정하는 앵커가 될 수 있다. 측량 기준점, UWB beacon, motion capture처럼 다른 절대 참조원도 있으므로 GNSS만이 유일한 전역 센서인 것은 아니다.
 
 ### 8.3.1 GNSS Factor in Factor Graph (LIO-SAM 방식)
 
@@ -358,7 +358,7 @@ $$
 \rho_i = \| \mathbf{p}_{\text{sat},i} - \mathbf{p}_{\text{rx}} \| + c \cdot \delta t_{\text{rx}} + I_i + T_i + \epsilon_i
 $$
 
-여기서 $\rho_i$는 위성 $i$에 대한 의사거리, $c \cdot \delta t_{\text{rx}}$는 수신기 시계 바이어스, $I_i$와 $T_i$는 전리층/대류층 지연이다.
+여기서 $\rho_i$는 위성 $i$에 대한 의사거리, $c \cdot \delta t_{\text{rx}}$는 수신기 시계 바이어스, $I_i$와 $T_i$는 전리층/대류권 지연이다.
 
 Tightly coupled의 장점은, 위성이 4개 미만이어서 GNSS 자체적으로는 해를 구할 수 없는 상황에서도, 가용한 위성의 의사거리를 여전히 활용할 수 있다는 점이다. 도심 환경에서 건물에 의해 위성이 가려지는 경우가 빈번하므로, 이 장점은 실질적으로 매우 크다.
 
@@ -381,9 +381,7 @@ Tightly coupled의 장점은, 위성이 4개 미만이어서 GNSS 자체적으�
 
 전통적으로 자동차 레이더는 해상도가 낮아 SLAM/odometry 용으로는 적합하지 않다고 여겨졌다. 그러나 **4D imaging radar**의 등장으로 그 평가가 달라지고 있다.
 
-**4D Radar란**: 기존 자동차 레이더가 거리(range), 속도(Doppler), 방위각(azimuth) 3가지를 측정했다면, 4D imaging radar는 여기에 **고도각(elevation)**을 추가하여 3D 포인트 클라우드를 생성한다. 해상도는 LiDAR보다 낮지만(수백~수천 점 vs 수십만 점), 다음 세 특성을 갖는다.
-
-Radar는 다음 특성을 제공한다.
+**4D Radar란**: 기존 자동차 레이더가 거리(range), 속도(Doppler), 방위각(azimuth) 3가지를 측정했다면, 4D imaging radar는 여기에 **고도각(elevation)**을 추가하여 3D 포인트 클라우드를 생성한다. 점 개수는 LiDAR보다 적지만(수백~수천 점 vs 수십만 점), 다음 세 특성을 갖는다.
 
 1. **악천후 내성**: mm-wave radar는 가시광 카메라나 일부 LiDAR보다 안개·비·눈의 영향이 작은 경우가 많다. 그러나 강수 attenuation, 물방울·노면 multipath와 clutter가 남으므로 조건별 검증이 필요하다.
 
@@ -550,7 +548,7 @@ class DistributedPoseGraphNode:
 
 ## 8.6 시스템 설계 실전
 
-실제 멀티센서 퓨전 시스템을 설계하고 배포할 때는 이론과 알고리즘 밖의 문제도 생긴다.
+실제 멀티센서 퓨전 시스템을 설계·배포할 때는 이론과 알고리즘 밖의 문제도 생긴다.
 
 ### 8.6.1 Sensor Suite 선정 가이드
 
@@ -635,7 +633,7 @@ def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_off
 
 ### 8.6.3 Failure Mode와 Degradation Handling
 
-실제 시스템에서 센서는 반드시 실패한다. 강건한 시스템은 **graceful degradation** — 즉, 한 센서가 실패해도 성능이 다소 저하되면서 나머지 센서로 계속 동작하는 것 — 을 달성해야 한다.
+실제 시스템에서 센서는 반드시 실패한다. 강건한 시스템은 **graceful degradation**(즉, 한 센서가 실패해도 성능이 다소 저하되면서 나머지 센서로 계속 동작하는 것)을 달성해야 한다.
 
 **주요 실패 모드와 대응**:
 
@@ -643,7 +641,7 @@ def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_off
 |-----------|------|-----------|------|
 | 카메라 과노출/저노출 | 이미지 전체가 밝거나 어두움 | 히스토그램 분석 | 카메라 factor 비활성화, LIO만으로 동작 |
 | LiDAR 기하 퇴화 (degenerate) | 긴 복도, 넓은 평지 | 정보 행렬의 고유값 분석 | 해당 DoF의 LiDAR 구속 완화, VIO로 보완 |
-| IMU 포화 | 고속 충격 시 측정 범위 초과 | ADC 최대값 탐지 | 해당 시간대 IMU preintegration 불확실성 증가 |
+| IMU 포화 | 고속 충격 시 측정 범위 초과 | ADC 최댓값 탐지 | 해당 시간대 IMU preintegration 불확실성 증가 |
 | GNSS multipath | 건물 반사로 인한 큰 오차 | RAIM, 잔차 검사 | 해당 GNSS factor의 공분산 증가 또는 제거 |
 | 센서 완전 단절 | 데이터 수신 없음 | Watchdog timer | 해당 센서의 모든 factor 비활성화 |
 
@@ -713,12 +711,12 @@ def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality,
     return lidar_weight, camera_weight
 ```
 
-### 8.6.5 최근 시스템과 연구 (2024-2025)
+### 8.6.4 최근 시스템과 연구 (2024-2025)
 
 - **[Gaussian-LIC (Lang et al., ICRA 2025)](https://arxiv.org/abs/2404.06926)**: 3D Gaussian Splatting을 LiDAR-Inertial-Camera tightly-coupled SLAM에 통합한 시스템. LiDAR의 정밀한 기하 정보와 카메라의 텍스처를 Gaussian 표현으로 융합하여, SLAM과 동시에 photo-realistic한 장면 복원을 달성한다.
 - **[Snail-Radar (Huai et al., IJRR 2025)](https://arxiv.org/abs/2407.11705)**: 4D radar SLAM 평가를 위한 대규모 다양성 벤치마크. 다양한 환경(실내·실외, 도심·교외)과 플랫폼에서 4D radar 기반 odometry/SLAM 알고리즘을 체계적으로 비교한다.
 
-### 8.6.4 시스템 설계 체크리스트
+### 8.6.5 시스템 설계 체크리스트
 
 실제 멀티센서 퓨전 시스템을 설계할 때 반드시 확인해야 할 항목들:
 
@@ -751,8 +749,8 @@ def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality,
 
 멀티센서 퓨전의 아키텍처는 크게 loosely/tightly/ultra-tightly coupled로 분류되며, 현대 로보틱스에서는 **tightly coupled**가 주류이다. Camera+LiDAR+IMU 삼중 융합을 구현한 R3LIVE, LVI-SAM, FAST-LIVO2는 각각 dual subsystem, factor graph, sequential update를 사용한다.
 
-GNSS 통합은 전역 좌표 관측으로 드리프트를 제약하고, 4D radar는 조건부 악천후 내성과 radial velocity 측정을 보탠다. Kimera-Multi와 Swarm-SLAM 같은 multi-robot 시스템은 통신 제약 아래에서 분산 추정과 cross-robot place recognition을 결합한다.
+GNSS 통합은 전역 좌표 관측을 제공하여 장거리 주행 시 누적 드리프트를 억제한다. 4D radar의 경우 안개나 눈비 같은 악천후에서도 도플러 기반 반경 방향 속도(radial velocity)를 측정하는 데 도움이 될 수 있지만, 오차는 조건별로 확인해야 한다. Kimera-Multi와 Swarm-SLAM 같은 multi-robot 시스템은 통신 제약 아래에서 분산 추정과 cross-robot place recognition을 결합한다.
 
 실전 시스템의 배포 결과는 알고리즘뿐 아니라 센서 선정, 시간 동기화, failure mode 대응에도 좌우된다.
 
-Ch.6-8의 odometry·fusion 시스템은 로컬 정밀도가 높지만, 장시간 운행하면 드리프트가 쌓인다. 이 드리프트를 교정하려면 과거에 방문했던 장소를 다시 인식하는 **Place Recognition**이 필요하다.
+Ch.6-8의 odometry·fusion 시스템은 로컬 정밀도가 높지만, 장시간 운행하면 드리프트가 쌓인다. 이 드리프트를 loop closure로 교정하려면 과거에 방문했던 장소를 다시 인식하는 **Place Recognition**이 필요하다.

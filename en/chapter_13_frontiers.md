@@ -14,7 +14,7 @@ Research increasingly uses representations from foundation models — general-pu
 
 **Visual features of DINOv2**: [DINOv2](https://arxiv.org/abs/2304.07193) is a ViT trained with self-supervised learning. Tokens obtained for image patches can be used as dense features, and downstream experiments reveal the following properties.
 
-- In some illumination and seasonal changes, the features help recover same-place correspondences.
+- Under some illumination and seasonal changes, the features help recover same-place correspondences.
 - Object categories and scene semantics can affect feature similarity.
 - Patch-level structure can support downstream correspondence and segmentation tasks.
 
@@ -22,7 +22,7 @@ Research increasingly uses representations from foundation models — general-pu
 
 - was evaluated without VPR-specific fine-tuning on paper benchmarks spanning urban, indoor, aerial, underwater, and subterranean settings.
 - reports higher recall than the tested NetVLAD- and CosPlace-family baselines on several datasets, not a guarantee for every environment.
-- includes an ablation in which value-facet dense features from layer 31 average 23% higher results than the CLS token.
+- includes an ablation in which value-facet dense features from layer 31 yield results that are 23% higher on average than those from the CLS token.
 
 ```python
 import numpy as np
@@ -352,7 +352,7 @@ The 3D Scene Graph of [Hydra](https://arxiv.org/abs/2201.13360) supports the fol
 
 1. "living room" -> search the Room node
 2. "table next to the sofa" -> search the relations among Object nodes within the Room
-3. "remote" -> search Object nodes near that Table
+3. "remote" -> search remote-control Object nodes with an on-top-of relation to that Table
 4. Path planning and manipulation
 
 **Scene Graph + LLM**: An LLM such as GPT-4 takes a scene graph as input and performs high-level reasoning. It can answer queries such as "if a person falls in this room, where is the nearest phone?"
@@ -389,7 +389,7 @@ Contrastive learning learns a representation in which observations from differen
 
 $$\mathcal{L}_{\text{contrastive}} = -\log \frac{\exp(\text{sim}(f_L(\mathbf{x}_L), f_C(\mathbf{x}_C)) / \tau)}{\sum_{j} \exp(\text{sim}(f_L(\mathbf{x}_L), f_C(\mathbf{x}_C^j)) / \tau)}$$
 
-Here $f_L$ is the LiDAR encoder, $f_C$ is the camera encoder, $\tau$ is the temperature, $(\mathbf{x}_L, \mathbf{x}_C)$ is a LiDAR-camera pair from the same place, and $\mathbf{x}_C^j$ is a negative sample.
+Here $f_L$ is the LiDAR encoder, $f_C$ is the camera encoder, $\tau$ is the temperature, $(\mathbf{x}_L, \mathbf{x}_C)$ is a LiDAR-camera pair from the same place, and $\mathbf{x}_C^j$ indexes the candidate samples in the denominator. The sum includes the positive sample $\mathbf{x}_C$ and the negative samples.
 
 **Application to cross-modal place recognition**: A camera-only system can localize against a map built with LiDAR. If the LiDAR descriptor and the camera descriptor occupy the same space, a camera query can retrieve locations from a LiDAR map.
 
@@ -409,7 +409,7 @@ Knowledge distillation transfers information from one modality (teacher) to anot
 
 2. **Temporal alignment**: Observations from different modalities are not perfectly synchronized in time. How should asynchronous observations be fused into a common representation?
 
-3. **Partial observation**: When one sensor fails temporarily (LiDAR affected by rain, camera affected by darkness), how can a consistent representation be maintained from only the available modalities?
+3. **Partial observation**: When one sensor fails temporarily (rain affects LiDAR or darkness affects the camera), how can a consistent representation be maintained from only the available modalities?
 
 ---
 
@@ -439,7 +439,7 @@ The polarity is $p = \text{sign}(\log I(x, y, t) - \log I(x, y, t_{\text{last}})
 | Dynamic range | ~60 dB | >120 dB |
 | Motion blur | present | nearly none |
 | Data output | uniform frames | asynchronous events |
-| Static scene | provides information | no events (no information) |
+| No pixel brightness change | provides frame information | ideally no events |
 | Power consumption | high | very low |
 
 Event cameras provide information during fast rotations, abrupt illumination changes (entering/exiting tunnels), and low-light operation. They therefore complement traditional cameras and other sensors.
@@ -450,7 +450,7 @@ Event cameras and traditional frame cameras are combined in the following ways:
 
 **Event-enhanced frame tracking**: Fast motion between frames is tracked with events, filling the gap between frame-based VO frames. This maintains tracking even during fast camera motion.
 
-**Event-aided HDR**: Using the event camera's high dynamic range, information in the under/over-exposed regions of frame images is recovered.
+**Event-aided HDR**: The event camera's high dynamic range supplements information in underexposed or overexposed regions of frame images.
 
 ### 13.5.3 Event + IMU Fusion
 
@@ -584,7 +584,7 @@ class EventProcessor:
 
 ## 13.6 4D Radar Fusion
 
-4D imaging radar provides four-dimensional information: range, azimuth, elevation, and Doppler velocity. It adds elevation and Doppler velocity to the range and angle provided by traditional automotive radar.
+4D imaging radar provides four-dimensional information: range, azimuth, elevation angle, and Doppler velocity. It adds elevation resolution to automotive radar measurements of range, azimuth, and Doppler, observing 3D position together with radial velocity.
 
 **Principle of range/velocity measurement in FMCW radar**: Most 4D radars use FMCW (Frequency-Modulated Continuous Wave). The transmitted signal's frequency increases linearly over time (chirp); range is measured from the beat frequency of the reflected signal, and velocity from the phase change between chirps:
 
@@ -609,7 +609,7 @@ Here $v$ is the radial velocity of the target, $\lambda$ is the carrier waveleng
 | Night | Depends on illumination and exposure | Active ranging remains available | Active range and Doppler remain available | Illumination, surface reflectivity, target RCS |
 | Direct sunlight | Glare and saturation are possible | Solar background can affect the receiver | Optically insensitive, but RF interference remains | Receiver/filter, RF interference, mounting direction |
 
-Millimeter-wave radar is generally less sensitive to fog-sized particles than visible or near-infrared sensing, but the effect is not zero. Heavy precipitation, a wet or iced radome, multipath, RF interference, low-RCS targets, and limited angular resolution can reduce detection range or increase false alarms. Validate detection range, false-alarm rate, and Doppler error for each device under the target weather conditions.
+Millimeter-wave radar is generally less sensitive to fog-sized particles than visible or near-infrared sensing, but it is still affected by them. Heavy precipitation, a wet or iced radome, multipath, RF interference, low-RCS targets, and limited angular resolution can reduce detection range or increase false alarms. Validate detection range, false-alarm rate, and Doppler error for each device under the target weather conditions.
 
 ### 13.6.2 4D Radar + Camera Fusion
 
@@ -633,13 +633,13 @@ Radar odometry has advanced since 2020:
 
 **FMCW radar odometry**: odometry on scanning FMCW radar (Navtech, etc.). Feature points are extracted and matched in range-azimuth images to estimate ego-motion.
 
-**4D radar odometry**: odometry on 4D radar point clouds. Approaches similar to LiDAR odometry (ICP, feature matching) are feasible, but they face the challenges of low resolution and high noise.
+**4D radar odometry**: odometry on 4D radar point clouds. Approaches similar to LiDAR odometry (ICP, feature matching) are feasible, but low resolution and high noise pose challenges.
 
 **Doppler-based ego-velocity estimation**: Ego velocity is estimated directly from the Doppler measurements of static points. Dynamic points are removed with RANSAC, and $\mathbf{v}_{\text{ego}}$ is estimated from the Doppler of static points:
 
 $$v_r^{(k)} = -\mathbf{v}_{\text{ego}} \cdot \hat{\mathbf{r}}^{(k)} \quad \text{(static point)}$$
 
-Here $k$ is the point index. At least three non-collinear points are required to estimate the 3D velocity vector.
+Here $k$ denotes the point index. Estimating the 3D velocity vector requires at least three static points whose line-of-sight unit vectors are linearly independent.
 
 ```python
 def estimate_ego_velocity_from_doppler(radar_points, doppler_values, 

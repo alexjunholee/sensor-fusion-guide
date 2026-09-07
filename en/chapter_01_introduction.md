@@ -1,6 +1,6 @@
 # Ch.1 — Why Sensor Fusion?
 
-Autonomous vehicles, drones, and service robots start from the same question: which sensors should perceive the world? No single sensor answers it alone. Sensor fusion begins there, with the limits of individual sensors, the ways sensors can be combined, and the division of labor between classical methods and deep-learning-based methods.
+Autonomous vehicles, drones, and service robots start from one question: which sensors should the system use to perceive the world? No single sensor answers it alone. Sensor fusion begins there, with the limits of individual sensors, the ways sensors can be combined, and the division of labor between classical methods and deep-learning-based methods.
 
 ---
 
@@ -10,11 +10,11 @@ Each sensor observes a particular aspect of the environment through a physical p
 
 ### Camera Limitations
 
-Cameras provide visual information about the environment, but have clear limitations.
+Cameras provide rich visual information about the environment, but have clear limitations.
 
-**Illumination dependence.** A camera is a passive sensor that detects light reflected from objects. Performance therefore degrades sharply under poor lighting conditions such as nighttime, tunnels, or backlight. Auto-exposure mitigates this to some extent, but in scenes that exceed the sensor's dynamic range, saturation or underexposure is unavoidable.
+**Illumination dependence.** A camera is a passive sensor that detects light reflected from objects. Performance therefore degrades sharply under poor lighting conditions such as nighttime, tunnels, or backlighting. Auto-exposure mitigates this to some extent, but in scenes that exceed the sensor's dynamic range, saturation or underexposure is unavoidable.
 
-**Scale ambiguity.** A monocular camera projects the 3D world onto a 2D image and in doing so loses depth information. A 1 m object at 2 m distance and a 10 m object at 20 m distance can appear at identical size in the image. This scale ambiguity prevents monocular visual odometry from recovering absolute scale. Without stereo cameras or fusion with other sensors, metric distance estimation in meters is impossible.
+**Scale ambiguity.** A monocular camera projects the 3D world onto a 2D image and in doing so loses depth information. A 1 m object at a distance of 2 m and a 10 m object at a distance of 20 m can appear the same size in the image. This scale ambiguity prevents monocular visual odometry from recovering absolute scale. Without stereo cameras, fusion with other sensors, or prior knowledge of metric size, monocular projective geometry alone cannot uniquely determine metric distance.
 
 **Textureless environments.** In environments lacking visual features — white walls, long corridors, wide paved roads — feature point extraction and tracking fail. Direct visual odometry methods face the same problem when the photometric gradient is insufficient.
 
@@ -24,11 +24,11 @@ Cameras provide visual information about the environment, but have clear limitat
 
 LiDAR (Light Detection And Ranging) is an active sensor that emits laser pulses and measures the time-of-flight of the reflected wave to provide precise 3D range information. However, it has the following limitations.
 
-**Absence of texture information.** LiDAR captures geometry precisely but provides no color or texture information about objects (some LiDARs report reflection intensity, but this is extremely limited compared with a camera image). As a result, place recognition becomes difficult in structurally similar places — for example, a street with repeated buildings of identical shape.
+**Absence of texture information.** LiDAR captures geometry precisely but provides almost no color or texture information about objects (some LiDARs report reflection intensity, but this is extremely limited compared with a camera image). As a result, place recognition becomes difficult in structurally similar places — for example, a street with repeated buildings of identical shape.
 
 **Weather and environmental sensitivity.** In rain, fog, snow, dust, and similar conditions, the laser beam scatters, producing large numbers of ghost points or drastically reducing detection range. Measurements are also unstable on black objects or highly reflective surfaces (glass, metal).
 
-**Low resolution and cost.** Mechanical spinning LiDARs have limited vertical resolution (e.g., 16-channel, 32-channel). High-resolution LiDARs cost from several thousand to tens of thousands of dollars. Solid-state LiDARs have recently reduced cost, but they trade off a narrower field of view (FoV).
+**Low resolution and cost.** Mechanical spinning LiDARs have limited vertical resolution (e.g., 16-channel, 32-channel). High-resolution LiDARs cost from several thousand to tens of thousands of dollars. Solid-state LiDARs have recently reduced cost, but at the cost of a narrower field of view (FoV).
 
 ### IMU Limitations
 
@@ -67,24 +67,24 @@ Organizing the sensor limitations surveyed above in a table makes it clear that 
 | 3D geometric information | △ (depth ambiguous) | ✓ | ✗ | ✗ |
 | Texture / semantic information | ✓ | ✗ | ✗ | ✗ |
 | Indoor operation | ✓ | ✓ | ✓ | ✗ |
-| Cost | Low | High | Medium~Low | Medium |
+| Cost | Low | High | Medium–Low | Medium |
 
-The message of this table is clear: **no single sensor is sufficient in all situations.** Sensor fusion is the systematic answer to this problem.
+No single sensor is sufficient in all situations. Sensor fusion is the systematic answer to this problem.
 
 ---
 
 ## 1.2 Taxonomy of Sensor Fusion
 
-Sensor fusion is the technique of combining information from multiple sensors to achieve accuracy, robustness, and completeness beyond what any individual sensor can deliver. Depending on how the sensors are combined, we can classify sensor fusion into three categories.
+Sensor fusion is the technique of combining information from multiple sensors to achieve accuracy and robustness beyond what any individual sensor can deliver. Depending on how the sensors are combined, we can classify sensor fusion into three categories.
 
 ### Complementary Fusion
 
-In this form, sensors that measure different physical quantities compensate for each other's shortcomings. Each sensor observes a different subset of the full state, and combining them allows us to estimate the complete state — one that no single sensor alone can observe.
+In this form, sensors that measure different physical quantities compensate for each other's shortcomings. Each sensor observes a different subset of the full state, and combining them allows us to estimate state components that no single sensor alone can observe.
 
 **Representative example: Camera + IMU (Visual-Inertial Odometry)**
 
 - The camera provides relative changes of a 6-DoF pose, but its scale is ambiguous and it fails under high-speed motion.
-- The IMU provides high-frequency acceleration and angular velocity, helping bridge motion between camera frames. With sufficiently exciting motion, metric acceleration combined with visual constraints can make scale observable, while the accelerometer also contributes to estimating the gravity direction.
+- The IMU provides high-frequency acceleration and angular velocity, helping bridge motion between camera frames. With sufficient motion excitation, metric acceleration combined with visual constraints can make scale observable, while the accelerometer also contributes to estimating the gravity direction.
 - The IMU supplies what the camera lacks — scale and high-frequency motion — while the camera supplies what the IMU lacks — drift correction.
 
 **Representative example: GNSS + IMU**
@@ -102,7 +102,7 @@ In this form, sensors measuring the same physical quantity are deployed redundan
 **Representative example: multi-camera systems**
 
 - Two cameras pointing in the same direction independently track feature points.
-- Even if one camera is contaminated (lens fouling, failure), the system continues to operate with the remaining camera.
+- Even if one camera develops a problem (lens fouling or failure), the system continues to operate with the remaining camera.
 - Combining the two estimates yields lower variance than either individual estimate.
 
 **Statistical foundation.** Optimally combining two independent observations $z_1 \sim \mathcal{N}(\mu, \sigma_1^2)$ and $z_2 \sim \mathcal{N}(\mu, \sigma_2^2)$ gives:
@@ -141,7 +141,7 @@ The three categories are not mutually exclusive. Real-world systems often use al
 
 ## 1.3 Classification by Coupling Level: Loosely vs Tightly vs Ultra-tightly Coupled
 
-Another important axis for classifying sensor fusion is the **level at which sensor data is combined**. This classification directly affects a system's accuracy, complexity, and robustness.
+Sensor fusion can also be classified by the **level at which sensor data is combined**. This level directly affects a system's accuracy, complexity, and robustness.
 
 ### Loosely Coupled
 
@@ -215,12 +215,12 @@ In this approach, fusion occurs at the **signal level** of the sensors. This ter
 **Representative example: GNSS/INS ultra-tight integration**
 
 - In typical tightly coupled schemes, the GNSS receiver outputs pseudoranges, which are fed into the navigation filter.
-- In ultra-tight, the INS's predicted velocity is fed back into the code/carrier tracking loop inside the GNSS receiver.
+- In ultra-tight integration, the INS's predicted velocity is fed back into the code/carrier tracking loop inside the GNSS receiver.
 - This feedback narrows the receiver's tracking-loop bandwidth. The receiver becomes more resistant to noise and can maintain satellite tracking under severe interference or weak signals.
 
 **Analogous concepts in vision:**
 
-In visual-inertial systems, the counterpart to ultra-tight coupling is using the IMU prediction to constrain the feature point search region of the camera, or to directly correct motion blur using IMU data. Setting the initial value of feature point tracking via the IMU prediction in VINS-Mono comes close to this.
+In visual-inertial systems, the counterpart to ultra-tight coupling is using the IMU prediction to constrain the camera's feature-point search region or directly correcting motion blur with IMU data. Initializing feature-point tracking with the IMU prediction in VINS-Mono comes close to this.
 
 ### Comparison of Coupling Levels
 
@@ -228,7 +228,7 @@ In visual-inertial systems, the counterpart to ultra-tight coupling is using the
 |------|----------------|-----------------|----------------------|
 | Fusion level | Output | Measurement | Signal |
 | Information utilization | Low | High | Highest |
-| Implementation complexity | Low | Medium~High | Very high |
+| Implementation complexity | Low | Medium–High | Very high |
 | Modularity | High | Low | Very low |
 | Partial failure handling | Easy | Requires design | Difficult |
 | Representative systems | Independent VO + LO → EKF | VINS-Mono, LIO-SAM, FAST-LIO2, ORB-SLAM3 | GNSS/INS deep integration |
@@ -243,7 +243,7 @@ For decades, the field of sensor fusion was dominated by **classical** approache
 
 ### What Deep Learning Changed
 
-**Feature extraction and matching.** Traditionally, handcrafted feature descriptors such as SIFT and ORB were used. [SuperPoint (DeTone et al., 2018)](https://arxiv.org/abs/1712.07629) performs keypoint detection and description jointly via self-supervised learning, improving robustness to illumination and viewpoint changes. [SuperGlue (Sarlin et al., 2020)](https://arxiv.org/abs/1911.11763) applies graph neural networks (GNNs) and attention mechanisms to feature matching. **Detector-free** methods such as [LoFTR (Sun et al., 2021)](https://arxiv.org/abs/2104.00680) and [RoMa (Edstedt et al., 2024)](https://arxiv.org/abs/2305.15404) directly find dense correspondences without keypoints and can match texture-scarce environments.
+**Feature extraction and matching.** Traditionally, handcrafted feature descriptors such as SIFT and ORB were used. [SuperPoint (DeTone et al., 2018)](https://arxiv.org/abs/1712.07629) performs keypoint detection and description jointly via self-supervised learning, improving robustness to illumination and viewpoint changes. [SuperGlue (Sarlin et al., 2020)](https://arxiv.org/abs/1911.11763) applies graph neural networks (GNNs) and attention mechanisms to feature matching and reported a lower mismatch rate than nearest-neighbor matching based on handcrafted descriptors. **Detector-free** methods such as [LoFTR (Sun et al., 2021)](https://arxiv.org/abs/2104.00680) and [RoMa (Edstedt et al., 2024)](https://arxiv.org/abs/2305.15404) directly find dense correspondences without keypoints and can match texture-scarce environments.
 
 Learning-based matchers report higher results than handcrafted baselines on several public benchmarks, but deployment comparisons must also include latency, memory, and domain shift.
 
@@ -251,13 +251,13 @@ Learning-based matchers report higher results than handcrafted baselines on seve
 
 **Monocular depth estimation.** Projective geometry from one image cannot uniquely determine a scene's absolute scale. [Depth Anything (Yang et al., 2024)](https://arxiv.org/abs/2401.10891) is a monocular relative-depth model trained on large-scale data. Its successor, [Depth Anything V2 (Yang et al., 2024)](https://arxiv.org/abs/2406.09414), improves precision through synthetic-data training and large-scale pseudo-labeling, and [Metric3D v2 (Hu et al., 2024)](https://arxiv.org/abs/2404.15506) uses learned priors for zero-shot metric-depth estimation. Before using these predictions in fusion, validate scale bias and uncertainty on the target camera and environment.
 
-**Map representations.** NeRF and 3D Gaussian Splatting represent scenes with neural networks. NeRF-SLAM, Gaussian Splatting SLAM, and related systems provide photorealistic map representations distinct from traditional point maps or voxel grids.
+**Map representations.** NeRF represents scenes with a neural network, while 3D Gaussian Splatting uses a set of optimized 3D Gaussians. NeRF-SLAM, Gaussian Splatting SLAM, and related systems provide photorealistic map representations distinct from traditional point maps or voxel grids.
 
-**Event cameras.** Event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing microsecond-scale temporal resolution and wide dynamic range. As an [event camera survey (Huang et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM combine event cameras with conventional frame-based cameras for high-speed motion and low-light environments.
+**Event cameras.** Alongside these developments in deep learning, event cameras, also called neuromorphic vision sensors, asynchronously detect brightness changes at each pixel, providing microsecond-scale temporal resolution and wide dynamic range. As an [event camera survey (Chakravarthi et al., 2024)](https://arxiv.org/abs/2408.13627) summarizes, event-based VIO and SLAM combine event cameras with conventional frame-based cameras for high-speed motion and low-light environments.
 
 ### What Deep Learning Did Not Change
 
-**State estimation backends.** Probabilistic estimation frameworks such as Kalman filters and factor graph optimization have not been replaced by deep learning. The reasons are clear:
+**State estimation backends.** Probabilistic estimation frameworks such as Kalman filters and factor graph optimization have not been replaced by deep learning. There are four reasons:
 
 1. **Explicit uncertainty propagation**: Kalman filters and factor graphs compute uncertainty under an assumed model and covariance. Their covariance can still become inconsistent under model mismatch, linearization error, or ignored correlation, and learned observations require separate calibration.
 2. **Physical models and constraints**: dynamics and kinematics can be encoded in state transitions and residuals. This alone does not prevent every physically impossible estimate; required hard constraints must be expressed in the optimization or parameterization.
@@ -283,11 +283,11 @@ A **hybrid** structure that combines a learning-based frontend with a classical 
 - At the frontend, deep learning extracts high-level features (feature points, depth, semantic labels) from raw sensor data.
 - At the backend, geometric/probabilistic frameworks integrate these features into temporally consistent state estimates.
 
-[DROID-SLAM (Teed & Deng, 2021)](https://arxiv.org/abs/2108.10869) is a good example of this hybrid approach. It uses learned feature extraction and correspondence finding, while performing the final pose estimation with differentiable bundle adjustment.
+[DROID-SLAM (Teed & Deng, 2021)](https://arxiv.org/abs/2108.10869) illustrates this hybrid approach. It uses learned feature extraction and correspondence finding, while performing the final pose estimation with differentiable bundle adjustment.
 
 ### Technical Lineage Summary
 
-Each topic follows the same arc: **traditional methods → what deep learning enabled → where tradition is still needed**. The table below summarizes the technical lineage.
+For each topic, the guide follows this sequence: **traditional methods → what deep learning enabled → where tradition is still needed**. The table below summarizes the technical lineage.
 
 | Area | Classical | Learning-based | Relationship in practice |
 |------|-----------|---------------|----------|
@@ -339,7 +339,7 @@ The intended audience of this guide is a robotics newcomer with the following ba
 - **Linear algebra**: understanding of matrix operations, eigendecomposition, and SVD
 - **Probability**: understanding of probability distributions, conditional probability, Bayes' theorem, and the Gaussian distribution
 - **Basic optimization**: familiarity with least squares and gradient descent
-- **Python**: ability to read and run code built on numpy and scipy
+- **Python**: ability to read and run code built on NumPy and SciPy
 
 Each concept moves from intuition to equations, with Python code and examples used to check the result.
 
@@ -347,13 +347,13 @@ Each concept moves from intuition to equations, with Python code and examples us
 
 ## 1.6 Cross-Cutting Themes of This Guide
 
-Several questions recur throughout the guide:
+The guide returns to four questions throughout:
 
 1. **"Why was this traditional method important?"** — Understand the problem each traditional method solved and its solution.
 2. **"What did deep learning change?"** — See concretely which limitations of traditional methods learning-based methods overcame.
 3. **"Where is tradition still needed?"** — Analyze the areas that deep learning has not replaced and why.
 4. **"Where is the gap between theory and practice?"** — Examine the differences between papers and real systems, and the engineering issues encountered in practice.
 
-With these questions in view, individual algorithms begin to form a field-level map of sensor fusion.
+Following these questions reveals a broader map of sensor fusion beyond individual algorithms.
 
 Every fusion algorithm starts by expressing, in equations, how a sensor "sees" the world through its observation model.

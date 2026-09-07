@@ -2,15 +2,17 @@
 
 센서 모델링, 상태 추정, odometry, place recognition, 공간 표현은 실제 플랫폼에서 하나의 시스템으로 조합된다.
 
-대표적인 적용 플랫폼은 자율주행, 드론, 핸드헬드 매핑이며, 각 시스템은 표준 벤치마크와 도구로 평가한다.
+자율주행, 드론, 핸드헬드 매핑은 센서 퓨전이 핵심으로 쓰이는 대표 플랫폼들이다. 각 환경에 맞추어 구성된 시스템은 표준 벤치마크와 전용 진단 도구로 정량 평가한다.
 
 ---
 
-## 12.1 자율주행 Perception Stack
+## 12.1 플랫폼별 시스템 설계
 
-자율주행의 안전 설계는 단일 센서 고장을 검출하고 위험을 제한해야 한다. 운행을 계속할지 최소 위험 상태로 전환할지는 ODD와 safety case에 달려 있으며, 여러 센서는 redundancy와 상호 검증 수단이 될 수 있다.
+### 12.1.1 자율주행 (Autonomous Driving)
 
-### 12.1.1 Sensor Suite 구성 사례
+자율주행의 안전 아키텍처는 단일 센서 결함을 감지하고 위험 전파를 차단하도록 설계해야 한다. 운행을 유지할지 최소 위험 상태로 천이할지는 운행 설계 영역(ODD)과 안전 사례에 의해 결정된다. 다양한 센서 모달리티는 이 과정에서 결함 포용적 중복성과 상호 검증 장치를 제공한다.
+
+#### Sensor Suite 구성 사례
 
 **Waymo** (5th generation):
 - 1 × 장거리 LiDAR (360°, 최대 300m)
@@ -121,7 +123,7 @@ $$\mathbf{x}^* = \arg\min \underbrace{f_{\text{IMU}}}_{\text{예측}} + \underbr
 
 카메라 + IMU는 드론에서 흔히 쓰이는 센서 조합이다. 소형 드론은 무게와 전력 제약 때문에 LiDAR를 탑재하기 어렵고, 카메라와 IMU는 두 제약을 모두 만족한다(Livox Mid-360 같은 소형 solid-state LiDAR가 등장하면서 선택지는 달라지고 있다). 별도의 과제는 진동이다. 드론의 프로펠러 진동이 IMU 데이터에 노이즈를 추가하므로, 방진 마운트와 소프트웨어 필터링이 함께 필요하다.
 
-드론에 쓰이는 대표적인 VIO 시스템은 다음과 같다.
+드론의 고속 제어 루프를 지탱하기 위해 주로 활용되는 오픈소스 VIO 파이프라인들이 있다.
 - **VINS-Mono/Fusion**: tightly-coupled optimization 기반. PX4와 통합 가능.
 - **MSCKF/OpenVINS**: filter 기반. 연산량이 적어 embedded 보드에 적합.
 - **Basalt**: visual-inertial mapping with non-linear factor recovery.
@@ -132,14 +134,14 @@ GPS 신호가 없는 환경 — 실내, 터널, 숲 캐노피 아래, 전자전 
 
 접근 방식은 사전 인프라 여부에 따라 갈린다.
 
-1. **VIO 단독**: drift가 누적되므로 허용 mission 길이는 motion, texture, calibration, loop closure와 오차 예산으로 정한다.
-2. **VIO + 지형 매칭**: 사전 구축된 지형·건물 맵과 현재 카메라 관측을 매칭해 드리프트를 억제한다. prior map이 필요하다.
-3. **VIO + UWB**: 환경에 UWB 앵커를 설치하고 ranging 측정으로 드리프트를 보정한다. 인프라 사전 구축이 전제다.
-4. **VIO + barometer**: pressure 변화로 상대 altitude를 보조한다. 기상·온도·prop wash에 따른 bias가 있어 절대 z drift를 단독으로 제거하지는 못한다.
+1. **VIO 단독**: 드리프트가 누적되므로 허용되는 임무(mission) 길이는 운동 양상(motion), 텍스처(texture), 캘리브레이션(calibration), 루프 클로저(loop closure)와 오차 예산으로 정한다.
+2. **VIO + 지형 매칭**: 사전 구축된 지형·건물 맵과 현재 카메라 관측을 매칭해 드리프트를 억제한다. 사전 지도(prior map)가 필요하다.
+3. **VIO + UWB**: 환경에 UWB 앵커를 설치하고 거리 측정(ranging)으로 드리프트를 보정한다. 인프라 사전 구축이 전제다.
+4. **VIO + 기압계(barometer)**: 기압(pressure) 변화로 상대 고도(altitude) 추정을 보조한다. 기상·온도·프로펠러 후류(prop wash)에 따른 바이어스(bias)가 있어 절대 z축 드리프트를 단독으로 제거하지는 못한다.
 
 ### 12.2.3 실시간 제약
 
-드론의 sensor rate와 지연 예산은 최대 각속도·가속도, 제어 대역폭, 노출, estimator와 통신 지연으로 정한다. IMU는 aliasing과 적분 오차를 제한할 rate가 필요하고, camera exposure는 motion blur와 저조도 noise 사이에서 고른다. State estimate의 허용 end-to-end latency도 30ms 같은 보편값이 아니라 폐루프 안정성 분석과 실기 시험에서 정한다.
+드론의 센서 주기와 허용 지연은 최대 각가속도, 제어 대역폭, 카메라 노출, 통신 오버헤드를 종합 고려해 산정한다. IMU는 에일리어싱과 적분 드리프트를 억제할 수 있는 고주파 샘플링 주기를 확보해야 한다. 카메라 셔터 노출 시간은 모션 블러와 저조도 노이즈의 절충점에서 결정된다. 상태 추정치의 종단간(end-to-end) 허용 지연 역시 임의의 고정 수치가 아니라 폐루프 제어 안정성 해석과 비행 시험을 통해 규정해야 한다.
 
 **Point-LIO**는 포인트 단위로 처리하여 스캔 완료를 기다리지 않으므로 지연을 줄인 LIO다. 드론의 고속 기동에도 적용할 수 있다.
 
@@ -264,7 +266,7 @@ Post-processing (클라우드 정리, mesh 생성)
 
 **EuRoC** — 드론(MAV)에 장착된 스테레오 카메라 + IMU 데이터로, VIO에서 널리 쓰이는 benchmark다. Ground truth는 구간에 따라 Vicon motion capture 또는 Leica laser tracker로 기록됐다. 11개 시퀀스가 easy → medium → difficult로 분류되어 있다.
 
-**Hilti** — 건설 현장이라는 도전적 환경(먼지, 진동, 반복 구조물)에서의 SLAM을 평가한다. 공개 자료로 확인되는 challenge edition은 2021, 2022, 2023년이며, 각 edition의 sensor 구성과 평가 규칙은 별도 논문을 확인해야 한다.
+**Hilti** — 건설 현장의 분진, 진동, 반복 기하 구조라는 가혹한 환경에서 SLAM 성능을 검증하는 챌린지다. 2021년, 2022년, 2023년에 걸쳐 개최되었으며, 회차마다 센서 탑재 구성과 정합 평가 규칙이 달라지므로 세부 명세는 공식 릴리스 논문을 참조해야 한다.
 
 **HeLiPR** — 2023년 공개되었으며, 서로 다른 종류의 LiDAR(spinning, solid-state, FMCW)를 동시에 탑재했다. 이종 LiDAR 퓨전 연구에 쓰인다.
 
@@ -426,7 +428,7 @@ def umeyama_alignment(source, target, with_scale=True):
 
 1. **파라미터 튜닝**: 같은 알고리즘도 파라미터에 따라 성능이 크게 달라진다. 특정 데이터셋에 맞춰 튜닝하면 범용성이 떨어진다.
 
-2. **하드웨어 의존성**: 실시간 성능은 하드웨어에 크게 좌우된다. "실시간"의 정의가 논문마다 다르다 (데스크톱 GPU vs 임베디드 ARM).
+2. **하드웨어 의존성**: 실시간 성능은 하드웨어에 크게 좌우된다. "실시간"의 정의가 논문마다 다르다(데스크톱 GPU vs 임베디드 ARM).
 
 3. **Completeness**: 일부 시스템은 어려운 시퀀스에서 tracking loss가 발생하는데, 성공한 구간만으로 ATE를 계산하면 실패 빈도가 반영되지 않는다. **Completeness** (= 성공한 시퀀스 비율)도 함께 보고해야 한다.
 
@@ -523,7 +525,7 @@ def simple_pose_graph_gtsam():
 - Google이 개발한 nonlinear least squares 최적화 라이브러리
 - C++ 전용 (Python 바인딩은 제한적)
 - 자동 미분(automatic differentiation) 지원
-- VINS-Mono, ORB-SLAM 등에서 사용
+- VINS-Mono 등에서 사용
 - Factor graph 추상화 없이 순수 최적화 문제를 직접 정의
 
 **g2o** (General Graph Optimization):

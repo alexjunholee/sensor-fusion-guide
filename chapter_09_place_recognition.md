@@ -264,11 +264,11 @@ $$
 
 여기서 $m$은 마진, $p^+$는 positive 이미지, $p^-$는 hard negative 이미지이다.
 
-Pitts250k Recall@1 약 84.3%, Pitts30k Recall@1 약 86.3%로, 당시 hand-crafted 방법 대비 향상. VGG-16 백본 사용.
+Pitts250k Recall@1은 약 84.3%, Pitts30k Recall@1은 약 86.3%로, 당시 hand-crafted 방법보다 향상되었으며 VGG-16 백본을 사용했다.
 
 ### 9.2.4 AnyLoc: Foundation Model 기반 범용 VPR
 
-**[AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688)**은 VPR 전용 학습 없이 범용적으로 작동하는 장소 인식이 가능한가를 묻는다. 대답은 DINOv2 같은 Foundation Model의 특징을 사용하면 가능하다는 것이다.
+**[AnyLoc (Keetha et al., 2023)](https://arxiv.org/abs/2308.00688)**은 VPR 전용 학습 없이도 범용 장소 인식이 가능한지 검토한다. 논문은 DINOv2 같은 Foundation Model의 특징으로 그 가능성을 보인다.
 
 1. **DINOv2 특징 추출**: AnyLoc 구성은 DINOv2 ViT-G/14의 중간 layer에서 dense patch feature를 추출한다. CLS token 대신 patch 정보를 보존하며, 저자들은 논문의 비교 집합과 지표에서 dense feature 사용의 평균 향상을 보고했다. layer와 향상 폭은 backbone·dataset에 따라 달라진다.
 
@@ -276,7 +276,7 @@ Pitts250k Recall@1 약 84.3%, Pitts30k Recall@1 약 86.3%로, 당시 hand-crafte
 
 3. **도메인별 어휘**: 논문은 PCA 투영에서 Urban, Indoor, Aerial, SubT, Degraded, Underwater 집단을 분석하고 domain-specific vocabulary를 사용한다. 보고된 최대 향상은 해당 평가 설정의 결과이며 새 domain에서는 vocabulary 선택을 검증해야 한다.
 
-Foundation Model이 작동하는 이유:
+Foundation Model이 VPR에 유용한 배경:
 
 [DINOv2 (Oquab et al., 2023)](https://arxiv.org/abs/2304.07193)는 1.42억 장의 이미지로 자기지도 학습한 모델이다. 특정 place-recognition label로 fine-tune하지 않은 feature도 여러 benchmark에서 유용했지만, 반복 구조·극단적 viewpoint·미포함 sensor domain에서 식별 가능성을 보장하지는 않는다.
 
@@ -397,7 +397,7 @@ $$
 
 디스크립터 생성 과정:
 
-1. **극좌표 분할**: 센서 중심에서 바라보는 2D 평면을 방위각(azimuth) $N_s$개 섹터와 거리(range) $N_r$개 링으로 분할하여 $N_s \times N_r$ 그리드를 만든다 (보통 60×20).
+1. **극좌표 분할**: 센서 중심에서 바라보는 2D 평면을 방위각(azimuth) $N_s$개 섹터와 거리(range) $N_r$개 링으로 분할하여 $N_s \times N_r$ 그리드를 만든다(보통 60×20).
 
 2. **최대 높이 인코딩**: 각 빈(bin)에 속하는 3D 점들 중 최대 높이(max height)를 기록한다. 이것이 Scan Context 행렬 $\mathbf{SC} \in \mathbb{R}^{N_s \times N_r}$이다.
 
@@ -486,7 +486,7 @@ class ScanContext:
         rk_dists = [np.linalg.norm(rk_query - rk) for rk in self.ring_keys]
         candidate_indices = np.argsort(rk_dists)[:n_candidates]
         
-        # Stage 2: Scan Context 열 이동 매칭
+        # Stage 2: Scan Context 행 이동 매칭
         scores = []
         for idx in candidate_indices:
             sc_db = self.database[idx]
@@ -501,7 +501,7 @@ class ScanContext:
         return scores[:top_k]
 ```
 
-**후속작 — Scan Context++**: 시맨틱 세그멘테이션을 추가하여, 높이 대신 시맨틱 레이블(건물, 도로, 식생 등)을 인코딩. 시맨틱 정보는 계절 변화에 더 강건하다.
+**후속작 — [Scan Context++](https://arxiv.org/abs/2109.13494)**: 구조 기반 디스크립터를 확장하여, roll·pitch 변화가 크지 않은 환경에서 heading 회전과 횡방향 위치 변화에 대한 강건성을 높인다. 장소 검색 뒤에는 1-DOF 상대 정렬도 추정한다.
 
 ### 9.3.2 M2DP와 ESF
 
@@ -532,13 +532,14 @@ PointNet은 포인트 간 상호작용을 충분히 모델링하지 못하며, �
 
 **Range Image**: 회전형 LiDAR 스캔을 $(h, w)$ 크기의 2D 이미지로 변환한다. 각 픽셀 값은 해당 방향의 거리(range)이다. $h$는 레이저 빔 수, $w$는 수평 해상도에 대응한다.
 
-아키텍처는 3단계로 구성된다. 첫째, range image를 lightweight CNN으로 처리하여 feature map을 추출한다. 둘째, NetVLAD 레이어로 글로벌 디스크립터를 생성한다. 셋째, Transformer encoder로 전체적인 context를 반영한다. 3D 포인트 클라우드 처리보다 2D CNN 처리가 빠르고, 기존 이미지 네트워크 아키텍처를 그대로 활용할 수 있다는 점이 이 방식의 실용적 장점이다.
+전체 아키텍처는 3단계 구조를 취한다. 먼저 range image를 경량 CNN에 통과시켜 로컬 feature map을 추출한다. 이어 Transformer encoder가 특징 사이의 문맥을 반영하고, NetVLAD 레이어가 이를 글로벌 디스크립터로 집계한다. 이 방식은 2D range image와 경량 네트워크를 이용해 빠른 처리를 목표로 한다.
+
+**관련 방법 — [OverlapNet](https://github.com/PRBonn/OverlapNet)**: LiDAR의 range image 표현을 이용해 두 스캔의 overlap과 상대 yaw를 예측한다.
 
 ### 9.3.6 BEV 기반 방법
 
 Bird's Eye View(BEV)로 포인트 클라우드를 투영하여 2D 맵으로 변환한 뒤, 2D 이미지 기반 검색을 수행하는 방법들:
 
-- **OverlapNet**: BEV 투영 이미지의 오버랩 정도를 직접 예측
 - **BEVPlace**: BEV 이미지에서 NetVLAD 디스크립터를 추출
 
 ---
@@ -756,7 +757,7 @@ def geometric_verification_lidar(query_cloud, db_cloud,
 
 VPR에서는 환경별 전용 학습과 foundation-model 기반 zero-shot 인식을 함께 연구한다. AnyLoc은 VPR 전용 학습 없이도 원 논문이 선택한 여러 환경에서 경쟁력 있는 결과를 보고했다.
 
-향후 방향은 크게 두 가지다. 첫째, ViT-G14는 1B+ 파라미터로 임베디드 배포에 제약이 있어 경량 FM(ViT-S/B) + 도메인 적응의 조합이 연구되고 있다. 둘째, FM이 제공하는 패치 수준의 dense correspondence를 re-ranking이나 상대 포즈 추정에 직접 활용하는 연구가 진행 중이다.
+향후 방향은 크게 두 가지다. 첫째, ViT-G/14는 1B+ 파라미터로 임베디드 배포에 제약이 있어 경량 FM(ViT-S/B) + 도메인 적응의 조합이 연구되고 있다. 둘째, FM이 제공하는 패치 수준의 dense correspondence를 re-ranking이나 상대 포즈 추정에 직접 활용하는 연구가 진행 중이다.
 
 ### 9.7.2 Semantic Place Recognition
 

@@ -10,7 +10,7 @@ Ch.4 established the mathematical framework of state estimation. But whether we 
 
 ### 5.1.1 The Problem of Finding "the Same Thing"
 
-The correspondence problem is the problem of identifying **physically identical points, regions, or structures** across two or more observations. To understand why this problem is fundamental in robotics, we must recognize that virtually every stage of the sensor fusion pipeline presupposes correspondence.
+The correspondence problem is the problem of identifying **physically identical points, regions, or structures** across two or more observations. Virtually every stage of the sensor fusion pipeline presupposes correspondence.
 
 - **Visual Odometry**: Camera motion can only be estimated by finding the 2D projections of the same 3D point across consecutive frames.
 - **Calibration**: Estimating the camera-LiDAR extrinsic parameters requires identifying the same physical point observed by both sensors.
@@ -230,7 +230,8 @@ SURF was proposed by [Bay et al. (2006)](https://link.springer.com/chapter/10.10
 $$\det(\mathbf{H}) = D_{xx} D_{yy} - (0.9 \cdot D_{xy})^2$$
 
 - A 64-dimensional descriptor (half the dimensionality of SIFT's 128): sums and sums-of-absolute-values of Haar wavelet responses.
-- Designed to approximate Hessian responses efficiently with integral images and box filters. Speed and accuracy differences depend on implementation, image size, and hardware.
+
+SURF is designed to approximate Hessian responses efficiently with integral images and box filters. Speed and accuracy differences depend on implementation, image size, and hardware.
 
 Due to patent issues SURF is rarely used in recent practice; in real-time applications ORB is preferred, while for accuracy-critical applications SIFT or learning-based methods are preferred.
 
@@ -334,7 +335,7 @@ Even after the matching stage, **outliers (incorrect matches)** remain. Estimati
 
 [Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692) perform robust estimation as follows:
 
-1. Randomly sample the minimum $n$ matches required for the model (e.g., fundamental matrix with 8, 7, or 5 points)
+1. Randomly sample the minimum $n$ matches required for the model (e.g., 8 or 7 points for a fundamental matrix, or 5 points for an essential matrix)
 2. Estimate the model from the sampled points
 3. Form a consensus set of points (inliers) whose error to the model is within a threshold $t$ over all matches
 4. Select the model with the largest consensus set
@@ -427,7 +428,7 @@ RANSAC (1981)   — a landmark random-sampling paradigm for robust estimation
 PROSAC (2005)   — progressive sampling based on match quality
     ↓ threshold automation
 MAGSAC++ (2020) — threshold-free robust estimation
-    ↓ eliminating learning-based routines
+    ↓ learning-based rejection
 GeoTransformer (2022) — direct transformation estimation without RANSAC
 ```
 
@@ -493,7 +494,7 @@ NMI remains stable when the overlap area varies, so it is preferred over MI in p
 
 ### 5.4.4 MI Gradient Computation
 
-To use MI as the objective for registration, we must compute the gradient with respect to the transformation parameters.
+To optimize an MI registration objective with a gradient-based method, we must compute its gradient with respect to the transformation parameters.
 
 The gradient of MI with respect to a transformation $T_\xi$ (parameters $\xi$):
 
@@ -555,7 +556,7 @@ def compute_nid(img_a, img_b, bins=256):
 
 ## 5.5 Learning-Based Feature Detection & Description
 
-Traditional feature points rely on **low-level visual cues** such as intensity gradients, corners, and blobs, which makes them vulnerable to illumination, viewpoint, and weather changes. Learning-based methods address some of these limitations by fitting more robust feature representations from data.
+Traditional feature points rely on **low-level visual cues** such as intensity gradients, corners, and blobs, which makes them vulnerable to illumination, viewpoint, and weather changes. Deep learning overcame these limitations by learning more robust feature representations from large-scale data.
 
 ### 5.5.1 SuperPoint (2018): Self-Supervised Integration of Detection and Description
 
@@ -588,7 +589,7 @@ A VGG-style encoder (shared backbone) → branches into two decoder heads:
 
 **Descriptor Decoder**:
 - Output a 256-dimensional descriptor map from the shared backbone's feature map
-- Sample at detected keypoint positions using bi-cubic interpolation
+- Sample at detected keypoint positions using bicubic interpolation
 - Apply L2 normalization
 
 #### Training Loss
@@ -711,7 +712,7 @@ After convergence, the soft assignment matrix is thresholded to produce the fina
 
 #### Training
 
-End-to-end training by maximizing the negative log-likelihood over ground-truth correspondences (generated from a homography or from relative pose + depth map):
+End-to-end training by minimizing the negative log-likelihood over ground-truth correspondences (generated from a homography or from relative pose + depth map):
 
 $$L = -\sum_{(i,j) \in \mathcal{M}} \log \hat{P}_{ij} - \sum_{i \in \mathcal{U}_A} \log \hat{P}_{i, M+1} - \sum_{j \in \mathcal{U}_B} \log \hat{P}_{N+1, j}$$
 
@@ -737,11 +738,11 @@ If SuperPoint learned detection+description, SuperGlue **learned the matching st
 
 ### 5.6.2 LightGlue (2023): Making SuperGlue Efficient
 
-[Lindenberger et al. (2023)](https://arxiv.org/abs/2306.13643)'s LightGlue maintains SuperGlue's accuracy while drastically improving speed through **adaptive computation**.
+[Lindenberger et al. (2023)](https://arxiv.org/abs/2306.13643)'s LightGlue uses **adaptive computation**. The paper reports accuracy comparable to SuperGlue with an average 3–5× speedup in its evaluation; the actual ratio depends on the number of keypoints and the hardware.
 
 #### Diagnosis of SuperGlue's Problems
 
-- Always performs a fixed 9 GNN layers and 100 Sinkhorn iterations → unnecessarily many operations even for easy matches.
+- The public SuperGlue configuration uses a fixed GNN depth and number of Sinkhorn iterations, so it does not reduce computation for easier inputs.
 - $O(N^2)$ attention is repeated over the number of keypoints $N$, so it slows down drastically as the number of keypoints grows.
 
 #### Key Improvements: Adaptive Depth & Width
@@ -756,7 +757,7 @@ If SuperPoint learned detection+description, SuperGlue **learned the matching st
 - The sequence length of attention gradually decreases, lightening the computation of later layers.
 
 **Removing Sinkhorn**:
-Instead of optimal transport, matching is done with simple **dual-softmax + mutual nearest neighbor**. The iteration cost of Sinkhorn is eliminated entirely with virtually no performance degradation.
+Instead of optimal transport, matching is done with simple **dual-softmax + mutual nearest neighbor**, so Sinkhorn iterations are not used. The accuracy difference must be evaluated for the dataset and configuration.
 
 $$P_{ij} = \text{softmax}_j(S_{ij}) \cdot \text{softmax}_i(S_{ij})$$
 
@@ -974,7 +975,7 @@ It combines RAFT's iterative refinement with LoFTR's detector-free design and pr
 
 In 2024-2025, methods emerged that go beyond 2D matching to **directly predict 3D geometry while performing matching**.
 
-**DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132) is a method that directly regresses a 3D pointmap from an arbitrary image pair without any calibration or pose information. Whereas existing matching pipelines followed the order "2D matching → 3D reconstruction," DUSt3R reverses this to **directly predict the 3D structure itself and treat correspondences as a natural byproduct obtained in 3D space**.
+**DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132) is a method that directly regresses a 3D pointmap from an arbitrary image pair without any calibration or pose information. Whereas existing matching pipelines followed the order "2D matching → 3D reconstruction," DUSt3R reverses this to **directly predict the 3D structure itself and treat correspondences as a natural byproduct of the 3D prediction**.
 
 **MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756) adds a dense local-feature head to DUSt3R. Its authors report a 30-percentage-point VCRE AUC improvement over the previous compared method under the paper's map-free localization setup.
 
@@ -1007,9 +1008,9 @@ $$\alpha = \mathbf{v} \cdot \mathbf{n}_k, \quad \phi = \mathbf{u} \cdot \frac{\m
 
 Each feature is quantized into a $B$-bin histogram.
 
-#### FPFH: An Accelerated Version of SPFH
+#### FPFH: An Accelerated Version of PFH
 
-SPFH computes features over all neighbor pairs within radius $r$, so its complexity is $O(k^2)$. FPFH approximates this to reduce it to $O(k)$:
+PFH computes features for pairs in the local neighborhood, requiring $O(k^2)$ work per point. FPFH computes SPFH from query-neighbor pairs and combines neighboring SPFHs to obtain an $O(k)$ approximation per point:
 
 $$\text{FPFH}(\mathbf{p}) = \text{SPFH}(\mathbf{p}) + \frac{1}{k} \sum_{i=1}^{k} \frac{1}{w_i} \text{SPFH}(\mathbf{p}_i)$$
 
@@ -1057,7 +1058,7 @@ Existing methods extract descriptors uniformly over all regions of both point cl
 
 ### 5.8.5 GeoTransformer (2022): Geometric Transformer
 
-[Qin et al. (2022)](https://arxiv.org/abs/2202.06688)'s GeoTransformer is an innovative method in 3D point cloud registration that simultaneously achieves **learning of geometric invariant features and removal of RANSAC**.
+[Qin et al. (2022)](https://arxiv.org/abs/2202.06688)'s GeoTransformer simultaneously achieves **learning of geometric invariant features and removal of RANSAC** in 3D point cloud registration.
 
 #### Keypoint-Free Superpoint Matching
 
@@ -1166,13 +1167,13 @@ Four differences make 2D-3D cross-modal matching difficult:
 
 4. **Appearance domain gap**: even for the same object, camera albedo and LiDAR reflection intensity measure different physical quantities.
 
-Because of these difficulties, cross-modal correspondence is still a less mature research area than unimodal (2D-2D or 3D-3D) matching. The MI-based approach (Section 5.4) is a strategy that statistically bypasses this domain gap, while the projection-based approach is a strategy that reduces the problem to the same modality.
+Because of these difficulties, cross-modal correspondence remains less mature than unimodal (2D-2D or 3D-3D) matching. MI-based methods (Section 5.4) statistically bypass this domain gap, while projection-based methods express both observations in a common 2D image format.
 
 ---
 
 ## 5.10 Dense Matching & Optical Flow
 
-The methods above focus on **sparse correspondence**. **Dense matching** instead seeks a correspondence for every image pixel.
+The methods above cover **sparse correspondence** and some dense matching methods. **Dense matching** seeks a correspondence for every image pixel.
 
 ### 5.10.1 Classical Optical Flow: Lucas-Kanade, Horn-Schunck
 
@@ -1293,7 +1294,7 @@ with torch.no_grad():
 
 #### FlowFormer (2022)
 
-[FlowFormer (Huang et al., 2022)](https://arxiv.org/abs/2203.16194) is a method that **replaces RAFT's GRU update with a transformer**. It tokenizes the cost volume and uses transformer self-attention to capture global context, achieving accuracy surpassing RAFT.
+[FlowFormer (Huang et al., 2022)](https://arxiv.org/abs/2203.16194) tokenizes the cost volume and encodes it into cost memory with a transformer. A recurrent transformer decoder queries this representation to iteratively update optical flow. The paper reports higher accuracy than RAFT.
 
 #### UniMatch (2023)
 
@@ -1352,7 +1353,7 @@ RAFT's all-pairs correlation and iterative refinement influenced dense matching,
 
 ## Technical Lineage Summary
 
-The diagram below connects the technical lineages covered in this chapter:
+The diagram below traces how these technical lineages connect:
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
