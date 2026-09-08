@@ -84,7 +84,9 @@ The generic camera model of [Kannala & Brandt (2006)](https://doi.org/10.1109/TP
 
 Let the incidence angle $\theta$ denote the angle of the 3D point from the optical axis:
 
-$$\theta = \arctan\left(\frac{\sqrt{X_c^2 + Y_c^2}}{Z_c}\right)$$
+$$\theta = \operatorname{atan2}\left(\sqrt{X_c^2 + Y_c^2},\; Z_c\right)$$
+
+Handling the rear hemisphere ($Z_c < 0$, beyond 180°) requires the two-argument atan2, and the direction unit vector is likewise computed as $X_c/\sqrt{X_c^2+Y_c^2}$ rather than by dividing by $Z_c$. The Python implementation below follows this approach.
 
 The distorted radius $r_d$ is modeled as an odd polynomial in $\theta$:
 
@@ -216,7 +218,7 @@ $$\mathbf{T}(t_{v_i}) = \mathbf{T}(t_0) \cdot \text{Exp}\left(\frac{v_i}{H-1} \c
 
 Here $\text{Exp}$ and $\text{Log}$ are the exponential and logarithmic maps on the $SE(3)$ Lie group. The code below instead accepts camera-to-world transforms and approximates motion with separate rotational SLERP and linear translation interpolation.
 
-Rolling-shutter correction is optionally supported in VIO systems such as [VINS-Mono](https://arxiv.org/abs/1708.03852) and [ORB-SLAM3](https://arxiv.org/abs/2007.11898), and it is especially important for combinations of high-speed motion and low-cost sensors, such as smartphone or drone-mounted cameras.
+Rolling-shutter correction is optionally supported in some VIO systems (for example, the readout-time setting in [VINS-Mono](https://arxiv.org/abs/1708.03852); ORB-SLAM3 assumes a global shutter), and it is especially important for combinations of high-speed motion and low-cost sensors, such as smartphone or drone-mounted cameras.
 
 ```python
 import numpy as np
@@ -365,7 +367,7 @@ The table below compares spinning LiDAR with limited-FoV non-repetitive scanning
 | Feature extraction | Scan-line-based feasible | No scan-line structure |
 | Suitable algorithms | LOAM, LeGO-LOAM | FAST-LIO/LIO2 (point-wise processing) |
 
-FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829) suit solid-state LiDAR because their iterated EKF structure does not depend on scan lines and instead **processes individual points sequentially**. In contrast, LOAM's edge/planar feature extraction presupposes scan-line structure and is hard to apply directly to solid-state sensors. More recently, [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035) extends this structure to sequentially fuse three sensors — LiDAR, inertial, and visual — within the same iterated EKF, using a direct method to process both LiDAR points and images without separate feature extraction.
+FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829) suit non-repetitive scanning LiDAR, which has no scan lines, because their iterated EKF structure does not depend on scan lines and instead **processes individual points sequentially**. In contrast, LOAM's edge/planar feature extraction presupposes scan-line structure and is hard to apply directly to non-repetitive scanning. More recently, [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035) extends this structure to sequentially fuse three sensors — LiDAR, inertial, and visual — within the same iterated EKF, using a direct method to process both LiDAR points and images without separate feature extraction.
 
 ---
 
@@ -765,7 +767,7 @@ def pseudorange_model(p_receiver, p_satellites, clock_bias):
         pseudoranges[i] = r + clock_bias
         
         # Jacobian: d(rho)/d(x,y,z,cb)
-        e = diff / r  # unit vector (receiver-to-satellite direction)
+        e = diff / r  # unit vector (satellite-to-receiver direction; diff = p_receiver - p_satellite)
         H[i, :3] = e
         H[i, 3] = 1.0  # partial derivative with respect to clock bias
     
@@ -795,7 +797,7 @@ def geodetic_to_enu(lat, lon, alt, lat0, lon0, alt0):
     dalt = alt - alt0
     
     east = (N0 + alt0) * np.cos(lat0) * dlon
-    north = (N0 * (1 - e2) + alt0) * dlat
+    north = (N0 * (1 - e2) / (1 - e2 * sin_lat0**2) + alt0) * dlat  # meridional radius of curvature M
     up = dalt
     
     return np.array([east, north, up])

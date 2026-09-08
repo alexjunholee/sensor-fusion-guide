@@ -26,7 +26,7 @@ $$s(\mathbf{d}_q, \mathbf{d}_i) = \frac{\mathbf{d}_q^\top \mathbf{d}_i}{\|\mathb
 
 In **LiDAR loop closure detection**, 3D point cloud descriptors are used:
 
-- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: A descriptor that directly preserves spatial structure by recording the maximum height per bin/sector in a sensor-centered polar coordinate system. Efficient candidate search is possible through a two-stage search using a ring key and a sector key, and it is robust even to reverse revisits.
+- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: A descriptor that directly preserves spatial structure by recording the maximum height per bin/sector in a sensor-centered polar coordinate system. Efficient candidate search is possible through a two-stage search — a ring-key-based kd-tree lookup narrows the candidates, then sector-shift alignment re-ranks them — and it is robust even to reverse revisits.
 - **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: learned 3D place-recognition methods. Their recall relative to Scan Context depends on dataset, sensor pattern, and training domain.
 
 **Temporal filtering**: matching recent frames is usually continuous tracking, so adjacent keyframes are excluded. Tune the time or travel-distance gap to platform speed, keyframe rate, and revisit pattern. The 30-second value below is illustrative.
@@ -94,9 +94,9 @@ $$\mathbf{p}_2^\top \mathbf{E} \mathbf{p}_1 = 0, \quad \mathbf{E} = [\mathbf{t}]
 
 2. **3D-3D: Point cloud registration**: In LiDAR-based systems, the relative transform $\mathbf{T}_{ij} \in SE(3)$ between two scans is estimated with ICP or GeoTransformer. It is verified by the fitness score (ratio of registered points) and RMSE.
 
-3. **2D-3D: PnP**: The relative pose is estimated by solving a PnP problem between the current 2D feature points and the 3D map points of the candidate keyframe.
+3. **2D-3D: PnP**: Solve a PnP problem between the current 2D feature points and the 3D map points held by the candidate keyframe. If the 3D points are expressed in the candidate keyframe's frame, the solution is directly the relative transform $\mathbf{T}_{ij}$ the loop edge needs; if they are expressed in the map frame, the solution is the absolute pose of the query frame and must be composed with the candidate's pose.
 
-4. **Temporal consistency**: Rather than a single match, check whether matches against the same place appear consistently across several consecutive frames. ORB-SLAM3 accepts a loop closure only when the same place is detected three times in a row.
+4. **Temporal consistency**: Rather than a single match, check whether matches against the same place appear consistently across several consecutive frames. ORB-SLAM2 accepted a loop closure only when the same place was detected three times in a row. ORB-SLAM3 replaces that temporal condition with geometric verification over a local window: it accepts the loop when the transformation is supported by the query keyframe plus two keyframes covisible with it, three in total. Because those three are usually already in the map, there is no need to wait for new keyframes — which lets it close loops earlier.
 
 ```python
 import numpy as np
@@ -116,7 +116,11 @@ def verify_loop_closure(kp_current, kp_candidate, matches, K,
         
     Returns:
         is_valid: whether it is a valid loop closure
-        T_relative: relative transform (4, 4) or None
+        T_relative: relative transform (4, 4) or None.
+                    The t recovered from an essential matrix is a unit
+                    direction with no determined magnitude, so using this
+                    value as a pose graph loop edge requires obtaining the
+                    metric scale separately from stereo, depth, or map points.
     """
     if len(matches) < min_inliers:
         return False, None
@@ -150,7 +154,12 @@ def verify_loop_closure(kp_current, kp_candidate, matches, K,
 
 
 def estimate_essential_ransac(pts1, pts2, threshold=1e-3, max_iter=1000):
-    """Estimate essential matrix via the 5-point algorithm + RANSAC."""
+    """Estimate essential matrix via the 8-point linear solver + RANSAC.
+
+    Nister's 5-point algorithm, which solves from a minimal sample of 5,
+    is a separate solver; its minimal sample size differs, so the number of
+    RANSAC iterations it requires differs as well.
+    """
     best_E = None
     best_inliers = np.zeros(len(pts1), dtype=bool)
     
@@ -158,7 +167,7 @@ def estimate_essential_ransac(pts1, pts2, threshold=1e-3, max_iter=1000):
         # Randomly sample 8 points
         idx = np.random.choice(len(pts1), 8, replace=False)
         
-        # Generate an E candidate with the 8-point algorithm (simplified 5-point variant)
+        # Generate an E candidate with the 8-point linear solver (a separate solver from 5-point, not a simplification of it)
         E_candidate = eight_point_essential(pts1[idx], pts2[idx])
         
         if E_candidate is None:
@@ -215,7 +224,7 @@ A loop closure that passes verification is added to the pose graph as a new cons
 
 $$e_{ij} = \text{Log}(\mathbf{T}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j)$$
 
-Once this edge is added, the pose graph optimizer (§10.2) re-optimizes the entire graph and corrects the drift. It adjusts the loop-closure and odometry edges together, distributing the correction over the full trajectory.
+Once this edge is added, the pose graph optimizer (§10.2) re-optimizes the entire graph and corrects the drift. What gets adjusted is the pose variables, not the edges — the edges are measurements — and the result is a redistribution of each edge's residual. That redistribution is not uniform: it is set by each edge's information matrix $\boldsymbol{\Omega}_{ij}$ and by the graph topology, so odometry stretches with large information absorb less of the correction.
 
 ---
 
@@ -255,7 +264,7 @@ The update at a single iteration:
 
 $$\mathbf{H} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{J}_{ij}, \quad \mathbf{b} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}$$
 
-3. Since $\mathbf{H}$ is sparse, it can be solved efficiently by sparse Cholesky decomposition.
+3. Since $\mathbf{H}$ is sparse, it can be solved efficiently by sparse Cholesky decomposition. With relative constraints alone, however, the objective is invariant to a global SE(3) transform, so $\mathbf{H}$ has a six-dimensional null space. Fixing one reference pose or adding a prior factor is what makes it positive definite and the decomposition valid.
 4. Apply the increment: $\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$.
 5. Iterate until convergence.
 
@@ -266,7 +275,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 def se3_log(T):
-    """SE(3) matrix -> 6-dimensional vector (rotation + translation)."""
+    """SE(3) matrix -> 6-dimensional vector [translation; rotation]."""
     R = T[:3, :3]
     t = T[:3, 3]
     
@@ -530,7 +539,7 @@ When a pre-built map is available, the current pose is estimated by registering 
 
 **Visual relocalization pipeline**: Extract feature points from the current image, find 2D-3D correspondences with the map's 3D points via visual words or direct matching, estimate the pose with PnP + RANSAC, and resume tracking from that pose.
 
-ORB-SLAM3 retrieves candidate keyframes with DBoW2, obtains 2D-3D correspondences via ORB matching, estimates the pose with EPnP + RANSAC, and then finds additional matches through guided search to improve accuracy.
+ORB-SLAM3 retrieves candidate keyframes with DBoW2, obtains 2D-3D correspondences via ORB matching, estimates the pose with MLPnP + RANSAC (EPnP was the method up through ORB-SLAM2; ORB-SLAM3 switched to MLPnP, which is independent of the camera model), and then finds additional matches through guided search to improve accuracy.
 
 **LiDAR relocalization**: Register the current LiDAR scan to a prior point-cloud map. First search for nearby regions with a global descriptor such as Scan Context or PointNetVLAD, then perform coarse registration with FPFH + RANSAC or GeoTransformer, and finally refine the alignment with ICP/GICP.
 
@@ -555,7 +564,7 @@ $$x_t^{[k]} \sim p(x_t | u_t, x_{t-1}^{[k]})$$
 $$w_t^{[k]} = p(z_t | x_t^{[k]}, m)$$
 4. **Resampling**: Resample particles in proportion to their weights. Particles with high weights (close to the true location) are duplicated, and low-weight particles are eliminated.
 
-MCL can represent multi-modal distributions. When the robot does not know which of several places it might be in, it can maintain several hypotheses simultaneously. As observations accumulate, the particles gradually converge to the correct location.
+MCL can represent multi-modal distributions. When the robot does not know which of several places it might be in, it can maintain several hypotheses simultaneously. The hypotheses collapse to one only if the observations actually discriminate between the places and particles remain near the true pose. Where observations cannot tell places apart — a symmetric corridor, say — multiple modes persist; and if the particle count is too low or the likelihood too peaked, the correct mode is depleted and the estimate locks onto the wrong location.
 
 **Example of LiDAR-based MCL**:
 
@@ -646,9 +655,11 @@ class MonteCarloLocalization:
                 diff = r_measured - r_expected
                 log_weight += -0.5 * (diff / sigma_hit) ** 2
             
-            self.particles[k, 3] = np.exp(log_weight)
+            self.particles[k, 3] = log_weight   # collect log-weights first
         
-        # Normalize weights
+        # Normalize weights -- subtract the max log-weight before exp (the log-sum over hundreds of beams underflows if exponentiated directly)
+        log_w = self.particles[:, 3]
+        self.particles[:, 3] = np.exp(log_w - np.max(log_w))
         total = np.sum(self.particles[:, 3])
         if total > 0:
             self.particles[:, 3] /= total
@@ -689,7 +700,13 @@ class MonteCarloLocalization:
         return x_est, y_est, theta_est
     
     def _ray_cast(self, x, y, angle, max_range=30.0):
-        """Simple Bresenham-based ray casting."""
+        """Simple ray casting based on fixed-step sampling.
+
+        Cells are looked up by adding a direction vector to real-valued
+        coordinates, so cells can be skipped or queried more than once.
+        When every cell the line passes through must be visited exactly
+        once, use Bresenham or the Amanatides-Woo DDA.
+        """
         dx = np.cos(angle) * self.resolution
         dy = np.sin(angle) * self.resolution
         
@@ -707,7 +724,7 @@ class MonteCarloLocalization:
                 return max_range
             
             if self.map[mx, my] == 1:  # obstacle hit
-                return step * self.resolution
+                return (step + 1) * self.resolution   # we advance before checking, so the checked point lies (step+1) cells away
         
         return max_range
 ```
@@ -736,7 +753,7 @@ Once map anchoring provides an initial alignment, inter-session loop closure per
 
 1. **Appearance change**: Over time, lighting and seasons change. Foundation-model-based descriptors such as AnyLoc are robust to this problem.
 
-2. **Frame misalignment**: Because the initial alignment may be inaccurate, the tolerance of geometric verification must be increased.
+2. **Frame misalignment**: Because the initial alignment may be inaccurate, widen the candidate search instead. Open up the pose prior's gate, raise the number of candidates and RANSAC iterations, and enlarge the basin of initial guesses handed to registration. Do not loosen the residual acceptance criterion of geometric verification: relax that and false loops pass straight through and break the map.
 
 ### 10.4.3 ORB-SLAM3 Multi-Map System
 
@@ -855,7 +872,7 @@ class MultiMapAtlas:
 
 When multiple robots explore simultaneously, each robot's map must be integrated in real time. The additional constraints are:
 
-- **Communication bandwidth**: Full point clouds cannot be transmitted, so only compressed descriptors (Scan Context, compact visual descriptors) are exchanged.
+- **Communication bandwidth**: Full point clouds cannot be transmitted, so candidate search exchanges only compressed descriptors (Scan Context, compact visual descriptors). Geometric verification then additionally exchanges sparse features or subsampled point clouds, and distributed optimization exchanges boundary pose estimates and their uncertainties.
 - **Distributed optimization**: Robots must be able to merge maps autonomously without a central server. Kimera-Multi and Swarm-SLAM address this problem.
 - **Relative pose uncertainty**: Because the initial relative pose between robots is unknown, alignment must be achieved via inter-robot loop closures.
 
@@ -863,7 +880,7 @@ Distributed pose graph optimization can be written as:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally, and exchanges information only for the inter-robot edges $\mathcal{E}_{\text{inter}}$. Distributed convergence can be achieved via ADMM (Alternating Direction Method of Multipliers) or Gauss-Seidel iteration.
+Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally, and exchanges information for the boundary states touched by the inter-robot edges $\mathcal{E}_{\text{inter}}$. ADMM or Gauss-Seidel-style block coordinate descent is run in a distributed fashion. Note, though, that a pose graph objective containing rotations is non-convex, so ADMM's convex convergence guarantees do not apply; what is reached is a first-order critical point that depends on the initialization and the communication graph. Global optimality is obtained only under specific conditions, by certifiably correct methods that attach an a posteriori verification.
 
 ---
 

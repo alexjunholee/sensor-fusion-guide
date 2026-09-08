@@ -84,7 +84,9 @@ $$\begin{bmatrix} u \\ v \end{bmatrix} = \begin{bmatrix} f_x x_d + c_x \\ f_y y_
 
 입사각 $\theta$를 3D 점의 광축으로부터의 각도로 정의한다:
 
-$$\theta = \arctan\left(\frac{\sqrt{X_c^2 + Y_c^2}}{Z_c}\right)$$
+$$\theta = \operatorname{atan2}\left(\sqrt{X_c^2 + Y_c^2},\; Z_c\right)$$
+
+$Z_c < 0$인 후방 반구(180° 이상)까지 다루려면 두 인자 atan2가 필요하고, 방향 단위벡터도 $Z_c$로 나누지 않고 $X_c/\sqrt{X_c^2+Y_c^2}$ 형태로 구한다. 아래 파이썬 구현이 그 방식이다.
 
 왜곡된 반경 $r_d$를 $\theta$의 홀수 다항식으로 모델링한다:
 
@@ -215,7 +217,7 @@ $$\mathbf{T}(t_{v_i}) = \mathbf{T}(t_0) \cdot \text{Exp}\left(\frac{v_i}{H-1} \c
 
 여기서 $\text{Exp}$와 $\text{Log}$는 $SE(3)$ 리 군 위의 지수/로그 맵이다. 아래 코드는 카메라→월드 변환을 입력받고, 회전 SLERP와 이동의 선형 보간을 따로 적용하는 근사 예제이다.
 
-롤링 셔터 보정은 VIO 시스템([VINS-Mono](https://arxiv.org/abs/1708.03852), [ORB-SLAM3](https://arxiv.org/abs/2007.11898))에서 선택적으로 지원되며, 특히 스마트폰이나 드론 탑재 카메라처럼 고속 모션과 저가 센서의 조합에서 중요하다.
+롤링 셔터 보정은 일부 VIO 시스템([VINS-Mono](https://arxiv.org/abs/1708.03852)의 readout time 설정 등)에서 선택적으로 지원되며(ORB-SLAM3는 글로벌 셔터를 전제한다), 특히 스마트폰이나 드론 탑재 카메라처럼 고속 모션과 저가 센서의 조합에서 중요하다.
 
 ```python
 import numpy as np
@@ -362,7 +364,7 @@ def undistort_scan(points, timestamps, T_start, T_end, t_start, t_end):
 | Feature 추출 | 스캔 라인 기반 가능 | 스캔 라인 구조 없음 |
 | 적합한 알고리즘 | LOAM, LeGO-LOAM | FAST-LIO/LIO2 (점 단위 처리) |
 
-FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829)는 스캔 라인 구조에 의존하지 않고 **개별 포인트를 순차적으로 처리**하는 iterated EKF 구조를 사용하므로 솔리드 스테이트 LiDAR에 잘 맞는다. 반면 LOAM의 edge/planar feature 추출은 스캔 라인 구조를 전제하므로 솔리드 스테이트에 직접 적용하기 어렵다. 최근 [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035)는 이 구조를 확장하여 LiDAR-관성-비전 세 센서를 동일한 iterated EKF 내에서 순차적으로 융합하며, direct 방법으로 별도의 특징점 추출 없이 LiDAR 포인트와 이미지 모두를 처리한다.
+FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829)는 스캔 라인 구조에 의존하지 않고 **개별 포인트를 순차적으로 처리**하는 iterated EKF 구조를 사용하므로 스캔 라인이 없는 비반복 스캔 LiDAR에 잘 맞는다. 반면 LOAM의 edge/planar feature 추출은 스캔 라인 구조를 전제하므로 비반복 스캔에 직접 적용하기 어렵다. 최근 [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035)는 이 구조를 확장하여 LiDAR-관성-비전 세 센서를 동일한 iterated EKF 내에서 순차적으로 융합하며, direct 방법으로 별도의 특징점 추출 없이 LiDAR 포인트와 이미지 모두를 처리한다.
 
 ---
 
@@ -762,7 +764,7 @@ def pseudorange_model(p_receiver, p_satellites, clock_bias):
         pseudoranges[i] = r + clock_bias
         
         # 자코비안: d(rho)/d(x,y,z,cb) 
-        e = diff / r  # 단위 벡터 (수신기→위성 방향)
+        e = diff / r  # 단위 벡터 (위성→수신기 방향; diff = p_receiver - p_satellite)
         H[i, :3] = e
         H[i, 3] = 1.0  # clock bias에 대한 편미분
     
@@ -792,7 +794,7 @@ def geodetic_to_enu(lat, lon, alt, lat0, lon0, alt0):
     dalt = alt - alt0
     
     east = (N0 + alt0) * np.cos(lat0) * dlon
-    north = (N0 * (1 - e2) + alt0) * dlat
+    north = (N0 * (1 - e2) / (1 - e2 * sin_lat0**2) + alt0) * dlat  # 자오선 곡률반경 M
     up = dalt
     
     return np.array([east, north, up])

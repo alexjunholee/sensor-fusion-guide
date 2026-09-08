@@ -26,7 +26,7 @@ $$s(\mathbf{d}_q, \mathbf{d}_i) = \frac{\mathbf{d}_q^\top \mathbf{d}_i}{\|\mathb
 
 **LiDAR loop closure detection**에서는 3D 포인트 클라우드 기반 디스크립터를 사용한다:
 
-- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: 센서 중심의 극좌표계에서 bin/sector별 최대 높이를 기록하여 공간 구조를 직접 보존하는 디스크립터다. ring key와 sector key를 이용한 2단계 검색으로 효율적 후보 탐색이 가능하며, 역방향 재방문에도 강건하다.
+- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: 센서 중심의 극좌표계에서 bin/sector별 최대 높이를 기록하여 공간 구조를 직접 보존하는 디스크립터다. ring key 기반 kd-tree 검색으로 후보를 좁히고 섹터 이동 정렬로 재순위를 매기는 2단계 검색으로 효율적 후보 탐색이 가능하며, 역방향 재방문에도 강건하다.
 - **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: 학습 기반 3D place recognition이다. Scan Context와의 recall 순위는 데이터셋, sensor pattern, 학습 domain에 따라 달라진다.
 
 **시간적 필터링**: 최근 frame과의 matching은 보통 연속 tracking이므로 인접 keyframe을 후보에서 제외한다. 시간이나 이동거리 간격은 platform 속도, keyframe rate, 재방문 형태로 조정한다. 아래 30초는 동작을 보여 주는 예시값이다.
@@ -94,9 +94,9 @@ $$\mathbf{p}_2^\top \mathbf{E} \mathbf{p}_1 = 0, \quad \mathbf{E} = [\mathbf{t}]
 
 2. **3D-3D: Point cloud registration**: LiDAR 기반 시스템에서는 ICP나 GeoTransformer로 두 스캔 간의 상대 변환 $\mathbf{T}_{ij} \in SE(3)$를 추정한다. Fitness score(정합된 포인트 비율)와 RMSE로 검증한다.
 
-3. **2D-3D: PnP**: 현재 2D 특징점과 후보 키프레임의 3D 맵 포인트 사이의 PnP 문제를 풀어 상대 pose를 추정한다.
+3. **2D-3D: PnP**: 현재 2D 특징점과 후보 키프레임이 보유한 3D 맵 포인트 사이의 PnP 문제를 푼다. 3D 점을 후보 키프레임 좌표계로 두면 결과가 곧 loop edge에 필요한 상대 변환 $\mathbf{T}_{ij}$이고, 맵 좌표계로 두면 질의 프레임의 절대 pose가 나오므로 후보의 pose와 합성해야 한다.
 
-4. **Temporal consistency**: 단일 매칭이 아니라, 연속된 여러 프레임에서 동일 장소와의 매칭이 일관되게 나타나는지 확인한다. ORB-SLAM3는 세 번 연속 동일 장소가 검출되어야 loop closure를 수용한다.
+4. **Temporal consistency**: 단일 매칭이 아니라, 연속된 여러 프레임에서 동일 장소와의 매칭이 일관되게 나타나는지 확인한다. ORB-SLAM2는 세 번 연속 동일 장소가 검출되어야 수용했다. ORB-SLAM3는 이 시간 조건을 local window 기반 기하 검증으로 바꿨다. 질의 키프레임과 covisible한 키프레임 둘, 총 셋에서 변환이 지지되면 수용하는데, 그 셋이 대개 이미 맵에 있어 새 키프레임을 기다리지 않아도 되므로 루프를 더 이르게 잡는다.
 
 ```python
 import numpy as np
@@ -116,7 +116,10 @@ def verify_loop_closure(kp_current, kp_candidate, matches, K,
         
     Returns:
         is_valid: 유효한 loop closure인지 여부
-        T_relative: 상대 변환 (4, 4) 또는 None
+        T_relative: 상대 변환 (4, 4) 또는 None.
+                    Essential 분해의 t는 크기가 정해지지 않은 단위 방향이므로
+                    이 값을 pose graph의 loop edge로 쓰려면 스테레오·깊이·맵
+                    포인트에서 metric scale을 따로 얻어야 한다.
     """
     if len(matches) < min_inliers:
         return False, None
@@ -150,7 +153,11 @@ def verify_loop_closure(kp_current, kp_candidate, matches, K,
 
 
 def estimate_essential_ransac(pts1, pts2, threshold=1e-3, max_iter=1000):
-    """5-point 알고리즘 + RANSAC으로 Essential matrix 추정."""
+    """8-point 선형 해법 + RANSAC으로 Essential matrix 추정.
+
+    최소 표본 5개로 푸는 Nister의 5-point 알고리즘은 별도 해법이며
+    최소 표본 크기가 다르므로 필요한 RANSAC 반복 수도 다르다.
+    """
     best_E = None
     best_inliers = np.zeros(len(pts1), dtype=bool)
     
@@ -158,7 +165,7 @@ def estimate_essential_ransac(pts1, pts2, threshold=1e-3, max_iter=1000):
         # 8개 점 랜덤 샘플링
         idx = np.random.choice(len(pts1), 8, replace=False)
         
-        # 8-point 알고리즘으로 E 후보 생성 (5-point의 간략화 버전)
+        # 8-point 선형 해법으로 E 후보 생성 (5-point와는 별개 해법)
         E_candidate = eight_point_essential(pts1[idx], pts2[idx])
         
         if E_candidate is None:
@@ -215,7 +222,7 @@ False positive loop closure의 위험은 복도 예시로 확인할 수 있다.
 
 $$e_{ij} = \text{Log}(\mathbf{T}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j)$$
 
-이 edge가 추가되면 pose graph optimizer(§10.2)가 전체 그래프를 재최적화하여 드리프트를 보정한다. loop closure edge뿐 아니라 odometry edge들도 함께 조정되어, 오차가 경로 전체에 균등히 퍼진다.
+이 edge가 추가되면 pose graph optimizer(§10.2)가 전체 그래프를 재최적화하여 드리프트를 보정한다. 조정되는 것은 측정값인 edge가 아니라 pose 변수이며, 그 결과 각 edge의 잔차가 재분배된다. 분배는 균등하지 않고 각 edge의 정보 행렬 $\boldsymbol{\Omega}_{ij}$와 그래프 위상이 정하므로, 정보가 큰 odometry 구간은 보정을 덜 받는다.
 
 ---
 
@@ -255,7 +262,7 @@ $$\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$$
 
 $$\mathbf{H} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{J}_{ij}, \quad \mathbf{b} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}$$
 
-3. $\mathbf{H}$는 sparse하므로 sparse Cholesky 분해로 효율적으로 풀 수 있다.
+3. $\mathbf{H}$는 sparse하므로 sparse Cholesky 분해로 효율적으로 풀 수 있다. 단 상대 제약만 있으면 목적식이 전역 SE(3) 변환에 불변이라 $\mathbf{H}$가 6차원 영공간을 갖는다. 기준 pose 하나를 고정하거나 prior factor를 넣어야 정부호가 되어 분해가 성립한다.
 4. 증분을 적용한다: $\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$.
 5. 수렴할 때까지 반복한다.
 
@@ -266,7 +273,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 def se3_log(T):
-    """SE(3) 행렬 → 6차원 벡터 (회전 + 병진)."""
+    """SE(3) 행렬 → 6차원 벡터 [병진; 회전]."""
     R = T[:3, :3]
     t = T[:3, 3]
     
@@ -530,7 +537,7 @@ Global relocalization은 로봇이 사전에 구축된 맵(prior map) 위에서 
 
 **Visual relocalization 파이프라인**: 현재 이미지에서 특징점을 추출하고, 맵의 3D 포인트들과 2D-3D 대응을 찾은 뒤(visual word 기반 또는 직접 매칭), PnP + RANSAC으로 pose를 추정한다. 그 pose에서 tracking을 재개한다.
 
-ORB-SLAM3의 relocalization은 DBoW2로 후보 키프레임을 검색하고, ORB 매칭으로 2D-3D 대응을 확보한 뒤, EPnP + RANSAC으로 pose를 추정한다. 이후 guided search로 추가 매칭을 얻어 정확도를 높인다.
+ORB-SLAM3의 relocalization은 DBoW2로 후보 키프레임을 검색하고, ORB 매칭으로 2D-3D 대응을 확보한 뒤, MLPnP + RANSAC으로 pose를 추정한다(EPnP는 ORB-SLAM2까지의 방식이고 ORB-SLAM3는 카메라 모델에 독립적인 MLPnP로 바꿨다). 이후 guided search로 추가 매칭을 얻어 정확도를 높인다.
 
 **LiDAR relocalization**: 현재 LiDAR 스캔을 사전 맵(point cloud map)에 정합한다. Scan Context나 PointNetVLAD 같은 global descriptor로 근접 영역을 먼저 탐색하고, FPFH + RANSAC 또는 GeoTransformer로 coarse registration을 수행한 뒤, ICP/GICP로 정밀 정합한다.
 
@@ -555,7 +562,7 @@ $$x_t^{[k]} \sim p(x_t | u_t, x_{t-1}^{[k]})$$
 $$w_t^{[k]} = p(z_t | x_t^{[k]}, m)$$
 4. **Resampling**: 가중치에 비례하여 particle을 재샘플링한다. 가중치가 높은 particle은 복제되고, 낮은 particle은 제거된다.
 
-MCL은 multi-modal 분포를 표현할 수 있다. 로봇이 여러 장소 중 어디에 있을지 모를 때 여러 가설을 동시에 유지한다. 관측이 쌓일수록 particle들이 올바른 위치로 수렴한다.
+MCL은 multi-modal 분포를 표현할 수 있다. 로봇이 여러 장소 중 어디에 있을지 모를 때 여러 가설을 동시에 유지한다. 관측이 장소를 구별해 주고 정답 근방의 입자가 남아 있으면 가설이 하나로 줄어든다. 대칭 복도처럼 관측이 장소를 가르지 못하면 다중 모드가 계속 남고, 입자가 부족하거나 가능도가 지나치게 뾰족하면 정답 모드가 고갈되어 잘못된 위치로 굳는다.
 
 LiDAR 기반 MCL 예시:
 
@@ -646,9 +653,11 @@ class MonteCarloLocalization:
                 diff = r_measured - r_expected
                 log_weight += -0.5 * (diff / sigma_hit) ** 2
             
-            self.particles[k, 3] = np.exp(log_weight)
+            self.particles[k, 3] = log_weight   # 로그 가중치를 먼저 모은다
         
-        # 가중치 정규화
+        # 가중치 정규화 — 최대 로그가중치를 뺀 뒤 exp (빔 수백 개의 로그합은 그대로 exp하면 언더플로)
+        log_w = self.particles[:, 3]
+        self.particles[:, 3] = np.exp(log_w - np.max(log_w))
         total = np.sum(self.particles[:, 3])
         if total > 0:
             self.particles[:, 3] /= total
@@ -689,7 +698,12 @@ class MonteCarloLocalization:
         return x_est, y_est, theta_est
     
     def _ray_cast(self, x, y, angle, max_range=30.0):
-        """Bresenham 기반 간단한 ray casting."""
+        """고정 간격 샘플링 기반 간단한 ray casting.
+
+        실수 좌표에 방향 벡터를 더하며 셀을 조회하므로 셀을 건너뛰거나
+        중복 조회할 수 있다. 직선이 지나는 셀을 빠짐없이 순회해야 하면
+        Bresenham이나 Amanatides-Woo DDA를 쓴다.
+        """
         dx = np.cos(angle) * self.resolution
         dy = np.sin(angle) * self.resolution
         
@@ -707,7 +721,7 @@ class MonteCarloLocalization:
                 return max_range
             
             if self.map[mx, my] == 1:  # 장애물 히트
-                return step * self.resolution
+                return (step + 1) * self.resolution   # 전진 후 검사하므로 검사한 점의 거리는 (step+1)칸
         
         return max_range
 ```
@@ -736,7 +750,7 @@ Map anchoring이 초기 정렬을 제공하면, inter-session loop closure가 �
 
 1. **외관 변화**: 시간이 지나면 조명과 계절이 변한다. AnyLoc 같은 foundation model 기반 디스크립터가 이 문제에 강하다.
 
-2. **좌표계 불일치**: 초기 정렬이 부정확할 수 있으므로, geometric verification의 tolerance를 높여야 한다.
+2. **좌표계 불일치**: 초기 정렬이 부정확할 수 있으므로 후보 탐색 범위를 넓힌다. pose prior의 게이트를 키우고 후보 수와 RANSAC 반복을 늘리며 정합 초기값의 허용 영역을 넓히는 쪽이다. 기하 검증의 잔차 수용 기준은 풀지 않는다. 그쪽을 완화하면 잘못된 루프가 그대로 들어와 맵이 깨진다.
 
 ### 10.4.3 ORB-SLAM3 Multi-Map System
 
@@ -855,7 +869,7 @@ class MultiMapAtlas:
 
 여러 로봇이 동시에 탐사하는 경우, 각 로봇의 맵을 실시간으로 통합해야 한다. 이때 추가 제약이 붙는다:
 
-- **통신 대역폭**: 전체 포인트 클라우드를 전송할 수 없으므로, 압축된 디스크립터(Scan Context, compact visual descriptor)만 교환한다.
+- **통신 대역폭**: 전체 포인트 클라우드를 전송할 수 없으므로 후보 검색에는 압축된 디스크립터(Scan Context, compact visual descriptor)만 교환한다. 이후 기하 검증에는 희소 특징이나 부분 표본 점군이, 분산 최적화에는 경계 pose 추정치와 불확실성이 추가로 오간다.
 - **분산 최적화**: 중앙 서버 없이 로봇들이 자율적으로 맵을 병합할 수 있어야 한다. Kimera-Multi와 Swarm-SLAM이 이 문제를 본다.
 - **Relative pose 불확실성**: 로봇 간 초기 상대 pose가 알려져 있지 않으므로, inter-robot loop closure로 정렬해야 한다.
 
@@ -863,7 +877,7 @@ class MultiMapAtlas:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$에 대해서만 정보를 교환한다. ADMM(Alternating Direction Method of Multipliers)이나 Gauss-Seidel iteration으로 분산적으로 수렴한다.
+각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$가 걸린 경계 상태에 대해 정보를 교환한다. ADMM이나 Gauss-Seidel 계열 블록 좌표 하강을 분산으로 돌린다. 다만 회전이 들어간 pose graph 목적식은 비볼록이라 ADMM의 볼록 수렴 보장이 적용되지 않고, 도달하는 것은 초기값과 통신 그래프에 의존하는 1차 임계점이다. 전역 최적성은 사후 검증을 붙인 certifiably correct 계열에서 특정 조건에서만 얻는다.
 
 ---
 

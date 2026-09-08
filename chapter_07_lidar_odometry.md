@@ -44,7 +44,7 @@ $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i \left\|\mathbf{T} \cdot 
    $\det(\mathbf{V}\mathbf{U}^T) = 1$이면 $\mathbf{R}^* = \mathbf{V}\mathbf{U}^T$이고, $\det(\mathbf{V}\mathbf{U}^T) = -1$이면 반사(reflection)를 방지하기 위해 $\mathbf{V}$의 마지막 열 부호를 뒤집는다.
 
 Point-to-point ICP의 한계:
-- 평면에서의 슬라이딩 — 평면 위의 점들은 평면을 따라 미끄러져도 비용이 변하지 않아, 수렴이 느리다.
+- 평면에서의 슬라이딩 — 평면 위에서는 접선 방향으로 조금 움직여도 매 반복의 재대응이 다시 가까운 점을 찾아 주므로 비용면이 그 방향으로 거의 평평해지고 수렴이 느리다. 고정된 대응에서는 접선 이동이 비용을 키우므로, 평평해지는 원인은 비용 함수가 아니라 재대응이다.
 - 초기값 의존성 — 로컬 최소값에 빠지기 쉽다.
 - 최근접점 대응의 부정확함 — 두 스캔의 샘플링 패턴이 다르면 진정한 대응이 아닐 수 있다.
 
@@ -77,7 +77,7 @@ $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i (\mathbf{T} \cdot \mathb
 여기서 $\mathbf{C}_i^{\mathcal{P}}, \mathbf{C}_i^{\mathcal{Q}}$는 각각 소스와 타겟 점의 국소 표면 공분산이다.
 
 **공분산의 물리적 의미**:
-- 평면 위의 점: 법선 방향으로 작은 분산, 접선 방향으로 큰 분산 → $\mathbf{C} = \mathbf{R}_s \text{diag}(\epsilon, 1, 1) \mathbf{R}_s^T$ ($\epsilon \ll 1$, $\mathbf{R}_s$는 법선을 첫 축에 정렬하는 회전)
+- 평면 위의 점: 법선 방향으로 작은 분산, 접선 방향으로 큰 분산 → $\mathbf{C} = \mathbf{R}_s \text{diag}(\epsilon, 1, 1) \mathbf{R}_s^T$ ($\epsilon \ll 1$, $\mathbf{R}_s$는 첫 열이 법선인 회전, 즉 $\mathbf{R}_s \mathbf{e}_1 = \mathbf{n}$). $\mathbf{C}$의 고유벡터가 $\mathbf{R}_s$의 열이므로 첫 열이 법선일 때 그 방향의 분산이 $\epsilon$이 된다.
 - 이 경우 GICP는 자동으로 plane-to-plane 정합이 된다.
 - $\mathbf{C}^{\mathcal{P}} = \mathbf{0}$이면 point-to-plane, $\mathbf{C}^{\mathcal{P}} = \mathbf{C}^{\mathcal{Q}} = \mathbf{I}$이면 point-to-point가 된다.
 
@@ -147,20 +147,21 @@ def gicp(P, Q, T_init, max_iter=50, tol=1e-6):
    $$\boldsymbol{\mu}_k = \frac{1}{n_k}\sum_{i \in k} \mathbf{q}_i, \quad \boldsymbol{\Sigma}_k = \frac{1}{n_k-1}\sum_{i \in k} (\mathbf{q}_i - \boldsymbol{\mu}_k)(\mathbf{q}_i - \boldsymbol{\mu}_k)^T$$
 
 2. **변환 최적화**: 변환된 소스 점이 타겟 NDT 분포에서 높은 가능도(likelihood)를 가지도록 최적화:
-   $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i -\log p(\mathbf{T} \cdot \mathbf{p}_i \mid \boldsymbol{\mu}_{k(i)}, \boldsymbol{\Sigma}_{k(i)})$$
+   $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\max} \sum_i \exp\left(-\tfrac{1}{2}(\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})^T \boldsymbol{\Sigma}_{k(i)}^{-1} (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})\right)$$
    
-   가우시안 가정 하에:
-   $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})^T \boldsymbol{\Sigma}_{k(i)}^{-1} (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})$$
+   가우시안 값을 로그 없이 더하므로 잔차가 큰 점의 기여가 포화된다. 이를 로그가능도의 합, 즉 마할라노비스 제곱합
+   $$\sum_i (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})^T \boldsymbol{\Sigma}_{k(i)}^{-1} (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})$$
+   의 최소화로 바꾸면 outlier의 영향이 무한히 커지는 복셀 기반 마할라노비스 ICP가 되어 원 NDT와 다른 알고리즘이 된다. 실제 구현은 가우시안에 균등분포를 섞은 근사를 쓴다.
 
 NDT의 장점:
 - 명시적 대응 찾기가 불필요 — 점이 어느 복셀에 속하는지만 판단하면 된다. kd-tree 구축 비용이 없다.
 - 복셀 크기로 정밀도와 수렴 영역을 조절할 수 있다 — 큰 복셀은 넓은 수렴 영역, 작은 복셀은 높은 정밀도.
-- 비용 함수가 매끄러워 최적화가 안정적이다.
+- 점수 함수가 매끄럽고, 멀리 떨어진 점의 기여가 포화되어 outlier에 덜 끌린다.
 
 단점:
 - 복셀 크기 선택에 민감하다.
 - 점이 적은 복셀에서 공분산 추정이 불안정하다.
-- 2D NDT는 자율주행에서 많이 쓰이지만, 3D NDT는 ICP/GICP 대비 정확도가 약간 떨어지는 경향이 있다.
+- 3D NDT는 Autoware의 ndt_scan_matcher처럼 자율주행의 사전 지도 기반 localization에 널리 쓰인다. scan-to-scan 오도메트리에서는 ICP/GICP 대비 정확도가 약간 떨어지는 경향이 보고되지만 데이터셋에 따라 갈린다.
 
 ### 7.1.4 수렴성과 초기값 의존성
 
@@ -198,13 +199,13 @@ $$c_i = \frac{1}{|\mathcal{S}_i| \cdot \|\mathbf{p}_i\|} \left\| \sum_{j \in \ma
 특징점 선택 시 추가 규칙:
 - 각 스캔 라인을 4개 구간으로 나누어 균등 분포를 보장한다.
 - 이웃 점에 이미 선택된 점이 있으면 제외(non-maximum suppression).
-- 거의 수평인 표면이나 가림(occlusion) 경계의 점은 불안정하므로 제외한다.
+- 레이저 빔과 거의 평행한 표면의 점이나 가림(occlusion) 경계의 점은 불안정하므로 제외한다. 기준은 세계 좌표계의 수평이 아니라 빔에 대한 입사 기하다. 빔을 스치는 표면은 거리 추정이 불안정하고, 가림 경계의 점은 시점이 조금 바뀌면 사라진다.
 
 **Odometry 모듈 (~10Hz)**
 
 Scan-to-scan 매칭으로 빠른 모션 추정을 수행한다. 현재 스캔의 특징점을 이전 스캔의 특징점과 대응시키되, 거리 메트릭이 특징 유형에 따라 다르다:
 
-**Edge point-to-edge distance**: 현재 스캔의 edge 점 $\mathbf{p}$에 대해, 이전 스캔에서 가장 가까운 edge 점 두 개 $\mathbf{a}, \mathbf{b}$를 찾는다. $\mathbf{p}$에서 직선 $\overline{\mathbf{ab}}$까지의 거리:
+**Edge point-to-edge distance**: 현재 스캔의 edge 점 $\mathbf{p}$에 대해, 이전 스캔에서 최근접 edge 점 $\mathbf{a}$와, $\mathbf{a}$의 인접 스캔 라인에서 가장 가까운 edge 점 $\mathbf{b}$를 찾는다(같은 라인의 두 점을 쓰면 직선이 퇴화한다). $\mathbf{p}$에서 직선 $\overline{\mathbf{ab}}$까지의 거리:
 
 $$d_e = \frac{\|(\mathbf{p}-\mathbf{a}) \times (\mathbf{p}-\mathbf{b})\|}{\|\mathbf{a}-\mathbf{b}\|}$$
 
@@ -297,7 +298,7 @@ class LOAM:
             # Edge point-to-edge 잔차
             for p in edge_curr:
                 p_t = apply_transform(T_relative, p)
-                _, idx = tree_edge.query(p_t, k=2)
+                _, idx = tree_edge.query(p_t, k=2)  # 실제 LOAM은 두 점을 서로 다른 스캔 라인에서 고른다
                 a, b = edge_prev[idx[0]], edge_prev[idx[1]]
                 
                 d_e = point_to_line_distance(p_t, a, b)
@@ -308,7 +309,7 @@ class LOAM:
             # Planar point-to-plane 잔차
             for p in planar_curr:
                 p_t = apply_transform(T_relative, p)
-                _, idx = tree_planar.query(p_t, k=3)
+                _, idx = tree_planar.query(p_t, k=3)  # 실제 LOAM은 같은 라인 두 점 + 인접 라인 한 점
                 a, b, c = planar_prev[idx[0]], planar_prev[idx[1]], planar_prev[idx[2]]
                 
                 d_p = point_to_plane_distance(p_t, a, b, c)
@@ -366,9 +367,9 @@ LOAM이 2014년에 발표된 이후 10년이 넘었지만, LOAM 계열의 아이
 
 3. **확장성**: LiDAR frontend를 IMU(LIO-SAM)나 카메라(LVI-SAM)와 결합하는 식으로 센서 구성을 확장할 수 있다. KISS-ICP는 이런 센서 추가형 확장이 아닌, 단순한 LiDAR-only ICP 설계를 택한 대안적인 접근 방식을 취한다.
 
-4. **강건성**: edge/planar 분류가 일종의 아웃라이어 필터 역할을 한다 — 노이즈나 동적 물체에 속하는 점은 일관된 곡률 패턴을 보이지 않으므로 자동으로 제외된다.
+4. **강건성**: edge/planar 분류가 잡음과 불안정한 입사 기하에 대한 필터 역할을 한다 — 곡률 패턴이 일관되지 않은 점은 선택되지 않는다. 다만 곡률은 한 스캔 라인의 이웃점에서 계산하는 기하량이라 운동을 판별하지 못한다. 움직이는 차량의 모서리와 평면도 좋은 특징으로 선택되므로, 동적 물체 제거는 별도 단계가 필요하다.
 
-다만, LOAM 계열의 한계도 명확하다. 기하학적 특징이 희소한 개활지나 직선 터널에서는 오도메트리 정확도가 크게 떨어진다. 또한 비반복 주사 패턴을 사용하는 solid-state LiDAR에서는 링 기반 특징 추출 기법을 그대로 적용하기 어렵다. 이 한계를 극복한 것이 FAST-LIO2의 direct 접근이다.
+다만, LOAM 계열의 한계도 명확하다. 첫째, 비반복 주사 패턴을 사용하는 solid-state LiDAR에서는 링 기반 특징 추출 기법을 그대로 적용하기 어렵다. FAST-LIO2의 direct 접근이 특징 추출을 없애 이 쪽을 푼다. 둘째, 기하학적 특징이 희소한 개활지나 직선 터널에서는 오도메트리 정확도가 크게 떨어진다. 이것은 환경의 관측 기하가 퇴화한 문제이므로 특징을 추출하든 raw 점을 쓰든 남는다.
 
 ---
 
@@ -392,7 +393,7 @@ LIO-SAM은 다양한 센서 측정을 factor graph의 factor로 모델링한다:
 
 4. **Loop Closure Factor**: 장소 인식(Scan Context 등)으로 루프를 검출하고, ICP로 상대 포즈를 추정하여 이진(binary) factor로 추가한다.
 
-이 모든 factor가 하나의 그래프에 들어가고, GTSAM의 iSAM2로 incremental 최적화를 수행한다. Factor graph 구조의 핵심 강점은 뛰어난 **모듈성**에 있다. 각 센서 관측을 독립적인 factor 형태로 손쉽게 탈부착할 수 있어 새로운 센서 모달리티의 추가가 수월하다.
+이 factor들은 GTSAM의 iSAM2로 incremental 최적화하는 전역 포즈 그래프에 들어간다. LIO-SAM은 여기에 더해 IMU odometry용 그래프를 따로 두고 주기적으로 초기화하여, IMU 주기의 상태 전파와 바이어스 추정을 담당하게 한다. Factor graph 구조의 핵심 강점은 뛰어난 **모듈성**에 있다. 각 센서 관측을 독립적인 factor 형태로 손쉽게 탈부착할 수 있어 새로운 센서 모달리티의 추가가 수월하다.
 
 **IMU 기반 De-skewing**
 
@@ -468,6 +469,9 @@ class LIOSAM:
         self.values.insert(X(self.key_idx), T_predict.pose())
         self.values.insert(V(self.key_idx), T_predict.velocity())
         self.values.insert(B(self.key_idx), self.current_bias)
+        # 새 바이어스 변수를 구속하는 랜덤워크 factor. 없으면 미구속 변수로 iSAM2 update가 실패한다
+        self.graph.add(gtsam.BetweenFactorConstantBias(
+            B(self.key_idx - 1), B(self.key_idx), gtsam.imuBias.ConstantBias(), self.bias_noise))
         
         # 5. iSAM2 incremental update
         result = self.isam.update(self.graph, self.values)
@@ -531,12 +535,12 @@ FAST-LIO2 논문은 저자들의 하드웨어와 데이터에서 최대 100Hz의
 ```cpp
 // FAST-LIO2 IEKF 업데이트 수도코드 (C++)
 struct State {
-    Matrix3d R_GI;    // world-to-IMU rotation
+    Matrix3d R_GI;    // IMU -> world rotation (앞첨자 표기 G_R_I)
     Vector3d p_GI;    // IMU position in world
     Vector3d v_GI;    // IMU velocity in world
     Vector3d bg, ba;  // gyro/accel bias
-    Matrix3d R_IL;    // IMU-to-LiDAR rotation
-    Vector3d p_IL;    // IMU-to-LiDAR translation
+    Matrix3d R_IL;    // LiDAR -> IMU rotation (앞첨자 표기 I_R_L)
+    Vector3d p_IL;    // LiDAR 원점의 IMU 좌표계 위치
     Vector3d gravity; // gravity vector
 };
 
@@ -612,7 +616,7 @@ kd-tree 대신 해시 맵 기반 voxel 구조를 사용한다. 각 voxel 내에�
 
 Point-LIO ([He et al., 2023](https://doi.org/10.1002/aisy.202200459))는 FAST-LIO 시리즈의 극단적 확장이다. 스캔 단위가 아닌 **개별 점** 단위로 상태를 업데이트한다.
 
-기존 LIO는 전체 스캔(~100ms)을 하나의 관측으로 처리한다. 이 동안 등속 보간으로 모션 왜곡을 보정하지만, 고속/고각속도 모션에서는 등속 가정이 깨진다.
+기존 LIO는 전체 스캔(~100ms)을 하나의 관측으로 처리한다. 스캔 안의 왜곡은 IMU 적분으로 각 점 시각의 포즈를 구해 보정하지만(§7.3.1), 갱신 자체는 스캔 단위이므로 그 구간을 하나의 운동으로 묶는 가정이 남는다. 고속·고각속도 모션에서는 이 가정이 깨진다.
 
 Point-LIO는 점 timestamp 순서로 상태를 전파하고 point-wise update를 수행한다. 고주파 IMU와 LiDAR 점의 timestamp로 각 관측 시각의 상태를 추정해 scan-level deskew의 단일 운동 가정보다 시간 해상도를 높이지만, 그 상태도 IMU noise·bias·동기화 오차를 포함한 추정치다.
 
@@ -656,9 +660,9 @@ CT-ICP는 IMU 없이도 모션 왜곡을 효과적으로 보정할 수 있어, I
 
 더 일반적인 continuous-time 접근은 B-spline으로 궤적을 표현하는 것이다. B-spline은 제어점(control point) $\{\mathbf{T}_i\}$에 의해 정의되는 매끄러운 곡선이다:
 
-$$\mathbf{T}(t) = \prod_{i=0}^{k} \text{Exp}\left(B_i(t) \cdot \text{Log}(\mathbf{T}_{i-1}^{-1}\mathbf{T}_i)\right)$$
+$$\mathbf{T}(t) = \mathbf{T}_0 \prod_{i=1}^{k} \text{Exp}\left(\tilde{B}_i(t) \cdot \text{Log}(\mathbf{T}_{i-1}^{-1}\mathbf{T}_i)\right)$$
 
-여기서 $B_i(t)$는 B-spline 기저 함수(basis function)다. 3차(cubic) B-spline이 주로 사용되며, $C^2$ 연속성을 보장한다.
+여기서 $\tilde{B}_i(t)$는 누적(cumulative) B-spline 기저 함수(basis function)다. 3차(cubic) B-spline이 주로 사용되며, $C^2$ 연속성을 보장한다.
 
 B-spline 궤적에서는 **임의 시점 질의**가 가능하다. 어떤 시점 $t$에서든 궤적을 평가해 포즈를 얻고, 미분으로 속도와 가속도를 구해 비동기 센서 데이터를 처리한다. 3차 spline은 매듭 설정이 적절할 때 $C^2$ 연속성을 제공하지만, 이 수학적 매끄러움만으로 동역학적 실행 가능성이 보장되지는 않는다. 국소 지지 덕분에 한 제어점의 변경은 인접 구간에 주로 영향을 준다.
 
@@ -679,7 +683,7 @@ Solid-state LiDAR(Livox 시리즈 등)는 회전형 LiDAR와 전혀 다른 스�
 | 특성 | 회전형 (Velodyne, Ouster) | Solid-state (Livox) |
 |------|--------------------------|---------------------|
 | 스캔 패턴 | 반복적 (매 회전 같은 패턴) | 비반복적 (꽃잎/로즈 패턴) |
-| FoV | 360° 수평 | 제한적 (70~77°) |
+| FoV | 360° 수평 | 모델별 (Mid-40 38.4° 원형, Avia 70.4° 원형, Horizon 81.7°×25.1°) |
 | 점 밀도 | 균등 | 시간에 따라 누적, 불균등 |
 | 가격 | 높음 | 낮음 |
 | 크기/무게 | 큼 | 작음 |
@@ -688,9 +692,9 @@ Solid-state LiDAR(Livox 시리즈 등)는 회전형 LiDAR와 전혀 다른 스�
 
 LOAM 스타일의 곡률 기반 특징 추출은 같은 스캔 라인의 이웃점을 이용한다. 그러나 solid-state LiDAR는 정의된 스캔 라인이 없고, 점들이 비규칙적으로 분포한다. 기존 라인 기반 곡률 계산은 쓸 수 없다. KNN(K-Nearest Neighbors) 기반 국소 곡률을 쓰거나, 아예 특징 추출을 포기하고 raw 점을 그대로 써야 한다.
 
-**FAST-LIO가 solid-state에 강한 이유**
+**FAST-LIO2가 solid-state에 강한 이유**
 
-FAST-LIO/FAST-LIO2는 raw 점을 직접 사용하므로 스캔 패턴과 무관하게 동작한다. Solid-state LiDAR는 시간이 지남에 따라 FoV를 점점 더 조밀하게 채우는데, FAST-LIO2의 ikd-Tree 맵은 이 점진적 밀집화를 자연스럽게 수용하여 맵 품질이 시간이 지날수록 향상된다. FoV가 좁아 한 스캔의 정보가 제한적이지만, IMU와의 tight coupling이 이를 보상한다.
+FAST-LIO2는 raw 점을 직접 사용하므로 스캔 패턴과 무관하게 동작한다. FAST-LIO는 아직 edge/planar 특징을 추출하며, 특징 추출을 없앤 것은 FAST-LIO2의 기여다. Solid-state LiDAR는 시간이 지남에 따라 FoV를 점점 더 조밀하게 채우는데, FAST-LIO2의 ikd-Tree 맵은 이 점진적 밀집화를 자연스럽게 수용하여 맵 품질이 시간이 지날수록 향상된다. FoV가 좁아 한 스캔의 정보가 제한적이지만, IMU와의 tight coupling이 이를 보상한다.
 
 Livox 계열은 비반복 스캔 패턴과 작은 폼팩터 때문에 드론·핸드헬드·소형 로봇의 공개 연구에서 자주 사용된다. FAST-LIO2가 이 스캔 패턴을 지원하므로 Livox와 조합한 공개 예제와 데이터셋도 쉽게 찾을 수 있다. 실제 선택에서는 가격뿐 아니라 FoV, 거리, 시간 동기화, 점 분포와 목표 플랫폼을 함께 비교한다.
 
@@ -704,7 +708,7 @@ Livox 계열은 비반복 스캔 패턴과 작은 폼팩터 때문에 드론·�
 
 대표적인 접근은 다음과 같다.
 - **LO-Net** (Li et al., 2019): LiDAR 스캔을 2D range image로 변환하고, CNN으로 특징을 추출하여 포즈를 예측한다. 법선 추정과 마스크 예측을 보조 작업으로 추가하여 기하학적 이해를 유도한다.
-- **DeepLO** (Cho et al., 2020): PointNet 기반으로 3D 점군을 직접 처리하여 포즈를 예측한다.
+- **DeepLO** (Cho et al., 2020): 구면 투영한 vertex map·normal map을 CNN에 넣고, point-to-plane ICP 잔차 형태의 기하 인지 손실로 비지도 학습한다.
 - **PWCLO-Net** (Wang et al., 2021): Pyramid, Warping, Cost volume 구조를 LiDAR 오도메트리에 적용한다.
 
 ### 7.6.2 현재의 한계
@@ -719,7 +723,7 @@ Livox 계열은 비반복 스캔 패턴과 작은 폼팩터 때문에 드론·�
 
 4. **일반화**: 특정 LiDAR/환경에서 학습한 모델이 다른 LiDAR/환경에 잘 일반화되지 않는다.
 
-현재 학습은 LiDAR 오도메트리 자체보다 보조 컴포넌트에서 더 효과적이다. 루프 클로저 검출(Scan Context, PointNetVLAD), 정합 초기값 추정(GeoTransformer, Ch.5 참조), 동적 물체 제거를 위한 시맨틱 분할 등이 그 예다.
+현재 학습은 LiDAR 오도메트리 자체보다 보조 컴포넌트에서 더 효과적이다. 루프 클로저 검출(PointNetVLAD), 정합 초기값 추정(GeoTransformer, Ch.5 참조), 동적 물체 제거를 위한 시맨틱 분할 등이 그 예다. 같은 자리에서 잘 쓰이는 Scan Context는 학습이 아니라 수작업 설계 디스크립터이므로 학습의 예가 아니라 비교 대상이다.
 
 ---
 

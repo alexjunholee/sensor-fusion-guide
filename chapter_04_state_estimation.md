@@ -273,7 +273,7 @@ F = np.array([[1, dt],
               [0, 1]])      # (2, 2) 등속 운동 전이 행렬
 H = np.array([[1, 0]])       # (1, 2) 위치만 관측
 Q = np.array([[dt**3/3, dt**2/2],
-              [dt**2/2, dt]]) * 0.1  # (2, 2) 프로세스 노이즈 (등가속도 모델)
+              [dt**2/2, dt]]) * 0.1  # (2, 2) 프로세스 노이즈 (등속 모델 + 연속 시간 백색잡음 가속도)
 R = np.array([[1.0]])         # (1, 1) 관측 노이즈 분산
 
 kf = KalmanFilter(F, H, Q, R)
@@ -795,7 +795,7 @@ $$\mathbf{x}_{0:T}^* = \arg\max_{\mathbf{x}_{0:T}} p(\mathbf{x}_{0:T} \mid \math
 
 EKF는 "한 번 선형화하면 끝"이다. 시각 $k$에서의 자코비안은 시각 $k$의 추정치에서 계산되고, 이후에 더 나은 추정치를 얻어도 과거의 자코비안을 수정하지 않는다. 이에 비해 batch optimization은 전체 궤적에 대해 자코비안을 현재 추정치에서 반복적으로 재계산(relinearize)할 수 있다.
 
-[Strasdat et al. (2012) "Visual SLAM: Why Filter?"](https://doi.org/10.1016/j.imavis.2012.02.009)가 이 논증을 체계적으로 제시했다: 같은 계산량이 주어지면, optimization에 더 많은 키프레임을 넣는 것이 filtering에 더 많은 관측을 넣는 것보다 정확도가 높다.
+[Strasdat et al. (2012) "Visual SLAM: Why Filter?"](https://doi.org/10.1016/j.imavis.2012.02.009)가 이 논증을 체계적으로 제시했다: 같은 계산량이 주어지면 정확도를 올리는 데는 프레임 수보다 특징점 수를 늘리는 쪽이 유리하고, 비용이 특징점 수에 선형인 bundle adjustment가 3차인 filtering보다 그 점에서 효율적이다.
 
 **2. 일관성(Consistency) 문제**
 
@@ -959,7 +959,7 @@ iSAM2는 네 가지 장치를 사용한다:
 
 GTSAM은 iSAM2를 구현하며, [LIO-SAM](https://arxiv.org/abs/2007.00258) 같은 시스템이 이를 백엔드로 쓴다. VINS-Mono는 GTSAM/iSAM2가 아니라 Ceres 기반 sliding-window 최적화를 사용한다.
 
-> **최근 동향 — Continuous-Time Factor Graph**: 이산 키프레임 기반 factor graph를 **연속 시간(continuous-time)**으로 확장하는 연구가 활발하다. [Wong et al. (2024)](https://arxiv.org/abs/2402.06174)는 Gaussian Process motion prior를 사용하여 radar-inertial 및 LiDAR-inertial odometry를 연속 시간 factor graph로 통합하고, 비동기 센서 측정을 자연스럽게 처리할 수 있음을 보였다.
+> **최근 동향 — Continuous-Time Factor Graph**: 이산 키프레임 기반 factor graph를 **연속 시간(continuous-time)**으로 확장하는 연구가 활발하다. [Burnett et al. (2024)](https://arxiv.org/abs/2402.06174)는 Gaussian Process motion prior를 사용하여 radar-inertial 및 LiDAR-inertial odometry를 연속 시간 factor graph로 통합하고, 비동기 센서 측정을 자연스럽게 처리할 수 있음을 보였다.
 
 ### 4.5.7 GTSAM / Ceres / g2o 비교
 
@@ -1040,7 +1040,7 @@ IMU는 보통 200~1000Hz로 가속도와 각속도를 측정하지만, 카메라
 
 $$\mathbf{R}_j = \mathbf{R}_i \prod_{k=i}^{j-1} \text{Exp}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g) \Delta t)$$
 $$\mathbf{v}_j = \mathbf{v}_i + \mathbf{g} \Delta t_{ij} + \sum_{k=i}^{j-1} \mathbf{R}_k (\tilde{\mathbf{a}}_k - \mathbf{b}_a) \Delta t$$
-$$\mathbf{p}_j = \mathbf{p}_i + \mathbf{v}_i \Delta t_{ij} + \frac{1}{2}\mathbf{g}\Delta t_{ij}^2 + \sum_{k=i}^{j-1}\left[\mathbf{v}_k \Delta t + \frac{1}{2}\mathbf{R}_k(\tilde{\mathbf{a}}_k - \mathbf{b}_a)\Delta t^2\right]$$
+$$\mathbf{p}_j = \mathbf{p}_i + \sum_{k=i}^{j-1}\left[\mathbf{v}_k \Delta t + \frac{1}{2}\left(\mathbf{R}_k(\tilde{\mathbf{a}}_k - \mathbf{b}_a) + \mathbf{g}\right)\Delta t^2\right]$$
 
 문제: 이 적분은 키프레임 $i$의 상태 $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$와 바이어스 $(\mathbf{b}_g, \mathbf{b}_a)$에 의존한다. 최적화 반복에서 $\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i$의 추정치가 바뀌면, 모든 중간 상태를 재적분해야 한다. 바이어스 추정치가 바뀔 때도 마찬가지다. 이것은 수백 번의 exponential map 계산이 매 최적화 반복마다 필요함을 의미한다.
 
@@ -1089,7 +1089,7 @@ $$\Delta\hat{\mathbf{p}}_{ij}(\mathbf{b} + \delta\mathbf{b}) \approx \Delta\hat{
 
 자코비안 $\frac{\partial \Delta\bar{\mathbf{R}}_{ij}}{\partial \mathbf{b}_g}$ 등은 preintegration 과정에서 재귀적으로 누적 계산한다. 예를 들어 회전의 바이어스 자코비안:
 
-$$\frac{\partial \Delta\bar{\mathbf{R}}_{i,k+1}}{\partial \mathbf{b}_g} = -\Delta\bar{\mathbf{R}}_{k,k+1}^\top \text{Jr}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g)\Delta t) \Delta t + \Delta\bar{\mathbf{R}}_{k,k+1}^\top \frac{\partial \Delta\bar{\mathbf{R}}_{ik}}{\partial \mathbf{b}_g}$$
+$$\frac{\partial \Delta\bar{\mathbf{R}}_{i,k+1}}{\partial \mathbf{b}_g} = \Delta\bar{\mathbf{R}}_{k,k+1}^\top \frac{\partial \Delta\bar{\mathbf{R}}_{ik}}{\partial \mathbf{b}_g} - \text{Jr}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g)\Delta t) \Delta t$$
 
 여기서 $\text{Jr}(\boldsymbol{\phi})$는 SO(3)의 right Jacobian:
 
@@ -1268,7 +1268,7 @@ class IMUPreintegration:
         self.d_v_d_bg += -self.delta_R @ skew(acc) @ self.d_R_d_bg * dt
         self.d_v_d_ba += -self.delta_R * dt
         # 회전 자코비안
-        self.d_R_d_bg = dR.T @ (self.d_R_d_bg - Jr * dt)
+        self.d_R_d_bg = dR.T @ self.d_R_d_bg - Jr * dt   # 새 항에는 dR.T가 곱해지지 않는다
         
         # --- 공분산 전파 (Step 4) ---
         A = np.eye(9)
@@ -1283,8 +1283,9 @@ class IMUPreintegration:
         B[6:9, 3:6] = 0.5 * self.delta_R * dt**2
         
         Sigma_eta = np.zeros((6, 6))
-        Sigma_eta[0:3, 0:3] = np.eye(3) * self.sigma_g**2
-        Sigma_eta[3:6, 3:6] = np.eye(3) * self.sigma_a**2
+        # 연속 시간 노이즈 밀도 → 이산 시간 공분산: 밀도²/dt (B에 dt가 이미 곱해져 있다)
+        Sigma_eta[0:3, 0:3] = np.eye(3) * self.sigma_g**2 / dt
+        Sigma_eta[3:6, 3:6] = np.eye(3) * self.sigma_a**2 / dt
         
         self.cov = A @ self.cov @ A.T + B @ Sigma_eta @ B.T
         
@@ -1342,7 +1343,7 @@ import gtsam
 def create_imu_factor_gtsam():
     """GTSAM의 내장 IMU preintegration을 사용하는 예제."""
     # IMU 파라미터 설정
-    imu_params = gtsam.PreintegrationParams.MakeSharedU(9.81)  # 중력 방향: +z
+    imu_params = gtsam.PreintegrationParams.MakeSharedU(9.81)  # Z-up 프레임용. 내부 중력 벡터는 (0, 0, -9.81)
     imu_params.setAccelerometerCovariance(np.eye(3) * 0.01**2)
     imu_params.setGyroscopeCovariance(np.eye(3) * 0.001**2)
     imu_params.setIntegrationCovariance(np.eye(3) * 1e-8)
@@ -1556,4 +1557,4 @@ Schur complement 계산에서 역행렬 $\mathbf{H}_{mm}^{-1}$이 필요하다. 
 
 같은 이론은 VIO(Ch.6), LIO(Ch.7), 멀티센서 퓨전(Ch.8)의 시스템 설계와 구현에도 쓰인다.
 
-> **2024-2025 연구 방향**: Equivariant Filter와 Invariant EKF는 Lie 군의 대칭을 이용해 특정 시스템과 가정에서 오차 동역학·일관성·수렴 분석을 개선한다. 연속 시간 최적화에서는 Gaussian Process motion prior를 사용한 factor graph가 비동기 멀티센서 퓨전에 쓰인다. [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289)처럼 칼만 이득이나 모델 일부를 학습하는 접근도 연구되며, 분포 변화와 안전성 검증이 남는다.
+> **2024-2025 연구 방향**: Equivariant Filter와 Invariant EKF는 Lie 군의 대칭을 이용해 특정 시스템과 가정에서 오차 동역학·일관성·수렴 분석을 개선한다. 연속 시간 최적화에서는 Gaussian Process motion prior를 사용한 factor graph가 비동기 멀티센서 퓨전에 쓰인다. [AI-Aided Kalman Filters (Shlezinger et al., 2024)](https://arxiv.org/abs/2410.12289)처럼 칼만 이득이나 모델 일부를 학습하는 접근도 연구되며, 분포 변화와 안전성 검증이 남는다.

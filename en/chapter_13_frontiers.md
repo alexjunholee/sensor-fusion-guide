@@ -22,7 +22,7 @@ Research increasingly uses representations from foundation models — general-pu
 
 - was evaluated without VPR-specific fine-tuning on paper benchmarks spanning urban, indoor, aerial, underwater, and subterranean settings.
 - reports higher recall than the tested NetVLAD- and CosPlace-family baselines on several datasets, not a guarantee for every environment.
-- includes an ablation in which value-facet dense features from layer 31 yield results that are 23% higher on average than those from the CLS token.
+- includes an ablation in which value-facet dense features from layer 31 outperform the global CLS-token descriptor. The size of the improvement depends on the metric and on what is being evaluated, so read the metric name together with the reported average range in the paper's own ablation table.
 
 ```python
 import numpy as np
@@ -48,7 +48,7 @@ class FoundationModelFeatureExtractor:
         
     def extract_dense_features(self, image):
         """
-        Extract pixel-level dense features from an image.
+        Extract patch-level (1/14 resolution) dense features from an image.
         
         Args:
             image: (H, W, 3) RGB image
@@ -346,7 +346,7 @@ class PersistentSpatialMemory:
 
 ### 13.3.2 Scene-Graph-Based Environmental Understanding
 
-The 3D Scene Graph of [Hydra](https://arxiv.org/abs/2201.13360) supports the following extensions.
+The following extensions are being studied on top of 3D Scene Graph representations such as the one [Hydra](https://arxiv.org/abs/2201.13360) builds. Hydra itself covers hierarchy construction and hierarchical loop closure.
 
 **Scene Graph + Language**: Combining a scene graph with a natural language interface allows a robot to understand commands such as "bring me the remote on the table next to the sofa in the living room." This command is translated into a hierarchical traversal of the scene graph:
 
@@ -357,7 +357,7 @@ The 3D Scene Graph of [Hydra](https://arxiv.org/abs/2201.13360) supports the fol
 
 **Scene Graph + LLM**: An LLM such as GPT-4 takes a scene graph as input and performs high-level reasoning. It can answer queries such as "if a person falls in this room, where is the nearest phone?"
 
-**Dynamic scene graphs**: Hydra's current implementation assumes a static environment. Dynamic scene graphs include moving agents (people, vehicles) as nodes and update their relations in real time. Social navigation and human-robot interaction (HRI) can use this information.
+**Dynamic scene graphs**: Hydra does place human agents as nodes (see the layer table in §11.4.2), but its geometric and semantic mesh, its place and room layers, and the optimization built on top of them all assume a static structure. Dynamic scene graphs aim to update moving agents — vehicles included — and their relations inside the map structure in real time. Social navigation and human-robot interaction (HRI) can use this information.
 
 ### 13.3.3 Time-Series Spatial Memory Management
 
@@ -393,7 +393,7 @@ Here $f_L$ is the LiDAR encoder, $f_C$ is the camera encoder, $\tau$ is the temp
 
 **Application to cross-modal place recognition**: A camera-only system can localize against a map built with LiDAR. If the LiDAR descriptor and the camera descriptor occupy the same space, a camera query can retrieve locations from a LiDAR map.
 
-**LC$^2$** (Lee et al. 2023): LiDAR-Camera cross-modal place recognition. It aligns features from a LiDAR BEV image and a camera image into a common space.
+**LC$^2$** (Lee et al. 2023): LiDAR-Camera cross-modal place recognition. It projects the LiDAR scan into a range image and converts the camera image into a disparity/depth representation, then aligns the features of the two representations into a common space (§9.4.3).
 
 ### 13.4.3 Knowledge Distillation
 
@@ -440,7 +440,7 @@ The polarity is $p = \text{sign}(\log I(x, y, t) - \log I(x, y, t_{\text{last}})
 | Motion blur | present | nearly none |
 | Data output | uniform frames | asynchronous events |
 | No pixel brightness change | provides frame information | ideally no events |
-| Power consumption | high | very low |
+| Power consumption | varies widely by device | the sensor itself stays low and scales with activity; system power including readout and processing grows with the event rate |
 
 Event cameras provide information during fast rotations, abrupt illumination changes (entering/exiting tunnels), and low-light operation. They therefore complement traditional cameras and other sensors.
 
@@ -448,7 +448,7 @@ Event cameras provide information during fast rotations, abrupt illumination cha
 
 Event cameras and traditional frame cameras are combined in the following ways:
 
-**Event-enhanced frame tracking**: Fast motion between frames is tracked with events, filling the gap between frame-based VO frames. This maintains tracking even during fast camera motion.
+**Event-enhanced frame tracking**: Fast motion between frames is tracked with events, filling the gap between frame-based VO frames. This improves tracking robustness under fast camera motion. Tracking can still break when low contrast yields too few events, or when the opposite happens and a saturating event rate exhausts the available bandwidth.
 
 **Event-aided HDR**: The event camera's high dynamic range supplements information in underexposed or overexposed regions of frame images.
 
@@ -462,7 +462,7 @@ Event cameras and traditional frame cameras are combined in the following ways:
 - IMU: scale recovery and fast motion prediction
 
 **Current challenges**:
-- The data format of event cameras (an asynchronous event stream) is not compatible with traditional computer vision pipelines (frame-based). Converting events to frames (event frame) sacrifices the advantages.
+- The data format of event cameras (an asynchronous event stream) is not compatible with traditional computer vision pipelines (frame-based). What is lost when events are aggregated into frames depends on the representation: an event-count histogram discards the timing information inside the window, whereas a time surface keeps the most recent event time at each pixel and so preserves much of the ordering. The high dynamic range that comes from log-intensity sensing survives aggregation.
 - Event-camera price and resolution vary by model, and the product range remains narrower than for conventional frame cameras.
 - Training data is scarce. Most datasets are designed for frame cameras.
 
@@ -557,8 +557,8 @@ class EventProcessor:
         best_flow = np.zeros(2)
         best_contrast = 0
         
-        for vx in np.linspace(-2, 2, 20):
-            for vy in np.linspace(-2, 2, 20):
+        for vx in np.linspace(-200, 200, 20):   # px/s. Event-camera flow is typically tens to hundreds of px/s
+            for vy in np.linspace(-200, 200, 20):
                 warped = np.zeros((self.height, self.width))
                 
                 t_ref = events[-1][2]
@@ -617,9 +617,9 @@ Combining 4D radar with a camera can compensate for their different failure mode
 
 **BEV-based fusion**: BEV features are extracted from camera images (as in LSS or BEVFormer) and radar points are projected into the BEV space to be combined.
 
-**Leveraging radar's Doppler information**: 4D radar directly measures the radial velocity along the line of sight for each point. This is information unique to radar, absent from cameras and LiDAR:
+**Leveraging radar's Doppler information**: 4D radar directly measures the radial velocity along the line of sight for each point. Cameras and pulsed time-of-flight LiDAR do not provide this. FMCW LiDAR is the exception, since it measures per-point velocity by the same principle:
 
-- **Dynamic object classification**: the Doppler channel immediately separates static background from moving objects.
+- **Dynamic object classification**: the Doppler residual left after compensating for the ego velocity separates candidate static background from candidate moving objects. An object moving perpendicular to the line of sight contributes zero radial velocity and cannot be distinguished from this observation alone, and the threshold has to reflect both the radar's velocity noise and the error in the ego-velocity estimate.
 - **Ego-motion estimation**: the Doppler of static points allows ego-velocity estimation (even without an IMU).
 - **Tracking support**: the velocity information of an object can be used directly in tracking.
 
@@ -733,7 +733,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 | Dataset | Sensors | Environment | Features |
 |----------|------|------|------|
 | **[Boreas](https://arxiv.org/abs/2203.10168)** (Burnett et al. 2023) | Camera, LiDAR, Radar, GNSS/IMU | Urban (various weather) | Same route repeated for one year, including adverse weather |
-| **RadarScenes** | Radar, Camera, LiDAR | Urban | Traditional automotive radar points + semantic labels (point-level annotation) |
+| **RadarScenes** | Radar, Camera (reference), Odometry | Urban | Traditional automotive radar points + semantic labels (point-level annotation). LiDAR is not included |
 | **nuScenes** | Camera, LiDAR, Radar | Urban | Includes 5 radars, some adverse weather |
 | **View-of-Delft** | Camera, LiDAR, 4D Radar | Urban | 4D radar + 3D annotation |
 
@@ -742,7 +742,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 - **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (2024): A benchmark for evaluating 4D-radar-based SLAM, providing 44 sequences collected across three platforms (handheld, bicycle, SUV) under diverse weather and lighting conditions.
 - **[4D Radar-Inertial Odometry](https://arxiv.org/abs/2412.13639)** (2024): Proposes a 3D Gaussian radar scene representation and multi-hypothesis scan matching, achieving more precise radar odometry than voxel-based methods.
 
-The deployment scope of 4D radar fusion remains limited. Ego-motion estimation and dynamic object classification based on Doppler information provide capabilities that LiDAR and cameras do not.
+The deployment scope of 4D radar fusion remains limited. Ego-motion estimation and dynamic object classification based on Doppler information provide capabilities that cameras and pulsed LiDAR do not (FMCW LiDAR is the exception).
 
 ---
 

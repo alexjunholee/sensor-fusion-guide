@@ -32,7 +32,7 @@ Here $\mathbf{P}_{L}$ and $\mathbf{P}_{V}$ are the covariances reported by each 
 
 ### 8.1.2 Tightly Coupled
 
-All sensors' **raw measurements** are fed directly into a single estimator.
+All sensors' **raw measurements** directly constrain a single shared state. Instead of running "experts" and merging their outputs, the raw data enters the state estimate itself. What defines the level is where the measurements enter, not whether there is only one optimizer. A design in which two subsystems update one shared state (R3LIVE) or one that applies sequential updates (FAST-LIVO2) is tightly coupled as well. Even when two subsystems keep separate graphs, as in LVI-SAM, the design is classified at the same level if they exchange measurements (LiDAR depth) and state (initial guesses) directly with each other.
 
 From a factor graph perspective, each sensor's raw measurements are inserted as independent factors:
 
@@ -77,8 +77,10 @@ Measurement flow:
              Sensor B → Subsystem B → Pose B ─┘
 
 [Tightly]    Sensor A → raw meas. A ──┐
-                                      ├→ Single Optimizer → Final pose
-             Sensor B → raw meas. B ──┘
+                                      ├→ Shared-state estimator → Final pose
+             Sensor B → raw meas. B ──┘   (a single optimizer, sequential updates,
+                                           and two subsystems sharing one state
+                                           all belong to this level)
 
 [Ultra-Tight] Sensor A signal ←→ Sensor B estimate (bidirectional signal-level coupling)
 ```
@@ -120,7 +122,7 @@ def loosely_coupled_fusion(x_lidar, P_lidar, x_visual, P_visual):
 x_lidar = np.array([10.1, 5.2])      # Position estimated by LiDAR
 P_lidar = np.diag([0.01, 0.01])       # LiDAR is precise and isotropic
 x_visual = np.array([10.0, 5.0])      # Position estimated by Visual
-P_visual = np.diag([0.1, 0.05])       # Visual is less precise in the vertical direction
+P_visual = np.diag([0.1, 0.05])       # Visual precision differs per axis (less precise along x)
 
 x_fused, P_fused = loosely_coupled_fusion(x_lidar, P_lidar, x_visual, P_visual)
 print(f"LiDAR:  {x_lidar}, P_diag: {np.diag(P_lidar)}")
@@ -143,7 +145,7 @@ Camera, LiDAR, and IMU together provide texture and color, 3D range, and high-ra
 | Textureless wall | ✗ | ✓ | ✓ |
 | Geometric degeneracy (long corridor) | ✓ | ✗ | ✓ |
 | High-speed rotation | ✗ | ✗ | ✓ |
-| Scale observability | ✗ (monocular) | ✓ | ✗ |
+| Scale observability | ✗ (monocular) | ✓ | ✓ (acceleration is in metric units; requires motion excitation) |
 | Color/semantics | ✓ | ✗ | ✗ |
 
 The following systems integrate these three sensors.
@@ -191,18 +193,19 @@ R3LIVE's shared state can continue receiving valid updates when one modality tem
          │                            │
          └←── LiDAR depth ────────────┘
 
-              ↓ both factors ↓
+              ↓ LiDAR·IMU factors ↓
            [Factor Graph (GTSAM/iSAM2)]
                      ↓
               Final optimized pose
 ```
 
-**Factor graph design**: The following factors are inserted into the LVI-SAM factor graph:
+**Factor graph design**: LVI-SAM consists of two subsystems, a visual-inertial system (VIS) and a LiDAR-inertial system (LIS), and the factor graph is maintained by the LIS, which inherits it from LIO-SAM. The factors it holds are:
 - IMU preintegration factor (between successive keyframes)
 - LiDAR odometry factor (scan matching result)
-- Visual odometry factor (feature tracking result)
 - GPS factor (when available)
 - Loop closure factor (upon revisit detection)
+
+Rather than inserting its own odometry into this graph as a factor, the VIS couples in by supplying the LIS with an initial guess and by taking LiDAR depth to fix its own scale.
 
 ### 8.2.3 FAST-LIVO / FAST-LIVO2
 
@@ -210,7 +213,7 @@ R3LIVE's shared state can continue receiving valid updates when one modality tem
 
 **Design 1 — Sequential Update**:
 
-Measurements from heterogeneous sensors have different dimensionalities. LiDAR provides 3D point-to-plane residuals, while the camera provides 2D photometric residuals. Stacking them into a single large residual vector and optimizing simultaneously complicates the Jacobian matrix structure and can be numerically unstable.
+Measurements from heterogeneous sensors differ greatly in number and in nature. LiDAR provides one point-to-plane residual per point, while the camera provides one photometric residual per patch pixel; the two measurement sets differ in size, units, and noise magnitude, and the original paper cites this dimension mismatch as the reason for choosing sequential updates.
 
 FAST-LIVO2 solves this problem with **sequential Bayesian updates**:
 
@@ -252,8 +255,8 @@ import numpy as np
 def sequential_ekf_update(x_pred, P_pred, z_lidar, H_lidar, R_lidar, z_cam, H_cam, R_cam):
     """
     Sequential EKF update in the order LiDAR → Camera.
-    Mathematically equivalent to a simultaneous update but avoids the
-    dimensionality-mismatch issue.
+    Mathematically equivalent to a simultaneous update, but the dimension
+    mismatch of the heterogeneous measurements need not be handled at once.
 
     Parameters:
         x_pred: predicted state (n,)
@@ -294,9 +297,9 @@ We compare the designs of the three systems from a factor graph perspective:
 |------|--------|---------|------------|
 | Backend | IEKF (dual subsystem) | iSAM2 (factor graph) | IEKF (sequential) |
 | LiDAR processing | Direct (point-to-plane) | Feature-based (LOAM) | Direct (point-to-plane) |
-| Camera processing | Direct (photometric) | Feature-based (ORB) | Direct (photometric) |
+| Camera processing | Direct (photometric) | Feature-based (Shi-Tomasi + KLT) | Direct (photometric) |
 | Map representation | ikd-Tree + RGB | Voxel map | Hash+Octree voxel map |
-| Feature extraction | Not required | Required (edge/planar, ORB) | Not required |
+| Feature extraction | Not required | Required (LiDAR edge/planar, visual corners) | Not required |
 | GPS integration | None | Integrated as factor | None |
 | Loop closure | None | Integrated as factor | None |
 | Embedded validation | Benchmark on target hardware | Benchmark on target hardware | ARM implementations reported; revalidate under the target setup |
@@ -318,12 +321,12 @@ GNSS (Global Navigation Satellite System) provides an absolute position referenc
 [LIO-SAM](https://arxiv.org/abs/2007.00258) (Shan et al., 2020) connects each GNSS position report to a factor-graph pose node as a **unary factor**:
 
 $$
-\mathbf{r}^{\text{GPS}}_i = \mathbf{T}^{-1}_{\text{ENU→map}} \cdot \mathbf{p}^{\text{ENU}}_{\text{GPS}} - \mathbf{p}^{\text{map}}_i - \mathbf{R}^{\text{map}}_i \cdot \mathbf{l}_{\text{antenna}}
+\mathbf{r}^{\text{GPS}}_i = \mathbf{T}_{\text{ENU→map}} \cdot \mathbf{p}^{\text{ENU}}_{\text{GPS}} - \mathbf{p}^{\text{map}}_i - \mathbf{R}^{\text{map}}_i \cdot \mathbf{l}_{\text{antenna}}
 $$
 
 where:
 - $\mathbf{p}^{\text{ENU}}_{\text{GPS}}$ is the ENU coordinate reported by the GNSS
-- $\mathbf{T}_{\text{ENU→map}}$ is the transformation from the ENU frame to the SLAM map frame
+- $\mathbf{T}_{\text{ENU→map}}$ is the transformation from the ENU frame to the SLAM map frame. The equation above brings the GNSS position into the map frame for comparison, so this transformation is applied as is; the $\mathbf{T}^{-1}$ form is what one writes when using the opposite direction, $\mathbf{T}_{\text{map→ENU}}$
 - $\mathbf{p}^{\text{map}}_i$ is the robot position estimated by SLAM
 - $\mathbf{l}_{\text{antenna}}$ is the lever-arm vector between the GNSS antenna and the robot's body frame
 - $\mathbf{R}^{\text{map}}_i$ is the robot's rotation
@@ -342,7 +345,9 @@ def gnss_loose_coupling_ekf_update(x_ins, P_ins, gnss_position, R_gnss):
 
     x_ins: INS state [position(3), velocity(3), attitude(3), biases(6)] = 15 dim
     gnss_position: position computed by GNSS (3,)
-    R_gnss: covariance of the GNSS position (3, 3) — typically HDOP * sigma_uere
+    R_gnss: covariance of the GNSS position (3, 3) — put squared standard deviations
+            on the diagonal. Horizontally, sigma_h = HDOP * sigma_uere; vertically,
+            use VDOP. That is, diag(sigma_E**2, sigma_N**2, sigma_U**2).
     """
     n = len(x_ins)
     # Observation matrix: GNSS observes position only
@@ -399,7 +404,7 @@ Radar provides the following properties:
 
 1. **Adverse-weather tolerance**: mm-wave radar is often less affected by fog, rain, and snow than visible cameras or some LiDARs. Heavy precipitation, wet-road multipath, attenuation, and clutter remain, so performance must be tested by condition.
 
-2. **Direct radial-velocity measurement**: FMCW Doppler gives the line-of-sight component of relative velocity within a chirp or frame. It does not directly provide a point's full 3D velocity or an object's motion; multiple directions, time, tracking, or another sensor are needed.
+2. **Direct radial-velocity measurement**: FMCW Doppler gives the line-of-sight component of relative velocity from the phase change across the several chirps within one frame. A single chirp alone yields only range information, with velocity not yet separated out. It does not directly provide a point's full 3D velocity or an object's motion; multiple directions, time, tracking, or another sensor are needed.
 
 3. **Different cost structure**: mass-market radar chipsets can be inexpensive, but imaging-radar and LiDAR module prices overlap depending on channels, antennas, compute, and production volume. Compare current quotes against required performance rather than assuming a fixed ratio.
 
@@ -482,7 +487,7 @@ For **multiple robots to perceive the environment cooperatively**, they must add
 
 ### 8.5.2 Kimera-Multi
 
-[Kimera-Multi](https://arxiv.org/abs/2106.14386) (Rosinol et al., 2021) is a distributed multi-robot SLAM system developed by MIT's SPARK Lab.
+[Kimera-Multi](https://arxiv.org/abs/2106.14386) (Tian et al., 2021) is a distributed multi-robot SLAM system developed by MIT's SPARK Lab.
 
 **Architecture**:
 - Each robot runs Kimera and performs local metric-semantic SLAM
@@ -490,7 +495,7 @@ For **multiple robots to perceive the environment cooperatively**, they must add
 - Detected inter-robot loop closures are incorporated into the distributed pose graph optimization
 - A **GNC (Graduated Non-Convexity)** solver robustly rejects outlier loop closures
 
-**Distributed optimization**: Each robot maintains its own pose graph and exchanges only inter-robot factors with neighboring robots. A distributed optimization algorithm such as Riemannian block-coordinate descent is used to reach convergence.
+**Distributed optimization**: Each robot maintains its own pose graph. When a loop is detected, the inter-robot factor is shared; from then on a distributed optimizer such as Riemannian block-coordinate descent converges by exchanging, at every iteration, the current estimates of the separator poses it shares with its neighbors. Sharing a constraint once and repeatedly exchanging optimization variables are two different kinds of communication.
 
 ### 8.5.3 Swarm-SLAM
 
@@ -510,11 +515,11 @@ class DistributedPoseGraphNode:
     """
     A single robot node in the distributed pose graph.
     Each robot maintains its own local graph and
-    exchanges only inter-robot factors with neighbors.
+    exchanges inter-robot factors and separator pose estimates with neighbors.
     """
     def __init__(self, robot_id):
         self.robot_id = robot_id
-        self.local_poses = []           # Own poses (local frame)
+        self.local_poses = [np.eye(4)]  # Own poses (local frame); seeded with the identity pose at the origin
         self.local_factors = []          # Local odometry factors
         self.inter_robot_factors = []    # Loop closure factors with other robots
         self.neighbor_info = {}          # Boundary info received from neighbors
@@ -598,10 +603,10 @@ A shared clock or trigger can make the latency path clearer than software receiv
 When hardware synchronization is not possible, the time offset is estimated in software:
 
 - **Kalibr approach**: Represent the continuous-time trajectory with a B-spline and include the inter-sensor time offset as an optimization variable, estimating everything jointly.
-- **Correlation-based**: Compute the cross-correlation between the motion estimates of two sensors to estimate the time delay.
+- **Correlation-based**: Estimate the time delay from the cross-correlation between two signals in which the sensors observed the same motion. Using acceleration requires removing gravity from the IMU measurement and bringing both signals into the same frame, and with a monocular camera the scale of the velocity is undetermined. Practice therefore mostly compares gyro angular rate against the camera's rotation rate, which needs none of those three conditions.
 
 $$
-\hat{\tau} = \arg\max_{\tau} \int \mathbf{a}_{\text{IMU}}(t) \cdot \dot{\mathbf{v}}_{\text{camera}}(t + \tau) \, dt
+\hat{\tau} = \arg\max_{\tau} \int \boldsymbol{\omega}_{\text{IMU}}(t) \cdot \boldsymbol{\omega}_{\text{camera}}(t + \tau) \, dt
 $$
 
 ```python
@@ -658,7 +663,7 @@ In real systems, sensors inevitably fail. A robust system must achieve **gracefu
 | LiDAR geometric degeneracy | Long corridor, wide flat plane | Eigenvalue analysis of the information matrix | Relax LiDAR constraint on the affected DoF, compensate with VIO |
 | IMU saturation | Measurement range exceeded under high-speed impact | Detect ADC maximum values | Increase IMU preintegration uncertainty for the affected interval |
 | GNSS multipath | Large error due to reflections from buildings | RAIM, residual check | Increase the covariance of the affected GNSS factor or remove it |
-| Total sensor dropout | No data received | Watchdog timer | Disable all factors for the affected sensor |
+| Total sensor dropout | No data received | Watchdog timer | Stop adding new factors. If the failure time is uncertain, down-weight or remove only the interval after the suspect point |
 
 **Detecting LiDAR geometric degeneracy**:
 
@@ -740,7 +745,7 @@ Items that must always be checked when designing a real multi-sensor fusion syst
 - [ ] Extrinsic calibration completed for every sensor pair
 - [ ] Time-synchronization offsets measured/estimated
 - [ ] Calibration results verified for reproducibility (at least three repetitions)
-- [ ] Mechanism in place for online calibration drift correction
+- [ ] Procedure in place for monitoring and responding to calibration changes (online estimation or periodic recalibration). Online extrinsic estimation requires sufficient motion excitation for observability, so it is not a mandatory condition for every system
 
 **Data flow**:
 - [ ] Each sensor's data rate matches the system's processing rate

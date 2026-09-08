@@ -311,13 +311,19 @@ calibration_flags = (
     + cv2.fisheye.CALIB_CHECK_COND
     + cv2.fisheye.CALIB_FIX_SKEW
 )
+# CALIB_CHECK_COND는 조건수가 나쁜 이미지가 하나라도 있으면 예외로 중단한다.
+# 그때는 해당 이미지를 제외하거나 이 플래그를 뺀다.
 
 K_fisheye = np.zeros((3, 3))
 D_fisheye = np.zeros((4, 1))  # k1, k2, k3, k4
 
+# fisheye 모듈은 객체점을 (N, 1, 3), 이미지점을 (N, 1, 2)로 요구한다 (3.1.4의 (N, 3) 객체점을 변환)
+obj_points_f = [o.reshape(-1, 1, 3).astype(np.float64) for o in obj_points]
+img_points_f = [p.reshape(-1, 1, 2).astype(np.float64) for p in img_points]
+
 ret, K_fisheye, D_fisheye, rvecs, tvecs = cv2.fisheye.calibrate(
-    obj_points,
-    img_points,
+    obj_points_f,
+    img_points_f,
     gray.shape[::-1],
     K_fisheye,
     D_fisheye,
@@ -542,19 +548,27 @@ def calibrate_camera_lidar_target(
     all_points_3d_lidar = []
     all_points_2d_camera = []
 
-    for i, (corners_2d, (normal, d)) in enumerate(zip(img_corners_list, lidar_planes_list)):
+    # 각 관측에서 (카메라 좌표계 평면, LiDAR 좌표계 평면) 쌍을 모은다. 평면은 n·x + d = 0
+    planes_cam, planes_lidar = [], []
+    for corners_2d, (normal_l, d_l) in zip(img_corners_list, lidar_planes_list):
         # 카메라에서 본 체커보드 pose (PnP)
-        ret, rvec, tvec = cv2.solvePnP(
-            board_corners_3d, corners_2d, K, dist
-        )
+        ret, rvec, tvec = cv2.solvePnP(board_corners_3d, corners_2d, K, dist)
         R_cam_board, _ = cv2.Rodrigues(rvec)
+        # 체커보드 평면을 카메라 좌표계로: 법선은 보드 z축, 거리는 보드 원점에서
+        n_c = R_cam_board[:, 2]
+        d_c = -n_c @ tvec.ravel()
+        planes_cam.append((n_c, d_c))
+        planes_lidar.append((normal_l, d_l))
 
-        # 체커보드 코너를 카메라 좌표계로 변환
-        corners_cam = (R_cam_board @ board_corners_3d.T + tvec).T
+    # 회전: 법선 쌍 정렬 (Kabsch/SVD), n_c = R n_l
+    N_c = np.stack([n for n, _ in planes_cam])
+    N_l = np.stack([n for n, _ in planes_lidar])
+    U, _, Vt = np.linalg.svd(N_c.T @ N_l)
+    R_cam_lidar = U @ np.diag([1, 1, np.sign(np.linalg.det(U @ Vt))]) @ Vt
 
-        # LiDAR 평면 위의 점들 수집
-        # (실제로는 LiDAR 점군에서 평면 inlier를 사용)
-        all_points_2d_camera.append(corners_2d)
+    # 이동: 평면 거리 제약 n_c · t = d_l - d_c 를 최소자승으로 (평면 3개 이상 필요)
+    b = np.array([d_l - d_c for (_, d_c), (_, d_l) in zip(planes_cam, planes_lidar)])
+    t_cam_lidar, *_ = np.linalg.lstsq(N_c, b, rcond=None)
 
     # 최종 결과는 비선형 최적화로 정제
     return R_cam_lidar, t_cam_lidar
@@ -680,7 +694,7 @@ SuperGlue가 LiDAR 강도 렌더링과 카메라 RGB 사이의 후보 대응점�
 | Autoware Calibration Toolkit | Target-based | O | 사용자 절차를 포함한 오프라인 도구 | 지원 센서와 타겟, 초기값 |
 | `direct_visual_lidar_calibration` (Koide) | Targetless (NID) | X | 오프라인 자동화 파이프라인 | 장면 중첩, 강도 영상, 초기화 성공 여부 |
 | ACSC (Automatic Calibration) | Target-based + auto corner | O | 타겟 검출 자동화 | 구현이 요구하는 타겟과 센서 모델 |
-| LiveCalib | Online | X | 주행 중 추정 | 운동의 관측 가능성과 drift 감시 기준 |
+| 온라인 extrinsic 추정 (VIO/LIO 상태 증강) | Online | X | 주행 중 추정 | 운동의 관측 가능성과 drift 감시 기준 |
 
 최근 [MFCalib (2024)](https://arxiv.org/abs/2409.00992)은 깊이 연속·불연속 에지와 강도 불연속 에지를 함께 사용한다. 저자들은 제안한 빔 모델로 edge-inflation 현상을 다루고, 논문의 데이터셋과 지표에서 비교 방법보다 낮은 보정 오차를 보고했다.
 
@@ -690,7 +704,7 @@ Koide et al. (2023)은 초기 target-based 결과를 기준값으로 두고 targ
 
 ## 3.4 Camera-IMU Extrinsic + Temporal Calibration
 
-카메라와 IMU 사이의 공간적 변위(extrinsic)뿐 아니라 시간적 오프셋(temporal offset)도 동시에 추정해야 한다. VINS-Mono, OpenVINS 같은 VIO(Visual-Inertial Odometry) 시스템과 Kalibr 같은 캘리브레이션 도구는 모두 이 두 파라미터를 캘리브레이션 입력으로 요구한다.
+카메라와 IMU 사이의 공간적 변위(extrinsic)뿐 아니라 시간적 오프셋(temporal offset)도 동시에 추정해야 한다. VINS-Mono, OpenVINS 같은 VIO(Visual-Inertial Odometry) 시스템은 이 두 파라미터를 초기값으로 받아 운용 중 정제하고, Kalibr 같은 캘리브레이션 도구는 바로 이 두 값을 추정해 낸다.
 
 ### 3.4.1 왜 시간 오프셋이 중요한가
 
@@ -1078,7 +1092,7 @@ FAST-LIO2는 운용 중 LiDAR-IMU extrinsic을 추정할 수 있지만, 좋은 �
 
 1. IMU 데이터만으로 자세(attitude)를 추정하고, LiDAR 매칭으로 포즈를 추정
 2. 두 추정의 차이로부터 상대 변환을 반복적으로 정제
-3. Error-State Iterated Kalman Filter (ESIKF)의 상태 벡터에 LiDAR-IMU extrinsic을 포함하여 온라인 추정
+3. 결과를 FAST-LIO2에 넘김. 이후의 온라인 정제는 FAST-LIO2의 ESIKF가 상태 벡터에 포함된 LiDAR-IMU extrinsic을 갱신하는 방식으로 이뤄진다
 
 별도의 타겟이나 추가 센서 없이, LIO 기동 시 초기화 모듈이 외부 파라미터를 추정한다. 충분한 운동 여기가 필요하며, 공개 구현은 초기 정지 구간과 초기화 후 15–30초의 온라인 정제를 권장한다.
 
@@ -1167,7 +1181,7 @@ $$
 
 **방법 2: 필터 기반 온라인 추정**
 
-EKF 상태 벡터에 lever arm $\mathbf{l}$을 포함하여 온라인으로 추정한다. GNSS 관측 모델에서 lever arm이 관측 가능(observable)하려면 충분한 회전 운동이 필요하다. 직선 주행만으로는 lever arm의 전방 성분($l_x$)을 추정하기 어렵다.
+EKF 상태 벡터에 lever arm $\mathbf{l}$을 포함하여 온라인으로 추정한다. GNSS 관측 모델에서 lever arm이 관측 가능(observable)하려면 충분한 회전 운동이 필요하다. 자세가 일정한 직선 주행에서는 $\mathbf{R}\mathbf{l}$이 상수 편향으로 흡수되어 lever arm의 세 성분이 모두 관측되지 않고, yaw 회전만 있으면 회전축과 나란한 수직 성분($l_z$)이 관측되지 않은 채 남는다.
 
 **방법 3: 사후 처리(post-processing)**
 
@@ -1341,7 +1355,7 @@ $$
 
 **관측 가능성(Observability) 조건**: 시간 오프셋이 관측 가능하려면 플랫폼이 충분한 가속 운동을 해야 한다. 등속 직선 운동에서는 시간 오프셋을 추정할 수 없다(시간 이동이 공간 이동과 구별 불가).
 
-Kalibr(3.4.2절), OpenVINS, VINS-Mono 등 현대의 VIO 시스템은 모두 이 방법의 변형을 구현하고 있다.
+OpenVINS, VINS-Mono 같은 현대의 VIO 시스템이 이 방법의 변형을 구현하고 있다. 오프라인 도구인 Kalibr(3.4.2절)는 연속시간 B-spline 배치 최적화로 같은 값을 따로 추정한다.
 
 ### 3.9.5 실전 동기화 전략 가이드
 

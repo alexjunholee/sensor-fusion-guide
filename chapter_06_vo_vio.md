@@ -36,7 +36,7 @@ $$\mathbf{M} = \sum_{(x,y) \in W} w(x,y) \begin{bmatrix} I_x^2 & I_xI_y \\ I_xI_
 
 $$R = \det(\mathbf{M}) - k \cdot \text{tr}(\mathbf{M})^2 = \lambda_1\lambda_2 - k(\lambda_1 + \lambda_2)^2$$
 
-FAST (Features from Accelerated Segment Test)는 속도에 최적화된 검출기다. 후보 픽셀 $p$ 주위 반지름 3의 원(Bresenham circle) 위 16개 점 중 $n$개(보통 $n=9$) 이상이 연속으로 $p$보다 밝거나 어두우면 코너로 판정한다. 사전 테스트로 1, 5, 9, 13번 점만 먼저 검사하여 비코너를 빠르게 제거한다. Harris와의 속도 차이는 구현과 하드웨어에 따라 달라지며, 기본 FAST에는 방향·스케일 불변성이 없다.
+FAST (Features from Accelerated Segment Test)는 속도에 최적화된 검출기다. 후보 픽셀 $p$ 주위 반지름 3의 원(Bresenham circle) 위 16개 점 중 $n$개(보통 $n=9$) 이상이 연속으로 $p$보다 밝거나 어두우면 코너로 판정한다. 1, 5, 9, 13번 점만 먼저 보는 4점 사전 검사는 $n=12$에서 성립하는 단축법이라 $n=9$에는 그대로 쓸 수 없고, 이 경우에는 학습된 결정 트리가 검사 순서를 정한다. Harris와의 속도 차이는 구현과 하드웨어에 따라 달라지며, 기본 FAST에는 방향·스케일 불변성이 없다.
 
 ORB (Oriented FAST and Rotated BRIEF)는 FAST 검출에 방향 정보를 추가하고 BRIEF 디스크립터를 회전 보정하여 실시간 SLAM에 적합한 특징점을 제공한다. 방향은 이미지 패치의 intensity centroid로 계산한다:
 
@@ -78,7 +78,7 @@ $$\mathbf{p}_2^T \mathbf{E} \mathbf{p}_1 = 0$$
 
 여기서 $\mathbf{p}_1, \mathbf{p}_2$는 정규화된 이미지 좌표다. 이 등식을 만족하지 않는 대응은 아웃라이어로 판정한다.
 
-ORB-SLAM3는 Fundamental Matrix와 Homography를 동시에 추정하여, 장면 구조(평면 vs 비평면)에 따라 적절한 모델을 선택한다. 평면 장면에서는 Homography가 더 적은 자유도를 가지므로 안정적이다.
+ORB-SLAM3는 Fundamental Matrix와 Homography를 동시에 추정하고 두 모델의 점수 비율로 장면 구조(평면 vs 비평면)에 맞는 쪽을 고른다. 평면에서 Homography를 쓰는 이유는 자유도가 적어서가 아니다. $\mathbf{F}$는 7 자유도, $\mathbf{H}$는 8 자유도로 $\mathbf{H}$가 더 많다. 평면 위의 대응만으로는 $\mathbf{F}$가 유일하게 결정되지 않는 퇴화가 일어나기 때문이다.
 
 ### 6.1.2 Backend: PnP, Motion-only BA, Local BA
 
@@ -243,7 +243,7 @@ Photometric error의 장점은 명시적 특징점 매칭이 불필요하다는 
 
 ### 6.2.2 DSO (Direct Sparse Odometry) 아키텍처 상세 분석
 
-[DSO (Engel et al., 2018)](https://doi.org/10.1109/TPAMI.2017.2658577)는 direct 방법과 sparse 표현을 결합한 VO 시스템이다. 기존에는 "direct = dense" ([LSD-SLAM, Engel et al., 2014](https://doi.org/10.1007/978-3-319-10605-2_54)), "sparse = indirect" (ORB-SLAM)이라는 암묵적 등식이 있었는데, DSO는 이 두 축을 새롭게 조합했다.
+[DSO (Engel et al., 2018)](https://doi.org/10.1109/TPAMI.2017.2658577)는 direct 방법과 sparse 표현을 결합한 VO 시스템이다. 기존에는 "direct = dense 또는 semi-dense" (Newcombe et al.의 DTAM(ICCV 2011)이 dense, [LSD-SLAM, Engel et al., 2014](https://doi.org/10.1007/978-3-319-10605-2_54)가 semi-dense), "sparse = indirect" (ORB-SLAM)이라는 암묵적 등식이 있었는데, DSO는 잔차 방식과 표현 밀도라는 두 축을 새롭게 조합했다.
 
 **DSO의 설계**
 
@@ -253,7 +253,7 @@ Photometric error의 장점은 명시적 특징점 매칭이 불필요하다는 
 
 **완전한 Photometric Calibration**
 
-DSO는 photometric calibration을 모델에 포함한다. 실제 카메라에서 관측되는 밝기 $I'$은 장면의 실제 복사 휘도(irradiance) $B$와 다음 관계를 갖는다:
+DSO는 photometric calibration을 모델에 포함한다. 실제 카메라에서 관측되는 밝기 $I'$은 이미지 평면에 입사한 복사조도(irradiance) $B$와 다음 관계를 갖는다:
 
 $$I'(\mathbf{u}) = G(t \cdot V(\mathbf{u}) \cdot B(\mathbf{u}))$$
 
@@ -284,15 +284,15 @@ DSO는 이미지를 격자로 나누고, 각 셀에서 그래디언트 크기가
 
 DSO는 최근 5~7개의 키프레임과 이들에 속한 점들의 역깊이를 슬라이딩 윈도우에서 joint 최적화한다. 최적화 변수는:
 
-$$\boldsymbol{\theta} = \{\mathbf{T}_1, \ldots, \mathbf{T}_n, d_1^{-1}, \ldots, d_m^{-1}, a_1, b_1, \ldots, a_n, b_n\}$$
+$$\boldsymbol{\theta} = \{\mathbf{T}_1, \ldots, \mathbf{T}_n, d_1^{-1}, \ldots, d_m^{-1}, \mathbf{c}, a_1, b_1, \ldots, a_n, b_n\}$$
 
-즉 카메라 포즈(SE(3)), 역깊이(inverse depth), affine brightness 파라미터를 모두 포함한다.
+즉 카메라 포즈(SE(3)), 역깊이(inverse depth), 카메라 내부 파라미터 $\mathbf{c}$, affine brightness 파라미터를 모두 포함한다.
 
 윈도우에서 빠지는 프레임/점은 Schur complement로 마지널라이즈되어 prior로 남는다. 이 마지널라이제이션은 Ch.4.7에서 다룬 Schur complement 기반 마지널라이제이션과 동일한 원리이지만, 시각 잔차만 다룬다는 점이 다르다.
 
 **DSO의 한계와 확장**
 
-DSO의 본래 설계에는 루프 클로저가 없다. direct 방법의 한계가 아니라 설계 선택이다. LDSO (Loop-closing DSO)는 DBoW와 direct 정합을 결합해 이 한계를 풀었고, VI-DSO·BASALT 등은 DSO에 IMU를 결합한 VIO 변종이다.
+DSO의 본래 설계에는 루프 클로저가 없다. direct 방법의 한계가 아니라 설계 선택이다. LDSO (Loop-closing DSO)는 DBoW와 direct 정합을 결합해 이 한계를 풀었고, VI-DSO는 DSO에 IMU를 결합한 확장판이다. Basalt는 §6.3.5에서 다루듯 패치 기반 direct frontend와 Non-linear Factor Recovery를 갖춘 별도 시스템으로, DSO의 변종이 아니다.
 
 ```python
 # DSO 핵심 흐름 수도코드
@@ -383,9 +383,9 @@ $$\min_{\mathbf{b}_g} \sum_k \left\| \text{Log}\left(\Delta\hat{\mathbf{R}}_{k,k
 
 (b) 중력 방향, 속도, 메트릭 스케일을 동시 추정. 이는 다음 선형 시스템으로 정리된다. 각 키프레임 쌍 $(k, k+1)$에 대해:
 
-$$s\mathbf{R}_{c_0}^w \mathbf{p}_{c_{k+1}}^{c_0} - s\mathbf{R}_{c_0}^w \mathbf{p}_{c_k}^{c_0} - \mathbf{v}_k^w \Delta t_k + \frac{1}{2}\mathbf{g}^w\Delta t_k^2 = \mathbf{R}_k^w \Delta\hat{\mathbf{p}}_{k,k+1}$$
+$$s\mathbf{R}_{c_0}^w \mathbf{p}_{c_{k+1}}^{c_0} - s\mathbf{R}_{c_0}^w \mathbf{p}_{c_k}^{c_0} - \mathbf{v}_k^w \Delta t_k - \frac{1}{2}\mathbf{g}^w\Delta t_k^2 = \mathbf{R}_k^w \Delta\hat{\mathbf{p}}_{k,k+1}$$
 
-여기서 미지수는 $s$ (스케일), $\mathbf{g}^w$ (중력 벡터), $\{\mathbf{v}_k^w\}$ (속도)다. 중력 크기 $\|\mathbf{g}\| = 9.81$이라는 구속 조건을 추가하여 정확도를 높인다.
+여기서 미지수는 $s$ (스케일), $\mathbf{g}^w$ (중력 벡터), $\{\mathbf{v}_k^w\}$ (속도)다. 중력 부호는 이 가이드의 규약($\mathbf{g}=[0,0,-9.81]^\top$, Ch.4)을 따른다. VINS-Mono 원 논문은 $\mathbf{g}^w$의 부호를 반대로 두므로 원문 식과 부호가 다르다. 중력 크기 $\|\mathbf{g}\| = 9.81$이라는 구속 조건을 추가하여 정확도를 높인다.
 
 이 loosely-coupled 초기화가 수렴하면 tightly-coupled 최적화로 전환한다.
 
@@ -417,7 +417,7 @@ VINS-Mono의 원 논문·공개 구성은 10개 안팎의 frame state를 유지�
 
 2. **최신 프레임이 키프레임이 아닌 경우**: 직전 프레임(second-newest)을 마지널라이즈한다. 이때 시각 측정만 버리고, IMU 측정은 인접 키프레임 사이의 preintegration에 포함되므로 정보가 보존된다.
 
-두 전략 모두 변수를 제거하되 그 변수가 제공하던 정보를 prior 형태로 남긴다. Schur complement의 수학적 메커니즘은 Ch.4.7에서 상세히 다루었다.
+두 전략은 정보를 남기는 방식이 다르다. 키프레임을 마지널라이즈할 때는 연결된 측정을 Schur complement로 prior로 바꿔 남기고, 비키프레임을 마지널라이즈할 때는 그 프레임의 시각 측정을 prior로 만들지 않고 버리며 IMU만 인접 키프레임 사이의 preintegration으로 이어 붙인다. Schur complement의 수학적 메커니즘은 Ch.4.7에서 상세히 다루었다.
 
 **4-DoF 포즈 그래프 최적화**
 
@@ -468,10 +468,9 @@ class VINSEstimator:
             )
             self.states.pop(0)
         else:
-            # 직전 프레임을 마지널라이즈 (시각만, IMU는 보존)
-            self.prior = schur_complement_marginalize(
-                self.states[-2], visual_factors(self.states[-2])
-            )
+            # 직전 프레임(비키프레임)을 제거: 시각 측정은 버리고 IMU는 preintegration으로 이어 붙인다
+            drop_visual_factors(self.states[-2])
+            merge_imu_preintegration(self.states[-3], self.states[-2], self.states[-1])
             self.states.pop(-2)
 ```
 
@@ -483,7 +482,7 @@ class VINSEstimator:
 
 1. **Harris corner + BRISK descriptor**: ORB 대신 Harris 코너와 BRISK 디스크립터를 사용한다.
 2. **Keyframe-based marginalization**: VINS-Mono와 유사하게 슬라이딩 윈도우에서 마지널라이제이션을 수행한다.
-3. **Speed error term**: IMU preintegration 대신, 짧은 시간 간격의 IMU 적분을 직접 수행하고 속도 제약으로 사용한다. 이후 OKVIS2에서 preintegration으로 전환했다.
+3. **IMU error term**: IMU preintegration 대신, 두 프레임 사이의 IMU 운동학을 재전파(repropagation)해 자세·속도·위치·바이어스 전체에 대한 15차원 잔차를 만든다. "speed and bias"는 오차항이 아니라 상태 블록 $[\mathbf{v}, \mathbf{b}_g, \mathbf{b}_a]$의 이름이다. 이후 OKVIS2에서 preintegration으로 전환했다.
 4. **Ceres Solver 기반**: 최적화에 Ceres Solver를 사용한다.
 
 OKVIS는 VINS-Mono 대비 초기화가 간단하지만(스테레오 카메라를 기본으로 가정), 단안 모드에서의 강건한 초기화는 VINS-Mono가 더 우수하다.
@@ -494,7 +493,7 @@ OKVIS는 VINS-Mono 대비 초기화가 간단하지만(스테레오 카메라를
 
 **MSCKF는 랜드마크를 상태에 넣지 않는다**
 
-EKF-SLAM은 랜드마크(3D 점)를 상태 벡터에 포함시킨다. $N$개의 랜드마크가 있으면 상태 벡터 크기가 $3N + 15$가 되고, 공분산 행렬의 크기가 $(3N+15)^2$이 되어 랜드마크 수에 대해 $O(N^2)$ 공간, $O(N^3)$ 시간이 필요하다. 이는 실시간 처리에 치명적이다.
+EKF-SLAM은 랜드마크(3D 점)를 상태 벡터에 포함시킨다. $L$개의 랜드마크가 있으면 상태 벡터 크기가 $3L + 15$가 되고, 공분산 행렬의 크기가 $(3L+15)^2$이 되어 랜드마크 수에 대해 $O(L^2)$ 공간과 갱신마다 $O(L^2)$ 연산이 필요하다. 혁신 공분산은 측정 차원의 작은 행렬이라 전체 행렬 분해가 필요하지 않으므로 이 비용은 제곱에서 멈춘다. 그래도 랜드마크가 늘면 실시간 처리에 치명적이다.
 
 MSCKF는 **랜드마크를 상태 벡터에서 제외하면서도 랜드마크가 제공하는 기하학적 구속 정보를 보존한다**.
 
@@ -536,7 +535,7 @@ $$\mathbf{r}_o = \mathbf{Q}_2^T \mathbf{r} = \mathbf{Q}_2^T \mathbf{H}_X \tilde{
 
 특징점 위치 $\tilde{\mathbf{p}}_f$가 완전히 소거되었다. $\mathbf{r}_o$와 $\mathbf{H}_o$만으로 EKF 업데이트를 수행할 수 있다. 이것이 MSCKF의 "multi-state constraint"다 — 하나의 특징점이 여러 카메라 포즈에 걸쳐 만드는 기하학적 구속을 직접 이용하되, 특징점 자체는 상태에서 제외한다.
 
-**계산 복잡도**: 상태 벡터 크기가 $15 + 6N$ (카메라 포즈 수 $N$)으로 랜드마크 수 $M$과 무관하다. EKF-SLAM은 $M$개 랜드마크를 상태에 포함하여 상태 크기가 $O(M)$이 되고, 공분산 업데이트에 $O(M^2)$이 필요하다. MSCKF는 랜드마크를 상태에서 제외하므로 카메라 수 $N \ll M$에만 의존한다.
+**계산 복잡도**: 상태 벡터 크기가 $15 + 6N$ (카메라 포즈 수 $N$)으로 랜드마크 수 $L$과 무관하다. EKF-SLAM은 $L$개 랜드마크를 상태에 포함하여 상태 크기가 $O(L)$이 되고, 공분산 업데이트에 $O(L^2)$이 필요하다. MSCKF는 랜드마크를 상태에서 제외하므로 카메라 수 $N \ll L$에만 의존한다.
 
 **MSCKF 업데이트 절차**
 
@@ -633,11 +632,11 @@ void MSCKF::msckf_update(const Feature& feature) {
 
 **Basalt의 구성**:
 
-1. **Visual-only Frontend**: KLT 대신 패치 기반 direct 정합(SVO와 유사)으로 서브픽셀 정밀도의 특징점 추적을 수행한다.
+1. **Visual-only Frontend**: 패치 단위 KLT 추적(inverse-compositional, SE(2) warp)으로 서브픽셀 정밀도의 특징점 추적을 수행한다. VINS-Mono의 점 단위 KLT와 계열은 같고 패치·warp 설계가 다르다.
 
 2. **Non-linear Factor Recovery (NFR)**: 마지널라이제이션의 대안이다. 마지널라이제이션은 선형화 지점에 의존하는 prior를 남기는데, 이 선형화 지점이 나중에 크게 변하면 정보 왜곡이 발생한다. Basalt의 NFR은 마지널라이즈된 정보를 비선형 factor로 근사하므로 나중에 다시 선형화할 수 있다.
 
-3. **Efficient Implementation**: Basalt는 factor graph의 구조를 활용한 효율적 구현으로, VINS-Mono 대비 더 빠른 처리 속도를 달성한다.
+3. **Efficient Implementation**: Basalt는 factor graph의 희소 구조를 활용해 구현을 최적화했다. 다른 시스템과의 처리 속도 비교는 센서 구성·해상도·하드웨어가 함께 정해져야 성립하며, Basalt는 stereo+IMU라 mono+IMU 시스템과 같은 조건의 비교가 아니다.
 
 4. **Stereo/Multi-camera 지원**: 여러 카메라의 시각 정보를 자연스럽게 통합한다.
 
@@ -709,7 +708,7 @@ VINS-Mono와 OpenVINS는 역깊이 파라미터화를 사용한다.
 
 $$\mathbf{P} = \mathbf{T}_{\text{anchor}} \cdot \frac{1}{\rho} [\bar{u}, \bar{v}, 1]^T$$
 
-여기서 $(\bar{u}, \bar{v})$는 앵커 프레임에서의 정규화 좌표, $\rho$는 역깊이다. 이 파라미터화의 장점은 앵커 프레임의 포즈가 변해도 역깊이 자체는 변하지 않으므로, 부분적으로 선형화 오차를 줄인다. ORB-SLAM3와 OpenVINS에서 SLAM feature에 사용된다.
+여기서 $(\bar{u}, \bar{v})$는 앵커 프레임에서의 정규화 좌표, $\rho$는 역깊이다. 이 파라미터화의 장점은 앵커 프레임의 포즈가 변해도 역깊이 자체는 변하지 않으므로, 부분적으로 선형화 오차를 줄인다. OpenVINS가 SLAM feature의 표현으로 이 방식을 쓴다. ORB-SLAM3의 맵포인트는 세계 좌표계의 3D 위치로 저장·최적화되므로 여기에 해당하지 않는다.
 
 ---
 
@@ -805,9 +804,9 @@ DROID-SLAM은 미분 가능한 BA와 학습된 대응 관계를 한 반복 갱�
 
 ### 6.5.4 최근 동향 (2023-2025)
 
-[DPVO (Teed & Deng, 2023)](https://arxiv.org/abs/2208.04726)는 DROID-SLAM의 dense flow를 sparse patch 기반 매칭으로 대체한다. 원 논문은 자체 비교 설정에서 메모리 약 1/3, 속도 약 3배와 경쟁력 있는 정확도를 보고한다. 패치 단위 recurrent update operator와 미분 가능 BA를 결합한 구조다.
+[DPVO (Teed, Lipson & Deng, 2023)](https://arxiv.org/abs/2208.04726)는 DROID-SLAM의 dense flow를 sparse patch 기반 매칭으로 대체한다. 원 논문은 자체 비교 설정에서 메모리 약 1/3, 속도 약 3배와 경쟁력 있는 정확도를 보고한다. 패치 단위 recurrent update operator와 미분 가능 BA를 결합한 구조다.
 
-[MAC-VO (Qu et al., 2024)](https://arxiv.org/abs/2409.09479)는 학습 기반 매칭 불확실성(metrics-aware covariance)을 스테레오 VO에 도입하여, 키포인트 선택과 포즈 그래프 최적화의 잔차 가중치를 불확실성으로 결정한다. 원 논문은 조명 변화와 텍스처 부족을 포함한 공개 benchmark에서 비교 방법보다 낮은 오차를 보고했고, 이 논문은 ICRA 2025 Best Paper Award on Robot Perception을 받았다.
+[MAC-VO (Qiu et al., 2024)](https://arxiv.org/abs/2409.09479)는 학습 기반 매칭 불확실성(metrics-aware covariance)을 스테레오 VO에 도입하여, 키포인트 선택과 포즈 그래프 최적화의 잔차 가중치를 불확실성으로 결정한다. 원 논문은 조명 변화와 텍스처 부족을 포함한 공개 benchmark에서 비교 방법보다 낮은 오차를 보고했고, 이 논문은 ICRA 2025 Best Paper Award on Robot Perception을 받았다.
 
 ---
 
@@ -824,6 +823,6 @@ DROID-SLAM은 미분 가능한 BA와 학습된 대응 관계를 한 반복 갱�
 | Basalt | Semi-direct | Optimization (sliding window) | Stereo + IMU | NFR, 효율적 구현 |
 | DROID-SLAM | Learned | Differentiable BA | Mono/Stereo/RGBD | 미분 가능 BA, 합성 데이터 학습 |
 | DPVO | Learned (sparse) | Differentiable BA | Mono | Sparse patch; 논문 설정에서 DROID-SLAM보다 낮은 연산·메모리 비용 보고 |
-| MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper |
+| MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper on Robot Perception |
 
 LiDAR 기반 오도메트리와 LiDAR-Inertial 결합 시스템은 같은 자기 운동 추정 문제를 다른 센서 조건에서 푼다. 카메라 기반 시스템과의 상보 관계도 거기서 나온다.

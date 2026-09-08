@@ -36,7 +36,7 @@ Here $I_x, I_y$ are the image gradients, $W$ is the window, and $w$ is the weigh
 
 $$R = \det(\mathbf{M}) - k \cdot \text{tr}(\mathbf{M})^2 = \lambda_1\lambda_2 - k(\lambda_1 + \lambda_2)^2$$
 
-FAST (Features from Accelerated Segment Test) is optimized for speed. It declares a candidate pixel $p$ a corner if at least $n$ (typically $n=9$) of the 16 pixels on a radius-3 Bresenham circle are contiguous and all brighter or all darker than $p$. A pre-test examines pixels 1, 5, 9, and 13 to reject non-corners quickly. Its speed relative to Harris depends on implementation and hardware, and basic FAST has no orientation or scale invariance.
+FAST (Features from Accelerated Segment Test) is optimized for speed. It declares a candidate pixel $p$ a corner if at least $n$ (typically $n=9$) of the 16 pixels on a radius-3 Bresenham circle are contiguous and all brighter or all darker than $p$. The four-point pre-test that examines only pixels 1, 5, 9, and 13 is a shortcut valid for $n=12$, so it does not carry over unchanged to $n=9$; in that case a learned decision tree determines the order in which pixels are examined. Its speed relative to Harris depends on implementation and hardware, and basic FAST has no orientation or scale invariance.
 
 ORB (Oriented FAST and Rotated BRIEF) augments FAST detection with orientation and rotates the BRIEF descriptor accordingly, yielding features suited to real-time SLAM. Orientation is computed from the intensity centroid of the image patch:
 
@@ -78,7 +78,7 @@ $$\mathbf{p}_2^T \mathbf{E} \mathbf{p}_1 = 0$$
 
 where $\mathbf{p}_1, \mathbf{p}_2$ are normalized image coordinates. Correspondences that fail to satisfy this equation are labeled outliers.
 
-ORB-SLAM3 estimates the Fundamental Matrix and a Homography in parallel and picks the appropriate model according to scene structure (planar vs non-planar). For planar scenes, the Homography has fewer degrees of freedom and is thus more stable.
+ORB-SLAM3 estimates the Fundamental Matrix and a Homography in parallel and selects the model that fits the scene structure (planar vs non-planar) from the ratio of the two models' scores. The reason for using the Homography on a plane is not that it has fewer degrees of freedom: $\mathbf{F}$ has 7 and $\mathbf{H}$ has 8, so $\mathbf{H}$ has more. It is that correspondences confined to a plane make $\mathbf{F}$ degenerate — it is no longer uniquely determined.
 
 ### 6.1.2 Backend: PnP, Motion-only BA, Local BA
 
@@ -243,7 +243,7 @@ There are two limitations:
 
 ### 6.2.2 DSO (Direct Sparse Odometry) Architecture Deep Dive
 
-[DSO (Engel et al., 2018)](https://doi.org/10.1109/TPAMI.2017.2658577) combines a direct method with a sparse representation. Prior to DSO there was an implicit equation of "direct = dense" ([LSD-SLAM, Engel et al., 2014](https://doi.org/10.1007/978-3-319-10605-2_54)) and "sparse = indirect" (ORB-SLAM), but DSO recombined these two axes.
+[DSO (Engel et al., 2018)](https://doi.org/10.1109/TPAMI.2017.2658577) combines a direct method with a sparse representation. Prior to DSO there was an implicit equation of "direct = dense or semi-dense" (DTAM by Newcombe et al. (ICCV 2011) being dense, and [LSD-SLAM, Engel et al., 2014](https://doi.org/10.1007/978-3-319-10605-2_54) semi-dense) and "sparse = indirect" (ORB-SLAM), but DSO recombined the two independent axes of residual formulation and representation density.
 
 **DSO Design**
 
@@ -253,7 +253,7 @@ There are two limitations:
 
 **Full Photometric Calibration**
 
-DSO incorporates photometric calibration into its model. In a real camera, the observed intensity $I'$ relates to the true scene irradiance $B$ as:
+DSO incorporates photometric calibration into its model. In a real camera, the observed intensity $I'$ relates to the irradiance $B$ incident on the image plane as:
 
 $$I'(\mathbf{u}) = G(t \cdot V(\mathbf{u}) \cdot B(\mathbf{u}))$$
 
@@ -284,15 +284,15 @@ DSO divides the image into a grid and selects the point with the largest gradien
 
 DSO jointly optimizes the most recent 5–7 keyframes and the inverse depths of the points belonging to them within a sliding window. The optimization variables are:
 
-$$\boldsymbol{\theta} = \{\mathbf{T}_1, \ldots, \mathbf{T}_n, d_1^{-1}, \ldots, d_m^{-1}, a_1, b_1, \ldots, a_n, b_n\}$$
+$$\boldsymbol{\theta} = \{\mathbf{T}_1, \ldots, \mathbf{T}_n, d_1^{-1}, \ldots, d_m^{-1}, \mathbf{c}, a_1, b_1, \ldots, a_n, b_n\}$$
 
-that is, camera poses (SE(3)), inverse depths, and affine brightness parameters.
+that is, camera poses (SE(3)), inverse depths, camera intrinsic parameters $\mathbf{c}$, and affine brightness parameters.
 
 Frames/points that drop out of the window are marginalized via the Schur complement and remain as a prior. This marginalization follows the same Schur-complement-based principle covered in Ch.4.7, differing only in that only visual residuals are involved.
 
 **Limitations and Extensions of DSO**
 
-The original DSO design lacks loop closure. This is not an inherent limitation of direct methods but a design choice. LDSO (Loop-closing DSO) addresses this by combining DBoW with direct alignment. Similarly, VI-DSO, BASALT, and others are VIO variants that couple DSO with an IMU.
+The original DSO design lacks loop closure. This is not an inherent limitation of direct methods but a design choice. LDSO (Loop-closing DSO) addresses this by combining DBoW with direct alignment, and VI-DSO is an extension that couples DSO with an IMU. Basalt, as covered in §6.3.5, is a separate system with a patch-based direct frontend and Non-linear Factor Recovery, not a DSO variant.
 
 ```python
 # DSO core flow pseudocode
@@ -383,9 +383,9 @@ Using the first-order approximation to bias change (the preintegration Jacobian 
 
 (b) The gravity direction, velocities, and metric scale are estimated jointly. This reduces to the following linear system. For each keyframe pair $(k, k+1)$:
 
-$$s\mathbf{R}_{c_0}^w \mathbf{p}_{c_{k+1}}^{c_0} - s\mathbf{R}_{c_0}^w \mathbf{p}_{c_k}^{c_0} - \mathbf{v}_k^w \Delta t_k + \frac{1}{2}\mathbf{g}^w\Delta t_k^2 = \mathbf{R}_k^w \Delta\hat{\mathbf{p}}_{k,k+1}$$
+$$s\mathbf{R}_{c_0}^w \mathbf{p}_{c_{k+1}}^{c_0} - s\mathbf{R}_{c_0}^w \mathbf{p}_{c_k}^{c_0} - \mathbf{v}_k^w \Delta t_k - \frac{1}{2}\mathbf{g}^w\Delta t_k^2 = \mathbf{R}_k^w \Delta\hat{\mathbf{p}}_{k,k+1}$$
 
-The unknowns are $s$ (scale), $\mathbf{g}^w$ (gravity vector), and $\{\mathbf{v}_k^w\}$ (velocities). The constraint $\|\mathbf{g}\| = 9.81$ on the magnitude of gravity is added to improve accuracy.
+The unknowns are $s$ (scale), $\mathbf{g}^w$ (gravity vector), and $\{\mathbf{v}_k^w\}$ (velocities). The sign of gravity follows this guide's convention ($\mathbf{g}=[0,0,-9.81]^\top$, Ch.4). The original VINS-Mono paper takes $\mathbf{g}^w$ with the opposite sign, so the sign differs from the equation in the original. The constraint $\|\mathbf{g}\| = 9.81$ on the magnitude of gravity is added to improve accuracy.
 
 Once this loosely-coupled initialization converges, the system transitions to tightly-coupled optimization.
 
@@ -417,7 +417,7 @@ The VINS-Mono paper and public configuration maintain roughly ten frame states i
 
 2. **If the newest frame is not a keyframe**: marginalize the previous frame (second-newest). In this case only the visual measurements are discarded, since the IMU measurements are included in the preintegration between adjacent keyframes and thus information is preserved.
 
-Both strategies remove a variable while retaining the information it contributed as a prior. The mathematical mechanism of the Schur complement is treated in detail in Ch.4.7.
+The two strategies retain information in different ways. Marginalizing a keyframe converts the measurements connected to it into a prior via the Schur complement; marginalizing a non-keyframe discards that frame's visual measurements without turning them into a prior, and only the IMU information is carried across through the preintegration between adjacent keyframes. The mathematical mechanism of the Schur complement is treated in detail in Ch.4.7.
 
 **4-DoF Pose Graph Optimization**
 
@@ -468,10 +468,9 @@ class VINSEstimator:
             )
             self.states.pop(0)
         else:
-            # Marginalize the previous frame (visual only; IMU preserved)
-            self.prior = schur_complement_marginalize(
-                self.states[-2], visual_factors(self.states[-2])
-            )
+            # Drop the previous (non-keyframe) frame: discard its visual measurements and chain the IMU via preintegration
+            drop_visual_factors(self.states[-2])
+            merge_imu_preintegration(self.states[-3], self.states[-2], self.states[-1])
             self.states.pop(-2)
 ```
 
@@ -483,7 +482,7 @@ class VINSEstimator:
 
 1. **Harris corner + BRISK descriptor**: uses Harris corners and BRISK descriptors instead of ORB.
 2. **Keyframe-based marginalization**: performs marginalization within a sliding window, similarly to VINS-Mono.
-3. **Speed error term**: rather than IMU preintegration, it directly integrates IMU over a short time interval and uses it as a velocity constraint. OKVIS2 later switched to preintegration.
+3. **IMU error term**: rather than IMU preintegration, it repropagates the IMU kinematics between two frames to form a 15-dimensional residual over orientation, velocity, position, and biases. "Speed and bias" is the name of the state block $[\mathbf{v}, \mathbf{b}_g, \mathbf{b}_a]$, not of an error term. OKVIS2 later switched to preintegration.
 4. **Ceres Solver-based**: uses Ceres Solver for optimization.
 
 OKVIS has simpler initialization than VINS-Mono (it assumes a stereo camera by default), but VINS-Mono is superior for robust initialization in the monocular case.
@@ -494,7 +493,7 @@ OKVIS has simpler initialization than VINS-Mono (it assumes a stereo camera by d
 
 **MSCKF Excludes Landmarks from the State**
 
-EKF-SLAM includes landmarks (3D points) in the state vector. With $N$ landmarks, the state vector has size $3N + 15$ and the covariance matrix has size $(3N+15)^2$, requiring $O(N^2)$ space and $O(N^3)$ time in the number of landmarks. This cost precludes real-time processing as the map grows.
+EKF-SLAM includes landmarks (3D points) in the state vector. With $L$ landmarks, the state vector has size $3L + 15$ and the covariance matrix has size $(3L+15)^2$, requiring $O(L^2)$ space and $O(L^2)$ operations per update in the number of landmarks. The innovation covariance is a small matrix of the measurement dimension, so no factorization of the full matrix is needed and the cost stops at quadratic. Even so, the growth precludes real-time processing as the number of landmarks increases.
 
 MSCKF **excludes landmarks from the state vector while preserving the geometric constraint information they provide**.
 
@@ -536,7 +535,7 @@ $$\mathbf{r}_o = \mathbf{Q}_2^T \mathbf{r} = \mathbf{Q}_2^T \mathbf{H}_X \tilde{
 
 The feature position $\tilde{\mathbf{p}}_f$ has been fully eliminated. The EKF update can be performed using only $\mathbf{r}_o$ and $\mathbf{H}_o$. This is the "multi-state constraint" of MSCKF — exploiting the geometric constraint that a single feature imposes across multiple camera poses directly, while excluding the feature itself from the state.
 
-**Computational Complexity**: the state vector size is $15 + 6N$ (in the number of camera poses $N$), independent of the number of landmarks $M$. EKF-SLAM includes $M$ landmarks in the state so the state size is $O(M)$ and the covariance update requires $O(M^2)$. MSCKF excludes landmarks from the state and therefore depends only on the number of cameras $N \ll M$.
+**Computational Complexity**: the state vector size is $15 + 6N$ (in the number of camera poses $N$), independent of the number of landmarks $L$. EKF-SLAM includes $L$ landmarks in the state so the state size is $O(L)$ and the covariance update requires $O(L^2)$. MSCKF excludes landmarks from the state and therefore depends only on the number of cameras $N \ll L$.
 
 **MSCKF Update Procedure**
 
@@ -633,11 +632,11 @@ void MSCKF::msckf_update(const Feature& feature) {
 
 **Basalt Components**:
 
-1. **Visual-only Frontend**: instead of KLT, it performs patch-based direct alignment (similar to SVO) for subpixel-accurate feature tracking.
+1. **Visual-only Frontend**: patch-wise KLT tracking (inverse-compositional, SE(2) warp) for subpixel-accurate feature tracking. It belongs to the same family as VINS-Mono's point-wise KLT but differs in its patch and warp design.
 
 2. **Non-linear Factor Recovery (NFR)**: an alternative to marginalization. Marginalization leaves a prior that depends on the linearization point, and information distortion occurs if that linearization point later changes significantly. Basalt's NFR approximates the marginalized information as a nonlinear factor that can be relinearized later.
 
-3. **Efficient Implementation**: Basalt exploits the structure of the factor graph for an efficient implementation, achieving higher processing speed than VINS-Mono.
+3. **Efficient Implementation**: Basalt optimizes its implementation by exploiting the sparse structure of the factor graph. Processing-speed comparisons against other systems only hold once sensor configuration, resolution, and hardware are fixed together, and Basalt is stereo+IMU, so it is not an equal-footing comparison against a mono+IMU system.
 
 4. **Stereo/Multi-camera support**: it naturally integrates visual information from multiple cameras.
 
@@ -709,7 +708,7 @@ The inverse depth is anchored to a specific "anchor" keyframe:
 
 $$\mathbf{P} = \mathbf{T}_{\text{anchor}} \cdot \frac{1}{\rho} [\bar{u}, \bar{v}, 1]^T$$
 
-where $(\bar{u}, \bar{v})$ are the normalized coordinates in the anchor frame and $\rho$ is the inverse depth. The advantage of this parameterization is that even when the anchor frame's pose changes, the inverse depth itself does not, partially reducing linearization error. It is used for SLAM features in ORB-SLAM3 and OpenVINS.
+where $(\bar{u}, \bar{v})$ are the normalized coordinates in the anchor frame and $\rho$ is the inverse depth. The advantage of this parameterization is that even when the anchor frame's pose changes, the inverse depth itself does not, partially reducing linearization error. OpenVINS uses this representation for its SLAM features. ORB-SLAM3 map points are stored and optimized as 3D positions in the world frame, so they do not fall under this parameterization.
 
 ---
 
@@ -805,9 +804,9 @@ Follow-up work addresses these limits through sparse patches, lower memory use, 
 
 ### 6.5.4 Recent Trends (2023-2025)
 
-[DPVO (Teed & Deng, 2023)](https://arxiv.org/abs/2208.04726) replaces DROID-SLAM's dense flow with sparse patch-based matching. Under its own comparison setup, the paper reports roughly one-third the memory, about three times the speed, and competitive accuracy. Its architecture combines a patch-wise recurrent update operator with differentiable BA.
+[DPVO (Teed, Lipson & Deng, 2023)](https://arxiv.org/abs/2208.04726) replaces DROID-SLAM's dense flow with sparse patch-based matching. Under its own comparison setup, the paper reports roughly one-third the memory, about three times the speed, and competitive accuracy. Its architecture combines a patch-wise recurrent update operator with differentiable BA.
 
-[MAC-VO (Qu et al., 2024)](https://arxiv.org/abs/2409.09479) introduces learned matching uncertainty (metrics-aware covariance) into stereo VO, using it for keypoint selection and residual weighting in pose-graph optimization. The paper reports lower error than its compared methods on public benchmarks that include illumination changes and texture scarcity; it received the ICRA 2025 Best Paper Award on Robot Perception.
+[MAC-VO (Qiu et al., 2024)](https://arxiv.org/abs/2409.09479) introduces learned matching uncertainty (metrics-aware covariance) into stereo VO, using it for keypoint selection and residual weighting in pose-graph optimization. The paper reports lower error than its compared methods on public benchmarks that include illumination changes and texture scarcity; it received the ICRA 2025 Best Paper Award on Robot Perception.
 
 ---
 
@@ -824,6 +823,6 @@ Follow-up work addresses these limits through sparse patches, lower memory use, 
 | Basalt | Semi-direct | Optimization (sliding window) | Stereo + IMU | NFR, efficient implementation |
 | DROID-SLAM | Learned | Differentiable BA | Mono/Stereo/RGBD | Differentiable BA, trained on synthetic data |
 | DPVO | Learned (sparse) | Differentiable BA | Mono | Sparse patches; paper reports lower compute and memory cost than DROID-SLAM under its setup |
-| MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper |
+| MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper on Robot Perception |
 
 LiDAR-based odometry and LiDAR-Inertial systems solve the same ego-motion estimation problem under different sensing conditions. This is also what makes them complementary to camera-based systems.

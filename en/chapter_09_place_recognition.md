@@ -152,7 +152,7 @@ class SimpleBoW:
         self.inverted_index = defaultdict(list)  # word_id -> [(img_id, tf)]
         self.idf = np.ones(self.K)
         self.N = 0  # number of images in the database
-        self.db_vectors = {}  # img_id -> tf-idf vector
+        self.db_words = {}  # img_id -> word_ids. TF-IDF vectors are recomputed at query time with the current IDF
     
     def quantize(self, descriptors):
         """Quantize local descriptors to the nearest visual word."""
@@ -165,7 +165,10 @@ class SimpleBoW:
     
     def compute_bow_vector(self, descriptors):
         """Compute the image's BoW vector (with TF-IDF weighting)."""
-        word_ids = self.quantize(descriptors)
+        return self.bow_from_words(self.quantize(descriptors))
+    
+    def bow_from_words(self, word_ids):
+        """Compute the TF-IDF vector from a list of quantized words using the current IDF."""
         
         # Term Frequency
         tf = np.zeros(self.K)
@@ -185,12 +188,11 @@ class SimpleBoW:
     
     def add_to_database(self, img_id, descriptors):
         """Add an image to the database."""
-        bow_vector = self.compute_bow_vector(descriptors)
-        self.db_vectors[img_id] = bow_vector
+        word_ids = self.quantize(descriptors)
+        self.db_words[img_id] = word_ids   # store only the words, not the vector
         self.N += 1
         
         # Update inverted index
-        word_ids = self.quantize(descriptors)
         unique_words = np.unique(word_ids)
         for w in unique_words:
             self.inverted_index[w].append(img_id)
@@ -204,8 +206,14 @@ class SimpleBoW:
         """Retrieve the database images most similar to the query image."""
         q_vector = self.compute_bow_vector(descriptors)
         
+        # Narrow candidates with the inverted index: only images sharing at least one query word
+        candidates = set()
+        for w in np.unique(self.quantize(descriptors)):
+            candidates.update(self.inverted_index[w])
+        
         scores = {}
-        for img_id, db_vector in self.db_vectors.items():
+        for img_id in candidates:
+            db_vector = self.bow_from_words(self.db_words[img_id])   # computed with the current IDF
             scores[img_id] = np.dot(q_vector, db_vector)
         
         # Sort by similarity
@@ -234,7 +242,7 @@ $$
 
 The final VLAD descriptor is the concatenation of all $\mathbf{V}_k$: $\mathbf{V} = [\mathbf{V}_1^T, \mathbf{V}_2^T, \ldots, \mathbf{V}_K^T]^T$. Its dimensionality is $K \times D$.
 
-**Fisher Vector**: A richer representation than VLAD. Visual words are modeled as a Gaussian Mixture Model (GMM), and first- and second-order statistics for each Gaussian component are normalized by the square root of the Fisher Information Matrix. The dimensionality is $2KD$, twice that of VLAD, but it typically yields higher performance.
+**Fisher Vector**: A richer representation than VLAD. Visual words are modeled as a Gaussian Mixture Model (GMM), and first- and second-order statistics for each Gaussian component are normalized by the square root of the Fisher Information Matrix. The dimensionality is $2KD$, twice that of VLAD. Which of the two retrieves better depends on the metric, the data, and the normalization used; VLAD can be read as a simplification of the Fisher Vector, and at equal dimensionality some reports find the two comparable or VLAD ahead.
 
 ### 9.2.3 NetVLAD: The Baseline for Learning-Based VPR
 
@@ -260,7 +268,7 @@ $$
 
 L2-normalizing this $D \times K$ matrix and flattening it into a vector yields the final global descriptor.
 
-**Training strategy**: **Weakly supervised learning** using Google Street View Time Machine data. Images of the same GPS coordinate from different times are used as positive pairs, and images from distant GPS coordinates as negatives. Triplet ranking loss:
+**Training strategy**: **Weakly supervised learning** using Google Street View Time Machine data. The supervision is weak because a nearby GPS coordinate does not guarantee that the same scene is visible. Geographically close images are therefore treated as potential positives, and the single best-matching one in feature space is chosen as the positive, while negatives are mined as hard negatives from geographically distant images. Triplet ranking loss:
 
 $$
 \mathcal{L} = \sum_{(q, p^+, p^-)} \max\left(0, m + d(\mathbf{f}(q), \mathbf{f}(p^+)) - d(\mathbf{f}(q), \mathbf{f}(p^-))\right)
@@ -310,12 +318,14 @@ def anyloc_pipeline(images, dino_model, n_clusters=64, desc_dim=512):
     for img in images:
         # DINOv2 forward: patch tokens of shape (1, N_patches, D_feat)
         patch_tokens = dino_model.get_intermediate_layers(img, n=1)[0]
-        # Use the value facet of layer 31 (AnyLoc's key finding)
+        # These are the output tokens of the last block. Using the value facet
+        # of a specific layer — AnyLoc's key finding — requires hooking the
+        # attention module.
         image_patch_features.append(patch_tokens)
         all_patch_features.append(patch_tokens)
     
     # Step 2: Build k-means visual vocabulary
-    all_features = np.vstack(all_patch_features)  # (N_total_patches, D_feat)
+    all_features = np.concatenate([p.reshape(-1, p.shape[-1]) for p in all_patch_features], axis=0)  # (N_total_patches, D_feat)
     from sklearn.cluster import KMeans
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     kmeans.fit(all_features)
@@ -327,6 +337,7 @@ def anyloc_pipeline(images, dino_model, n_clusters=64, desc_dim=512):
     
     for patches in image_patch_features:
         # Hard assignment
+        patches = patches.reshape(-1, patches.shape[-1])   # (1, N, D) → (N, D)
         assignments = kmeans.predict(patches)  # (N_patches,)
         
         # VLAD: sum residuals for each cluster
@@ -363,15 +374,15 @@ def anyloc_pipeline(images, dino_model, n_clusters=64, desc_dim=512):
 
 ### 9.2.5 EigenPlaces
 
-**[EigenPlaces (Berton et al., 2023)](https://arxiv.org/abs/2308.10832)** is the follow-up to [CosPlace (Berton et al., 2022)](https://arxiv.org/abs/2204.02287), integrating PCA-based dimensionality reduction into the training process. Building on CosPlace — which replaced the cumbersome hard-negative mining of triplet loss with classification-based training — EigenPlaces goes further and optimizes the feature-space structure from a PCA perspective.
+**[EigenPlaces (Berton et al., 2023)](https://arxiv.org/abs/2308.10832)** is the follow-up to [CosPlace (Berton et al., 2022)](https://arxiv.org/abs/2204.02287), and it learns descriptors that are robust to viewpoint change. Building on CosPlace — which replaced the cumbersome hard-negative mining of triplet loss with classification-based training — EigenPlaces goes further and applies PCA to the distribution of camera viewpoints within each class to find the dominant direction of the scene, then composes the training views around a focal point along that direction. PCA is applied to the viewpoint geometry of the training data, not to the descriptor feature space.
 
 ### 9.2.6 Expanding the Use of Foundation Models
 
 Beyond DINOv2, various Foundation Models are being used for VPR:
 
-- **CLIP**: With text-image correspondence training, it can be used for semantic-level place recognition such as "city street" or "forest trail." However, it lags behind DINOv2 in distinguishing fine-grained structural differences.
+- **CLIP**: With text-image correspondence training, it can be used for semantic-level place recognition such as "city street" or "forest trail." In AnyLoc's comparison of foundation models, DINOv2 features gave better place discrimination under the authors' own layer, facet, and aggregation settings and on their datasets.
 - **SAM (Segment Anything)**: Research is underway on using segmentation masks as a structural representation of places.
-- **DINOv2 + NetVLAD**: Follow-up work replaces AnyLoc's unsupervised VLAD with a trained NetVLAD layer on DINOv2 features and reports further performance gains.
+- **DINOv2 + learned aggregation**: A line of follow-up work replaces AnyLoc's unsupervised VLAD by learning the aggregation on top of DINOv2 features. SALAD (§9.7.4) recasts VLAD's assignment as optimal transport, and SelaVPR (Lu et al., ICLR 2024) adapts the pre-trained model to VPR.
 
 ### 9.2.7 SeqSLAM and Sequence Matching
 
@@ -400,7 +411,7 @@ This is the problem of recognizing places from 3D LiDAR point clouds. Unlike cam
 
 ### 9.3.1 Handcrafted Method: Scan Context
 
-**[Scan Context (Kim & Kim, 2018)](https://doi.org/10.1109/IROS.2018.8593953)** converts a 3D LiDAR scan into a **global descriptor that directly preserves spatial structure** without a histogram. No training is needed, and it is widely adopted as a loop closure module in major systems such as LIO-SAM.
+**[Scan Context (Kim & Kim, 2018)](https://doi.org/10.1109/IROS.2018.8593953)** converts a 3D LiDAR scan into a **global descriptor that directly preserves spatial structure** without a histogram. No training is needed, and it is used as the loop closure module in several LiDAR SLAM systems. Note, however, that the public LIO-SAM implementation defaults to radius search with ICP-based loop detection; Scan Context is provided through a separate integration repository such as SC-LIO-SAM.
 
 **Descriptor generation**:
 
@@ -414,7 +425,7 @@ $$
 
 **Why maximum height?** Max height captures protruding structures like buildings, trees, and poles better than mean height does.
 
-3. **Advantage of an egocentric representation**: Because it is expressed in the sensor-centered frame, revisiting the same place from the **opposite direction** merely circularly shifts the rows (sector axis) of the descriptor. This is handled via row-shift matching.
+3. **Advantage of an egocentric representation**: Because it is expressed in the sensor-centered frame, a revisit from the same sensor position that differs only in yaw leaves the descriptor a **circular shift** of the rows (the sector axis). This is handled via row-shift matching. A real reverse-direction revisit also brings lateral displacement and changes in occlusion, so a shift alone does not account for it — which is why the original paper adds root shifting augmentation.
 
 **Search strategy — Ring Key & Sector Key**:
 
@@ -422,10 +433,10 @@ Directly comparing Scan Context matrices against the entire database is ineffici
 
 1. **Ring Key**: For each ring (column) of the SC matrix, take the mean over the sector direction to produce a vector — $\mathbf{k}_r = [\bar{h}_1, \bar{h}_2, \ldots, \bar{h}_{N_r}]$. This vector is used for fast kd-tree search to narrow down candidates.
 
-2. **Sector Key**: For each candidate, try row shifts (sector axis) of the SC matrix to find the best match:
+2. **Sector Key**: A rotation-variant key that aggregates the ring axis per sector. Comparing the sector keys of two scans gives an initial estimate of the best shift, and the distance below is computed only for the few shifts around it (the equation and code below search all shifts for simplicity):
 
 $$
-d(\mathbf{SC}_q, \mathbf{SC}_d) = \min_{s \in [0, N_s)} \left\| \mathbf{SC}_q - \text{shift}(\mathbf{SC}_d, s) \right\|_F
+d(\mathbf{SC}_q, \mathbf{SC}_d) = \min_{s \in [0, N_s)} \frac{1}{N_s}\sum_{i=1}^{N_s}\left(1 - \frac{\mathbf{c}^q_i \cdot \mathbf{c}^d_{i+s}}{\|\mathbf{c}^q_i\|\,\|\mathbf{c}^d_{i+s}\|}\right)
 $$
 
 ```python
@@ -500,7 +511,10 @@ class ScanContext:
             min_dist = float('inf')
             for shift in range(self.n_sectors):
                 sc_shifted = np.roll(sc_db, shift, axis=0)
-                dist = np.linalg.norm(sc_query - sc_shifted)
+                # Mean of per-sector (row) cosine distances — the distance defined in the original paper
+                num = np.sum(sc_query * sc_shifted, axis=1)
+                den = np.linalg.norm(sc_query, axis=1) * np.linalg.norm(sc_shifted, axis=1) + 1e-9
+                dist = np.mean(1.0 - num / den)
                 min_dist = min(min_dist, dist)
             scores.append((idx, min_dist))
         
@@ -572,7 +586,7 @@ LiDAR point clouds and camera images use different data representations:
 | Information | Geometry | Appearance |
 | Illumination dependence | None | Very high |
 | Texture | None | Rich |
-| Density | Inversely proportional to range | Uniform |
+| Density | Point spacing grows with range (density per unit surface area falls with the square of range and also depends on incidence angle) | Uniform in the image plane |
 
 This difference is called the **domain gap** and causes descriptors of the same place observed in different modalities to lie far apart in descriptor space.
 
@@ -581,8 +595,8 @@ This difference is called the **domain gap** and causes descriptors of the same 
 **[(LC)² (Lee et al., 2023)](https://arxiv.org/abs/2304.08660)** proposes a method to map LiDAR point clouds and camera images into a **shared embedding space**.
 
 **Approach**:
-1. Convert LiDAR point clouds into range images / BEV images, unifying them as a 2D representation
-2. Process camera images and LiDAR projection images with CNNs
+1. Project LiDAR point clouds into range images and convert camera images into a disparity/depth representation, bringing both modalities into the same range-image domain
+2. Process the two representations with their respective encoders
 3. Train with **contrastive learning** so that LiDAR-Camera pairs from the same place are close in the embedding space and pairs from different places are far apart
 
 $$
@@ -593,7 +607,7 @@ Here $\mathbf{f}_L$ is the LiDAR encoder, $\mathbf{f}_C$ is the camera encoder, 
 
 ### 9.4.4 ModaLink
 
-**ModaLink** aims at a more general cross-modal framework than (LC)², handling various modality combinations such as LiDAR, Camera, and Radar.
+**ModaLink** (Xie et al., IROS 2024) is a framework for efficiently solving cross-modal place recognition that retrieves point clouds from an image. Its target modalities are camera and LiDAR; combinations that also include radar are out of its scope.
 
 ### 9.4.5 Modality-Agnostic Descriptor Approach
 
@@ -617,7 +631,7 @@ Four approaches are used in combination.
 
 1. **Data Augmentation based**: Include images under diverse conditions during training. NetVLAD's use of Google Street View Time Machine is a canonical example.
 
-2. **Learning Domain-Invariant Features**: Learn features that are invariant to appearance changes. For example, semantic segmentation results (the arrangement of buildings, roads, sky) are invariant to illumination.
+2. **Learning Domain-Invariant Features**: Learn features that are invariant to appearance changes. For example, semantic segmentation results (the arrangement of buildings, roads, sky) are relatively robust to illumination changes. Under conditions where the segmentation itself degrades, however — night or strong backlighting — the label map degrades with it.
 
 3. **Leveraging Foundation Models**: As shown by AnyLoc, DINOv2 features exhibit strong robustness to illumination/seasonal changes. This is because the self-supervised training process learns features invariant to diverse augmentations.
 
@@ -648,7 +662,7 @@ Once place recognition has identified candidates, it is necessary to **verify ge
 For camera-based PR candidates:
 
 1. **Local feature matching** between the query and candidate images (SuperPoint+LightGlue, ORB+BF, etc.)
-2. **PnP (Perspective-n-Point)**: Estimate the relative camera pose from 2D-3D correspondences
+2. **PnP (Perspective-n-Point)**: Lift the image-to-image matches from step 1 onto the 3D map points associated with the candidate image to form 2D-3D correspondences, and estimate the camera pose from them. When the 3D points live in the map frame, the result is the absolute pose of the query camera, so the pose relative to the candidate is obtained by composing it with the candidate's known pose
 3. **RANSAC**: Estimate the pose while rejecting outliers
 
 ```python
@@ -683,7 +697,9 @@ def geometric_verification_visual(query_keypoints, db_keypoints_3d,
     n_inliers = len(inliers)
     is_verified = n_inliers >= min_inliers
     
-    # Relative pose
+    # solvePnP's (rvec, tvec) is the transform from the 3D-point frame to the camera.
+    # If the 3D points are in the map frame, T is the map→query-camera transform, and the relative
+    # pose to the candidate must be obtained by composing it with the candidate's pose.
     R, _ = cv2.Rodrigues(rvec)
     T = np.eye(4)
     T[:3, :3] = R
@@ -757,7 +773,7 @@ Strategies for **re-ranking** the candidate list — originally ordered by descr
 
 2. **Inlier-count-based re-ranking**: After feature matching, promote candidates with more inliers.
 
-3. **Pose consistency check**: Verify that the estimated relative pose is consistent with the accumulated odometry pose. Reject as false positive if there is a large discrepancy.
+3. **Pose consistency check**: Verify that the estimated relative pose is consistent with the accumulated odometry pose. The criterion is not the raw size of the discrepancy but its Mahalanobis distance under the odometry covariance. Since the purpose of loop closure is to correct accumulated drift, a correct detection on a long loop also shows a large discrepancy; rejecting on magnitude alone discards the most useful loops.
 
 ---
 

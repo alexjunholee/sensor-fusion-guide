@@ -31,7 +31,7 @@ An autonomous-driving safety design must detect single-sensor failures and limit
 
 ### 12.1.2 Production-Level Fusion Pipeline
 
-A production autonomous-driving system typically uses the following sensor fusion pipeline:
+The sensor fusion pipeline of a production autonomous-driving system is generally built from the following elements. The arrows below give a conceptual order of processing stages, not the only dependencies among the modules. Localization in particular is not downstream of tracking and prediction: it runs in parallel from GNSS, IMU, LiDAR, and wheel measurements, and its output feeds perception, prediction, and planning alike.
 
 ```
 Sensor synchronization (HW trigger + PTP)
@@ -58,7 +58,7 @@ Sensor synchronization (HW trigger + PTP)
 
 - **Late fusion**: Each sensor independently detects 3D bounding boxes, which are then combined via NMS (Non-Maximum Suppression). It is modular and easy to debug, but has difficulty exploiting cross-sensor complementarity.
 
-- **Deep fusion**: Features from multiple sensors are combined directly in BEV (Bird's Eye View) space. Representative systems include [BEVFusion](https://arxiv.org/abs/2205.13542) (MIT/Nvidia) and TransFusion. The network learns to exploit complementary cross-sensor information, but end-to-end training requires large-scale labeled data.
+- **Deep fusion**: Sensors are combined by learning at the feature stage, and where that combination happens differs by method. [BEVFusion](https://arxiv.org/abs/2205.13542) (MIT) transforms camera and LiDAR features into a shared BEV (Bird's Eye View) representation and merges them in that space, whereas TransFusion is a transformer decoder in which object queries initialized from LiDAR BEV features cross-attend to image features. Either way, the network learns to exploit complementary cross-sensor information, but end-to-end training requires large-scale labeled data.
 
 ```python
 # BEV Fusion conceptual diagram (pseudo-code)
@@ -204,11 +204,11 @@ Mapping environments with handheld or backpack-mounted sensors is widely used in
 
 Examples of commercial handheld mapping devices:
 
-- **Leica BLK2GO**: Handheld LiDAR scanner. Performs real-time SLAM by fusing LiDAR + IMU + camera. Survey-grade accuracy.
+- **Leica BLK2GO**: Handheld LiDAR scanner. Performs real-time SLAM by fusing LiDAR + IMU + camera. Read its accuracy under the conditions the manufacturer states (scan length, whether the loop is closed, validation method), and check the contract specification separately against the criteria in 12.3.2 below.
 - **NavVis VLX**: Backpack-mounted. Four cameras + LiDAR. Specialized for indoor mapping.
-- **GeoSLAM ZEB**: Handheld mobile mapping. A 2D LiDAR is rotated manually to produce 3D scans.
+- **GeoSLAM ZEB**: Handheld mobile mapping. Early generations suspended a 2D LiDAR on a spring so that walking oscillated it passively, while generations from ZEB-REVO onward use a motor-rotated head. The scanning mechanism differs by generation.
 
-These devices generally use the following pipeline:
+The conceptual flow of what these devices do is as follows. None of the three products publishes its internal algorithms, so the names below are examples of published methods that fill the same slots, not an indication of what the products actually use.
 
 ```
 LiDAR + IMU → LIO (FAST-LIO2 or similar)
@@ -235,7 +235,7 @@ Deployed sensor fusion systems must address the following problems:
 
 1. **Degenerate environments**: Long corridors, empty rooms, and other environments lacking geometric features. Drift that occurs in LiDAR-only systems is compensated by cameras or an IMU. Multi-modal systems such as R3LIVE and FAST-LIVO2 are effective.
 
-2. **Multi-story buildings**: Loop closure is essential when moving between floors via elevators or stairs. With no GNSS, z-axis drift is especially problematic. A barometer serves as a useful auxiliary sensor.
+2. **Multi-story buildings**: With no GNSS, z-axis drift is especially problematic when moving between floors. On a route that revisits the same floor, loop closure reduces this error substantially. A single-pass route has no loop to close, so constrain it with other observations instead — a barometer, floor-height or floor-plan priors, or control points.
 
 3. **Glass/mirrors**: LiDAR beams either pass through or reflect. Compensate with cameras or filter out reflected points.
 
@@ -254,9 +254,9 @@ Fair comparison of sensor fusion systems requires standardized datasets and eval
 | **[TUM-RGBD](https://doi.org/10.1109/IROS.2012.6385773)** | 2012 | Indoor | RGB-D | Kinect v1 visual-SLAM sequences and evaluation tools |
 | **TUM-VI** | 2018 | Indoor + outdoor | Stereo, IMU | VIO benchmark. Diverse motion patterns |
 | **[Hilti](https://arxiv.org/abs/2109.11316)** | 2021–2023 challenge editions | Construction sites | LiDAR, Camera, IMU | Industrial-environment-specific. Challenging conditions |
-| **[HeLiPR](https://arxiv.org/abs/2309.14590)** | 2023 | Outdoor (urban) | Heterogeneous LiDAR, Camera, IMU, GNSS | For heterogeneous LiDAR fusion research. Ouster+Velodyne+Livox+Aeva |
+| **[HeLiPR](https://arxiv.org/abs/2309.14590)** | 2023 | Outdoor (urban) | Heterogeneous LiDAR, IMU, GNSS/INS | For place recognition research across heterogeneous LiDARs. Ouster+Velodyne+Livox+Aeva. Check whether cameras are included in the per-release sensor list |
 | **[nuScenes](https://arxiv.org/abs/1903.11027)** | 2020 | Outdoor (autonomous driving) | Camera, LiDAR, Radar, GPS/IMU | 1000 scenes, 23-class 3D annotations, 360° surround sensors |
-| **Newer College** | 2020 | Outdoor + indoor | LiDAR, Camera, IMU | Oxford University campus. Multi-session |
+| **Newer College** | 2020 | Outdoor (campus) | LiDAR, Camera, IMU | New College grounds, Oxford. Handheld single session, many loops |
 
 Characteristics and uses of each dataset:
 
@@ -266,9 +266,9 @@ Characteristics and uses of each dataset:
 
 **Hilti** — Evaluates SLAM in challenging construction-site environments with dust, vibration, and repetitive structures. Public sources document challenge editions in 2021, 2022, and 2023; the sensor suites and evaluation rules differ by edition.
 
-**HeLiPR** — Released in 2023, it mounts different types of LiDAR (spinning, solid-state, FMCW) simultaneously. It is used for research on heterogeneous LiDAR fusion.
+**HeLiPR** — Released in 2023, it mounts different types of LiDAR (spinning, solid-state, FMCW) simultaneously. It is used for place recognition research across heterogeneous LiDARs (inter-LiDAR place recognition).
 
-**Newer College** — Collected by visiting the Oxford University campus multiple times, this dataset is well suited to multi-session SLAM and long-term mapping research. Captured with a handheld LiDAR, it contains challenging motion patterns.
+**Newer College** — Collected in a single session by walking the grounds of New College, Oxford with a handheld rig, this dataset passes through the same areas repeatedly and is well suited to loop closure evaluation. For long-term research covering time-of-day and seasonal change, a dataset such as Boreas is the better fit. Captured with a handheld LiDAR, it contains challenging motion patterns.
 
 **Additional benchmarks since 2022**:
 
@@ -282,7 +282,7 @@ Characteristics and uses of each dataset:
 
 $$\text{ATE} = \sqrt{\frac{1}{N} \sum_{i=1}^{N} \| \text{trans}(\mathbf{T}_{\text{gt},i}^{-1} \cdot \mathbf{T}_{\text{est},i}) \|^2}$$
 
-Before evaluation, the two trajectories must be aligned in Sim(3) or SE(3). Monocular VO has scale ambiguity, so Sim(3) is used; for stereo/LiDAR, SE(3) is used.
+The two trajectories are often aligned before evaluation, and the degrees of freedom of that alignment are set by which degrees of freedom are unobservable and by the benchmark protocol — not by the sensor's name. Sim(3) is used where scale is unobserved, as in pure monocular; SE(3) is used where scale is observed, as in stereo, LiDAR, and monocular + IMU. Some protocols use no Sim(3) alignment at all, such as the official KITTI odometry metrics, and some cases look at absolute-coordinate error with no post-hoc alignment, as in the surveying section above.
 
 $$\mathbf{S}^* = \arg\min_{\mathbf{S} \in \text{Sim}(3)} \sum_i \| \mathbf{p}_{\text{gt},i} - \mathbf{S} \cdot \mathbf{p}_{\text{est},i} \|^2$$
 
@@ -292,7 +292,7 @@ This alignment admits a closed-form solution via the Umeyama algorithm.
 
 $$\text{RPE}(\Delta) = \sqrt{\frac{1}{M} \sum_{i=1}^{M} \| \text{trans}((\mathbf{T}_{\text{gt},i}^{-1} \mathbf{T}_{\text{gt},i+\Delta})^{-1} (\mathbf{T}_{\text{est},i}^{-1} \mathbf{T}_{\text{est},i+\Delta})) \|^2}$$
 
-$\Delta$ is the evaluation interval (in frames or distance). RPE at short $\Delta$ reflects odometry accuracy, while RPE at long $\Delta$ reflects drift.
+In the expression above, $\Delta$ is a frame-index interval. RPE at short $\Delta$ reflects odometry accuracy, while RPE at long $\Delta$ reflects drift. To evaluate over distance intervals instead, as KITTI does (100–800 m), you must first find, for each start frame, the frame at which the accumulated travel distance reaches the target value, and pair the two frames accordingly.
 
 **Place recognition metrics**:
 - **Recall@N**: the fraction of queries for which the correct place is included among the top-N candidates. Recall@1 is the strictest.
@@ -429,7 +429,7 @@ def umeyama_alignment(source, target, with_scale=True):
 
 The following caveats apply when interpreting benchmark results:
 
-1. **Parameter tuning**: The same algorithm can perform very differently depending on its parameters. Tuning for a specific dataset reduces generality.
+1. **Parameter tuning**: The same algorithm can perform very differently depending on its parameters. A number obtained by tuning for a specific dataset is a result for that configuration and cannot be read across to another environment. Check whether the tuning conditions were reported alongside it.
 
 2. **Hardware dependence**: Real-time performance depends heavily on hardware. The definition of "real-time" varies across papers (desktop GPU vs embedded ARM).
 
@@ -437,7 +437,7 @@ The following caveats apply when interpreting benchmark results:
 
 4. **Initialization differences**: Different initialization methods and times in VIO systems can yield different results on the same sequence.
 
-5. **Whether loop closure is included**: VO (no loop closure) vs SLAM (with loop closure) must be distinguished. Loop closure can substantially improve ATE.
+5. **Whether loop closure is included**: Results obtained with loop closure enabled must not be mixed with results obtained with it disabled. Loop closure can substantially improve ATE. The name is no guide: DSO, called a VO system, has no loop closure, but LDSO added one, and ORB-SLAM3 can be run with loop closure turned off. Check the actual configuration.
 
 ---
 
@@ -491,7 +491,7 @@ def simple_pose_graph_gtsam():
     # Pose 2: 90-degree left turn + 1 m forward
     T_12 = gtsam.Pose3(
         gtsam.Rot3.Rz(np.pi / 2), 
-        gtsam.Point3(1.0, 0.0, 0.0)
+        gtsam.Point3(0.0, 1.0, 0.0)   # translation is expressed in pose 1's frame, so forward after the turn is +y
     )
     graph.add(gtsam.BetweenFactorPose3(1, 2, T_12, odom_noise))
     initial.insert(2, gtsam.Pose3(
@@ -504,8 +504,8 @@ def simple_pose_graph_gtsam():
         np.array([0.1, 0.1, 0.1, 0.2, 0.2, 0.2])
     )
     T_20 = gtsam.Pose3(
-        gtsam.Rot3.Rz(np.pi / 2),
-        gtsam.Point3(0.0, -1.0, 0.0)
+        gtsam.Rot3.Rz(-np.pi / 2),
+        gtsam.Point3(-1.0, 1.0, 0.0)   # pose2.between(pose0): from pose2 = (Rz(90°), (1,1,0)) back to the origin
     )
     graph.add(gtsam.BetweenFactorPose3(2, 0, T_20, loop_noise))
     
@@ -535,14 +535,14 @@ def simple_pose_graph_gtsam():
 - Developed by Kümmerle et al. (2011)
 - C++ library specialized for graph optimization
 - Predefines various vertex/edge types (SE2, SE3, Sim3, etc.)
-- Lighter and faster than GTSAM but less flexible
+- Defines a vertex/(hyper-)edge graph abstraction directly, in place of GTSAM's factor type hierarchy. Comparisons of processing speed can reverse with problem size, variable ordering, linear solver, and build settings, so measure it on the target problem
 
 Comparison of the three libraries:
 
 | Property | GTSAM | Ceres | g2o |
 |----------|-------|-------|-----|
 | Abstraction level | Factor graph | Cost function | Graph vertex/edge |
-| Automatic differentiation | Partial | Full | None |
+| Automatic differentiation | Partial (Expression-based) | Full | Numerical differentiation by default; automatic differentiation available in some versions |
 | Incremental | iSAM2 | Unsupported | Unsupported |
 | Python support | Good | Limited | Limited |
 | Representative use | LIO-SAM | VINS-Mono | ORB-SLAM |
@@ -557,13 +557,13 @@ Comparison of the three libraries:
 
 **OpenCalib** (2023):
 - Unified calibration across the full autonomous driving sensor stack
-- Supports all combinations among Camera, LiDAR, Radar, and IMU
+- A collection of per-sensor-pair tools: camera intrinsics, LiDAR-camera, LiDAR-IMU, radar-camera, LiDAR-LiDAR, and others. There is not a module for every combination of the four sensors
 - Covers both target-based and targetless methods
 
 **[direct_visual_lidar_calibration](https://arxiv.org/abs/2302.05094)** (Koide et al. 2023):
 - NID-based targetless LiDAR-camera calibration
 - Initial estimate via SuperGlue, refined via NID registration
-- Operates from a single capture
+- Operates on a pair of one camera image and one LiDAR point cloud (single-shot). Spinning LiDARs sometimes require an accumulated point cloud, so check the point density it needs as well
 
 ### 12.5.3 Evaluation Tools
 
@@ -592,6 +592,7 @@ from evo.core import metrics, sync
 from evo.core.trajectory import PosePath3D, PoseTrajectory3D
 from evo.tools import file_interface
 import numpy as np
+import copy
 
 def evaluate_trajectory(gt_file, est_file, align=True):
     """
@@ -614,7 +615,8 @@ def evaluate_trajectory(gt_file, est_file, align=True):
     
     if align:
         # Umeyama alignment
-        traj_est_aligned = traj_est.align(traj_gt, correct_scale=False)
+        traj_est_aligned = copy.deepcopy(traj_est)
+        traj_est_aligned.align(traj_gt, correct_scale=False)   # align transforms in place; the return value is (R, t, s)
         ate_metric.process_data((traj_gt, traj_est_aligned))
     else:
         ate_metric.process_data((traj_gt, traj_est))
@@ -640,9 +642,8 @@ def compare_systems(gt_file, system_files, system_names):
             traj_gt, traj_est
         )
         
-        traj_est_aligned = traj_est_sync.align(
-            traj_gt_sync, correct_scale=False
-        )
+        traj_est_aligned = copy.deepcopy(traj_est_sync)
+        traj_est_aligned.align(traj_gt_sync, correct_scale=False)
         
         ate = metrics.APE(metrics.PoseRelation.translation_part)
         ate.process_data((traj_gt_sync, traj_est_aligned))

@@ -22,7 +22,7 @@ Foundation model—대규모 데이터로 사전학습된 범용 모델(DINOv2, 
 
 - 도심, 실내, 항공, 수중, 지하를 포함한 논문 benchmark에서 VPR 전용 fine-tuning 없이 평가됐다.
 - 원 논문의 여러 dataset에서 비교한 NetVLAD·CosPlace 계열보다 높은 recall을 보고했지만, 모든 환경에 대한 보장은 아니다.
-- 31번째 layer의 value-facet dense feature가 CLS token보다 평균 23% 높은 결과를 보였다는 논문 내 ablation을 제시한다.
+- 31번째 layer의 value-facet dense feature가 전역 CLS token 디스크립터보다 좋았다는 논문 내 ablation을 제시한다. 개선 폭은 지표와 평가 대상에 따라 다르므로 원 논문의 ablation 표에서 지표 이름과 평균 범위를 함께 읽는다.
 
 ```python
 import numpy as np
@@ -48,7 +48,7 @@ class FoundationModelFeatureExtractor:
         
     def extract_dense_features(self, image):
         """
-        이미지에서 픽셀 수준 dense feature를 추출.
+        이미지에서 패치 단위(1/14 해상도) dense feature를 추출.
         
         Args:
             image: (H, W, 3) RGB 이미지
@@ -346,7 +346,7 @@ class PersistentSpatialMemory:
 
 ### 13.3.2 Scene Graph 기반 환경 이해
 
-[Hydra](https://arxiv.org/abs/2201.13360)의 3D Scene Graph는 다음과 같은 확장을 지원한다.
+[Hydra](https://arxiv.org/abs/2201.13360)가 구축하는 것과 같은 3D Scene Graph 표현 위에서 다음과 같은 확장이 연구되고 있다. Hydra 자체는 계층 구축과 계층적 loop closure까지를 다룬다.
 
 **Scene Graph + Language**: Scene graph에 자연어 인터페이스를 결합하면, 로봇에게 "거실 소파 옆의 테이블 위에 있는 리모콘을 가져와"라는 자연어 명령을 이해시킬 수 있다. 이 명령은 scene graph의 계층적 탐색으로 변환된다:
 
@@ -357,7 +357,7 @@ class PersistentSpatialMemory:
 
 **Scene Graph + LLM**: GPT-4 같은 LLM이 scene graph를 입력으로 받아 고수준 추론을 수행한다. "이 방에 사람이 넘어지면 가장 가까운 전화기는 어디에 있는가?" 같은 질의에 답할 수 있다.
 
-**동적 Scene Graph**: Hydra의 현재 구현은 정적 환경을 가정한다. 동적 scene graph는 사람, 차량 등 움직이는 에이전트를 노드로 포함하고, 그들의 관계를 실시간으로 갱신한다. 사회적 내비게이션(social navigation)과 인간-로봇 상호작용(HRI)에 이 정보를 사용할 수 있다.
+**동적 Scene Graph**: Hydra는 사람 agent를 노드로 두지만(§11.4.2의 계층 표), 기하·의미 mesh와 place·room 계층 그리고 그 위의 최적화는 정적 구조를 가정한다. 동적 scene graph는 차량까지 포함한 움직이는 에이전트와 그들의 관계를 지도 구조 안에서 실시간으로 갱신하려 한다. 사회적 내비게이션(social navigation)과 인간-로봇 상호작용(HRI)에 이 정보를 사용할 수 있다.
 
 ### 13.3.3 시계열 공간 기억 관리
 
@@ -393,7 +393,7 @@ $$\mathcal{L}_{\text{contrastive}} = -\log \frac{\exp(\text{sim}(f_L(\mathbf{x}_
 
 **Cross-modal place recognition**에서의 응용: LiDAR로 만든 맵에서 카메라만으로 localization하는 시나리오. LiDAR descriptor와 camera descriptor가 같은 공간에 있으면, 카메라 질의로 LiDAR 맵을 검색할 수 있다.
 
-**LC$^2$** (Lee et al. 2023): LiDAR-Camera cross-modal place recognition. LiDAR BEV 이미지와 카메라 이미지의 feature를 공통 공간으로 정렬한다.
+**LC$^2$** (Lee et al. 2023): LiDAR-Camera cross-modal place recognition. LiDAR를 range image로 투영하고 카메라 이미지도 disparity/depth 표현으로 바꾸어, 두 표현의 feature를 공통 공간으로 정렬한다(§9.4.3).
 
 ### 13.4.3 Knowledge Distillation
 
@@ -440,7 +440,7 @@ $$|\log I(x, y, t) - \log I(x, y, t_{\text{last}})| \geq C$$
 | 모션 블러 | 있음 | 거의 없음 |
 | 데이터 출력 | 균일 프레임 | 비동기 이벤트 |
 | 픽셀 밝기 변화 없음 | 프레임 정보 제공 | 이상적으로 이벤트 없음 |
-| 전력 소비 | 높음 | 매우 낮음 |
+| 전력 소비 | 장치별 차이가 큼 | 센서 자체는 활동량에 비례해 낮음. 판독·처리를 포함한 시스템 전력은 이벤트 발생률에 따라 커짐 |
 
 Event camera는 고속 회전, 급격한 조명 변화(터널 진입/출구), 저조도 환경에서도 정보를 제공하여 전통 카메라와 다른 센서의 취약점을 보완한다.
 
@@ -448,7 +448,7 @@ Event camera는 고속 회전, 급격한 조명 변화(터널 진입/출구), �
 
 Event camera와 전통 프레임 카메라는 다음과 같이 결합한다.
 
-**Event-enhanced frame tracking**: 프레임 간의 고속 모션을 이벤트로 추적하여, 프레임 기반 VO의 프레임 간격 사이를 채운다. 빠른 카메라 모션에서도 tracking이 끊기지 않는다.
+**Event-enhanced frame tracking**: 프레임 간의 고속 모션을 이벤트로 추적하여, 프레임 기반 VO의 프레임 간격 사이를 채운다. 빠른 카메라 모션에서 추적 강건성이 올라간다. 대비가 부족해 이벤트가 적거나 반대로 이벤트가 포화해 대역폭이 막히면 여전히 끊길 수 있다.
 
 **Event-aided HDR**: 이벤트의 높은 동적 범위를 활용하여, 프레임 이미지의 노출 부족/과다(under/over-exposed) 영역 정보를 보완한다.
 
@@ -462,7 +462,7 @@ Event camera와 전통 프레임 카메라는 다음과 같이 결합한다.
 - IMU: 스케일 복원과 빠른 모션 예측
 
 **현재 과제**:
-- Event camera의 데이터 형식(비동기 이벤트 스트림)이 전통적 컴퓨터 비전 파이프라인(프레임 기반)과 호환되지 않는다. 이벤트를 프레임으로 변환(event frame)하면 장점을 잃는다.
+- Event camera의 데이터 형식(비동기 이벤트 스트림)이 전통적 컴퓨터 비전 파이프라인(프레임 기반)과 호환되지 않는다. 프레임으로 집계하면 표현마다 잃는 것이 다르다. 이벤트 수 histogram은 윈도 안의 시각 정보를 버리고, time surface는 픽셀마다 최근 이벤트 시각을 남겨 순서를 상당 부분 보존한다. 로그 강도 감지에서 오는 높은 동적 범위는 집계해도 남는다.
 - Event camera의 가격과 해상도는 모델별 차이가 크며, 같은 가격대의 frame camera보다 선택지가 제한적이다.
 - 학습 데이터가 부족하다. 대부분의 데이터셋은 프레임 카메라용이다.
 
@@ -557,8 +557,8 @@ class EventProcessor:
         best_flow = np.zeros(2)
         best_contrast = 0
         
-        for vx in np.linspace(-2, 2, 20):
-            for vy in np.linspace(-2, 2, 20):
+        for vx in np.linspace(-200, 200, 20):   # px/s. 이벤트 카메라의 flow는 보통 수십~수백 px/s
+            for vy in np.linspace(-200, 200, 20):
                 warped = np.zeros((self.height, self.width))
                 
                 t_ref = events[-1][2]
@@ -617,9 +617,9 @@ $$v = \frac{\lambda \cdot \Delta\phi}{4\pi \cdot T_c}$$
 
 **BEV 기반 퓨전**: 카메라 이미지에서 BEV feature를 추출하고 (LSS 또는 BEVFormer 방식), radar 포인트를 BEV 공간에 투영하여 결합한다.
 
-**Radar의 Doppler 정보 활용**: 4D radar는 각 포인트의 시선 방향 속도(radial velocity)를 직접 측정한다. 이는 카메라나 LiDAR에는 없는 고유한 정보로:
+**Radar의 Doppler 정보 활용**: 4D radar는 각 포인트의 시선 방향 속도(radial velocity)를 직접 측정한다. 카메라와 pulsed time-of-flight LiDAR에는 없는 정보다. FMCW 방식 LiDAR는 같은 원리로 점별 속도를 재므로 예외다:
 
-- **동적 객체 분류**: 정적 배경과 움직이는 객체를 Doppler로 즉시 구분.
+- **동적 객체 분류**: 자차 속도를 보상한 Doppler 잔차로 정적 배경과 움직이는 객체의 후보를 가른다. 시선에 직교해 움직이는 객체는 기여가 0이라 이 관측만으로는 구별되지 않으며, 임계값은 radar 속도 잡음과 자차 속도 추정 오차를 함께 반영해야 한다.
 - **Ego-motion estimation**: 정적 포인트의 Doppler로 자차 속도를 추정 (IMU 없이도 가능).
 - **Tracking 지원**: 객체의 속도 정보를 tracking에 직접 사용.
 
@@ -733,7 +733,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 | 데이터셋 | 센서 | 환경 | 특징 |
 |----------|------|------|------|
 | **[Boreas](https://arxiv.org/abs/2203.10168)** (Burnett et al. 2023) | Camera, LiDAR, Radar, GNSS/IMU | 도심 (다양한 날씨) | 1년간 동일 경로 반복, 악천후 포함 |
-| **RadarScenes** | Radar, Camera, LiDAR | 도심 | 기존 automotive radar 포인트 + semantic labels (point-level annotation) |
+| **RadarScenes** | Radar, Camera (참고용), Odometry | 도심 | 기존 automotive radar 포인트 + semantic labels (point-level annotation). LiDAR는 포함되지 않는다 |
 | **nuScenes** | Camera, LiDAR, Radar | 도심 | 5개 radar 포함, 악천후 일부 |
 | **View-of-Delft** | Camera, LiDAR, 4D Radar | 도심 | 4D radar + 3D annotation |
 
@@ -742,7 +742,7 @@ def separate_static_dynamic(radar_points, doppler_values, directions,
 - **[Snail-Radar](https://arxiv.org/abs/2407.11705)** (2024): 4D radar 기반 SLAM 평가 벤치마크로, 핸드헬드·자전거·SUV 세 플랫폼에서 다양한 날씨/조명 조건으로 수집된 44개 시퀀스를 제공한다.
 - **[4D Radar-Inertial Odometry](https://arxiv.org/abs/2412.13639)** (2024): 3D Gaussian 기반 radar scene representation과 multi-hypothesis scan matching을 제안하여 voxel 방식 대비 더 정밀한 radar odometry를 달성했다.
 
-4D radar 퓨전은 아직 적용 범위가 제한적이다. Doppler 정보를 활용한 ego-motion estimation과 동적 객체 분류는 LiDAR나 카메라가 제공하지 않는 기능이다.
+4D radar 퓨전은 아직 적용 범위가 제한적이다. Doppler 정보를 활용한 ego-motion estimation과 동적 객체 분류는 카메라나 pulsed LiDAR가 제공하지 않는 기능이다(FMCW LiDAR는 예외).
 
 ---
 

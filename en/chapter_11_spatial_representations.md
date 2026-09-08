@@ -48,7 +48,7 @@ class OccupancyGrid2D:
         
         # Sensor model parameters
         self.l_occ = 0.85   # log-odds(occupied | hit)
-        self.l_free = -0.40  # log-odds(free | pass-through)
+        self.l_free = -0.40  # log-odds(occupied | miss) — update for a pass-through observation
         
         # Clipping range (prevents probability saturation)
         self.l_min = -5.0
@@ -209,7 +209,7 @@ class SimpleOctreeNode:
 
 **OpenVDB**: a sparse volumetric structure from film VFX. It uses a fixed-depth, wide hierarchical tree with tile/value compression to omit background regions. Its structure and API differ from OctoMap, so traversal speed cannot be ranked universally; an application must define probabilistic occupancy updates.
 
-**ikd-tree** (FAST-LIO2): an incremental k-d tree that performs point insertion and deletion in $O(\log n)$ and supports dynamic rebalancing. Used as the map data structure in FAST-LIO2, it adds LiDAR points to the map in real time while efficiently performing nearest-neighbor (kNN) search.
+**ikd-tree** (FAST-LIO2): an incremental k-d tree that inserts a single point in amortized $O(\log n)$ and supports dynamic rebalancing. Deletion is a range-wise lazy deletion, and rebalancing is applied to a subtree once an imbalance criterion is exceeded, so the cost of these two operations is separate from the per-point $O(\log n)$. Used as the map data structure in FAST-LIO2, it adds LiDAR points to the map in real time while efficiently performing nearest-neighbor (kNN) search.
 
 An ikd-tree provides three operations:
 - **Insertion**: insert a new point into the k-d tree. Partial rebalancing occurs when the imbalance exceeds a threshold.
@@ -223,17 +223,18 @@ OctoMap vs. ikd-tree:
 | Data structure | Octree | k-d tree |
 | Probabilistic update | Built-in (log-odds) | None (only point storage) |
 | kNN search | Slow | Fast |
-| Dynamic insertion/deletion | Possible but slow | $O(\log n)$ |
+| Dynamic insertion/deletion | Possible but slow | Point insertion is amortized $O(\log n)$; range deletion and rebalancing carry separate costs |
 | Use case | Path planning, exploration | LiDAR odometry map maintenance |
 
 ### 11.1.3 Surfel Maps
 
-A surfel (surface element) is a disk-shaped surface primitive that augments a point with a normal vector and radius information. Each surfel is represented as $(\mathbf{p}, \mathbf{n}, r, c)$:
+A surfel (surface element) is a disk-shaped surface primitive that augments a point with a normal vector and radius information. Each surfel is represented as $(\mathbf{p}, \mathbf{n}, r, c, w)$:
 
 - $\mathbf{p} \in \mathbb{R}^3$: position
 - $\mathbf{n} \in \mathbb{R}^3$: normal vector (unit)
 - $r \in \mathbb{R}^+$: radius
-- $c$: color/confidence
+- $c$: color (the observed value)
+- $w$: fusion confidence (accumulated weight)
 
 **[ElasticFusion](https://doi.org/10.15607/RSS.2015.XI.001)** (Whelan et al. 2015) is a dense SLAM system that builds a surfel map in real time from an RGB-D sensor. It uses three processes:
 
@@ -317,11 +318,13 @@ A mesh represents surfaces as a collection of triangle faces. It is visually mor
 
 ### 11.2.1 TSDF (Truncated Signed Distance Function)
 
-A TSDF stores the signed distance from each voxel to the nearest surface:
+A TSDF stores, at each voxel, the signed distance along the observed line of sight. The field that holds the distance to the nearest surface in every direction is the ESDF introduced later (§11.2.2); what is used here is a projective TSDF obtained by projecting depth observations:
 
 - Positive: in front of the surface (free space)
-- Negative: behind the surface (occupied)
+- Negative: behind the observed surface (within the truncation band)
 - Zero crossing: the actual surface location
+
+The sign is defined along the observed ray. In front of the surface the distance is clipped to $+\delta$ and updated; the interior of an object beyond $-\delta$ behind the surface is skipped during the update, as in the code below, and keeps its default value. A negative TSDF is therefore not the same commitment to occupancy as the occupied state of §11.1.
 
 **TSDF update**: whenever a new depth observation arrives, the voxels along the corresponding ray are updated:
 
@@ -331,9 +334,9 @@ $$W(\mathbf{v}) \leftarrow \min(W(\mathbf{v}) + w_{\text{new}}, W_{\max})$$
 
 Here $d_{\text{new}}$ is the signed distance computed from the new observation, $w_{\text{new}}$ is the observation weight, and $W(\mathbf{v})$ is the accumulated weight. The signed distance is truncated within the truncation distance $\delta$:
 
-$$d_{\text{new}} = \text{clip}(D(\mathbf{u}) - \|\mathbf{v} - \mathbf{c}\|, -\delta, \delta)$$
+$$d_{\text{new}} = \text{clip}\left(D(\mathbf{u}) - \lambda^{-1}\|\mathbf{v} - \mathbf{c}\|, -\delta, \delta\right), \quad \lambda = \|\mathbf{K}^{-1}\dot{\mathbf{u}}\|$$
 
-$D(\mathbf{u})$ is the depth value at pixel $\mathbf{u}$, $\mathbf{c}$ is the camera position, and $\mathbf{v}$ is the voxel center.
+$D(\mathbf{u})$ is the depth value at pixel $\mathbf{u}$, $\mathbf{c}$ is the camera position, and $\mathbf{v}$ is the voxel center. Because $D(\mathbf{u})$ is a depth along the optical axis, the ray length $\|\mathbf{v} - \mathbf{c}\|$ is divided by $\lambda$ to bring it onto the same basis before the subtraction.
 
 ```python
 class TSDFVolume:
@@ -470,7 +473,7 @@ class TSDFVolume:
 
 ### 11.2.2 Voxblox
 
-**[Voxblox](https://arxiv.org/abs/1611.03631)** (Oleynikova et al. 2017) is a TSDF-based real-time 3D reconstruction system that efficiently computes the **ESDF (Euclidean Signed Distance Field)** essential for path planning.
+**[Voxblox](https://arxiv.org/abs/1611.03631)** (Oleynikova et al. 2017) is a TSDF-based real-time 3D reconstruction system that efficiently computes the **ESDF (Euclidean Signed Distance Field)** useful for gradient-based and optimization-based path planning. Sampling-based and search-based planners operate directly on an occupancy map, so an ESDF is not a prerequisite for planning in general.
 
 Voxblox operates in three stages:
 
@@ -503,7 +506,7 @@ SLAM systems can mesh an incremental TSDF or pass an online point/surfel map to 
 
 ## 11.3 Neural / Learned Representations
 
-Traditional map representations (voxel, mesh, surfel) are explicit — they store 3D structure directly. Neural representations, in contrast, encode the 3D scene **implicitly** in the weights of a neural network.
+Traditional map representations (voxel, mesh, surfel) are explicit — they store 3D structure directly. The learned representations covered in this section divide further among themselves. At one end sits the **implicit** approach, in which a single MLP holds the scene in its weights; in the middle sit hash grids and hierarchical grids, which keep spatial features in an explicit data structure and decode them with a small MLP; at the other end sit approaches built on explicit primitives such as 3D Gaussians.
 
 ### 11.3.1 NeRF-SLAM: Neural Implicit + Odometry
 
@@ -548,11 +551,11 @@ Recent variants use the following components:
 
 Rendering is performed by splatting — projecting 3D Gaussians onto the image plane and alpha-blending them in depth order. With explicit primitives and rasterization, the original 3DGS paper reports real-time rendering under its scenes, resolutions, and hardware setup.
 
-**[3DGS-SLAM](https://arxiv.org/abs/2312.06741)** (Matsuki et al. 2024): uses 3DGS as the SLAM representation:
+**[Gaussian Splatting SLAM](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024; the public implementation is named MonoGS) uses 3DGS as the SLAM representation. The three problems this line of work addresses are the following.
 
 1. **Tracking**: optimize the camera pose using photometric + geometric loss between the predicted image rendered from the Gaussian map and the actual image.
 2. **Mapping**: according to new observations, add (densification), split (splitting), and remove (pruning) Gaussians.
-3. **Loop closure**: when correcting poses, the positions of the Gaussians must be deformed together.
+3. **Loop closure**: when correcting poses, the positions of the Gaussians must be deformed together. This remains an open problem for this line of work, and the paper above does not implement loop closure.
 
 **NeRF-SLAM vs. 3DGS-SLAM**:
 
@@ -562,8 +565,8 @@ Rendering is performed by splatting — projecting 3D Gaussians onto the image p
 | Rendering speed | Slow (ray marching) | Fast (rasterization) |
 | Training speed | Slow | Fast |
 | Editability | Hard | Easy (manipulate individual Gaussians) |
-| Memory | Fixed (model size) | Variable (proportional to number of Gaussians) |
-| Loop closure handling | Hard (weight deformation) | Relatively easy (Gaussian transformation) |
+| Memory | Fixed for a single MLP (model size); grows with scene scale for spatial feature-grid variants | Variable (proportional to number of Gaussians) |
+| Loop closure handling | Hard (weight deformation) | Relatively easy at the representation level (Gaussian transformation); full-system implementations remain rare |
 
 The tradeoff between neural maps and TSDF or surfel maps depends on the sensor, scene scale, dynamic objects, long-term consistency, and rendering requirements. Neural representations can optimize novel-view rendering jointly with mapping, but memory growth and loop correction must be evaluated separately for large-scale or long-running systems.
 
@@ -571,7 +574,7 @@ The tradeoff between neural maps and TSDF or surfel maps depends on the sensor, 
 
 - **[SplaTAM](https://arxiv.org/abs/2312.02126)** (Keetha et al. CVPR 2024): performs online tracking and mapping of 3D Gaussians from an RGB-D camera and expands the map using a silhouette mask. Depending on the metric and scene, the paper reports improvements of up to 2x in camera pose, map construction, and novel-view synthesis.
 - **[MonoGS](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024 Highlight): uses 3D Gaussians as the sole 3D representation for integrated monocular tracking, mapping, and rendering. The paper reports operation at 3 fps and uses geometric verification and regularization to address monocular reconstruction ambiguities.
-- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): integrates the MASt3R 3D-reconstruction foundation model into SLAM. The paper reports dense SLAM without a predefined camera model and throughput of 15 fps.
+- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): integrates the MASt3R 3D-reconstruction foundation model into SLAM. Its map representation is not Gaussians but the dense pointmap predicted by MASt3R. The paper reports dense SLAM without a predefined camera model and throughput of 15 fps.
 
 ```python
 import numpy as np
@@ -812,17 +815,17 @@ An object-level map only recognizes individual objects. But humans understand en
 **Construction of the Places layer**: Hydra builds this layer as follows.
 
 1. Compute the ESDF from the TSDF.
-2. Incrementally extract the GVD from the ESDF. Vertices of the GVD are points maximally far from obstacles — i.e., good points for the robot to pass through.
+2. Incrementally extract the GVD from the ESDF. The GVD is the set of points equidistant from two or more nearest obstacles, and a vertex of the graph is a point equidistant from three or more. Such a point is where clearance is locally maximal, which makes it a good point for the robot to pass through.
 3. Configure GVD vertices as place nodes and GVD edges as connections between places.
 4. This place graph is a topological map that can be used directly for path planning.
 
 **Room detection**: a method for detecting rooms from the place graph:
 
-1. Weight the edges between place nodes according to their proximity to obstacles.
-2. At narrow passages such as doorways, weights become high (indicating difficulty of passage).
-3. Group places into rooms using a community detection algorithm (e.g., dilation-based).
+1. Assign each place node the distance to the nearest obstacle (its clearance) as a value.
+2. At narrow passages such as doorways, this value is low.
+3. Raise the clearance threshold step by step (dilation) to cut the narrow connections, then apply modularity-based community detection to the remaining subgraph to group the places into rooms.
 
-**Hierarchical loop closure**: Hydra leverages the scene graph hierarchy to improve loop closure. It first narrows candidates at higher layers (room, place), then performs TEASER++-based geometric verification at lower layers (visual feature, object). This top-down/bottom-up structure detects more loop closures, and does so more accurately, than a simple BoW approach.
+**Hierarchical loop closure**: Hydra leverages several layers of the scene graph to improve loop closure. Descriptors from the place and object layers narrow the candidates, and the registration between two scene-graph portions is verified with TEASER++. The paper reports that in its own experiments this structure detected more loops, and did so more accurately, than an appearance-based BoW approach.
 
 **S-Graphs** (Situational Graphs): a hierarchical scene graph similar to Hydra, but directly incorporating hierarchical information into factor graph optimization. Structural elements such as rooms, walls, and floors are added as variables of the factor graph to improve SLAM accuracy.
 
@@ -830,7 +833,7 @@ An object-level map only recognizes individual objects. But humans understand en
 
 Traditional semantic mapping operates only over a predefined class set (e.g., COCO's 80 classes). **Open-vocabulary semantic mapping** enables searching the map with arbitrary text queries.
 
-The system extracts CLIP/DINO features from each observation (an image or patch) and stores them at the corresponding 3D location. When the user queries "red fire extinguisher," the system encodes the text with the CLIP text encoder, compares it with the map's visual features using cosine similarity, and returns the corresponding location.
+The system extracts CLIP image features from each observation (an image or patch) and stores them at the corresponding 3D location. When the user queries "red fire extinguisher," the system encodes the text with the CLIP text encoder, compares it with the map's CLIP features using cosine similarity, and returns the corresponding location. Only the CLIP image encoder shares an embedding space with text, so DINO features cannot serve this comparison; they are used as a separate channel, for segmentation or observation consistency.
 
 The robot can therefore locate objects on which it was not trained in advance. This is useful for household and exploration robots operating in unpredictable environments.
 
@@ -987,7 +990,7 @@ In SLAM, dynamic objects (moving people, vehicles) cause two problems:
 
 1. **Semantic filtering**: identify dynamic object classes (person, vehicle) via semantic classification and exclude those observations from the SLAM pipeline.
 
-2. **Geometric consistency check**: classify as dynamic the observations that are inconsistent across multiple frames (points visible in one frame but disappearing in the next).
+2. **Geometric consistency check**: classify as dynamic the points that are predicted to be visible but whose re-observed position cannot be explained by ego-motion. Observations also disappear for static reasons — leaving the field of view, occlusion by static structure, association failure — so the criterion is visibility reasoning and reprojection residual, not the disappearance itself.
 
 3. **Background subtraction**: classify as dynamic the voxels in the TSDF that show a free-to-occupied-to-free pattern.
 

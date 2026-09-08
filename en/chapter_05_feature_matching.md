@@ -13,7 +13,7 @@ Ch.4 established the mathematical framework of state estimation. But whether we 
 The correspondence problem is the problem of identifying **physically identical points, regions, or structures** across two or more observations. Virtually every stage of the sensor fusion pipeline presupposes correspondence.
 
 - **Visual Odometry**: Camera motion can only be estimated by finding the 2D projections of the same 3D point across consecutive frames.
-- **Calibration**: Estimating the camera-LiDAR extrinsic parameters requires identifying the same physical point observed by both sensors.
+- **Calibration**: Estimating the camera-LiDAR extrinsic parameters requires a correspondence between the two sensors' observations. Target-based methods use the same physical point; targetless MI-based methods (§5.4) use the statistical dependence over the overlapping region instead.
 - **Loop Closure**: Recognizing a previously visited place requires confirming correspondences between current observations and past observations.
 - **Point Cloud Registration**: Alignment of two scans is the process of estimating a rigid transformation based on corresponding point pairs.
 
@@ -23,7 +23,7 @@ The correspondence problem is the problem of identifying **physically identical 
 
 This is the problem of finding the projections of the same 3D point across two images. It forms the basis of Visual Odometry, stereo matching, and image stitching.
 
-When the point $\mathbf{p}_1 = (u_1, v_1)$ in image $I_1$ and the point $\mathbf{p}_2 = (u_2, v_2)$ in image $I_2$ are projections of the same 3D point $\mathbf{X}$, the pair $(\mathbf{p}_1, \mathbf{p}_2)$ is called a correspondence.
+When the point $\mathbf{p}_1 = (u_1, v_1)$ in image $I_1$ and the point $\mathbf{p}_2 = (u_2, v_2)$ in image $I_2$ are projections of the same 3D point $\mathbf{X}$, the pair $(\mathbf{p}_1, \mathbf{p}_2)$ is called a correspondence. In the geometric equations below the point is written in homogeneous coordinates $(u, v, 1)^\top$, since both the product with a $3 \times 3$ matrix and the application of $\mathbf{K}^{-1}$ are defined there.
 
 The geometric relationship between the two images is expressed by the **epipolar constraint**:
 
@@ -108,19 +108,19 @@ img_float = np.float32(img)
 # blockSize: neighborhood size, ksize: Sobel kernel, k: Harris parameter
 harris_response = cv2.cornerHarris(img_float, blockSize=2, ksize=3, k=0.04)
 
-# Non-maximum suppression & threshold
+# Threshold only — cornerHarris returns the response map, so NMS is a separate step
 corners = harris_response > 0.01 * harris_response.max()
 ```
 
 #### FAST (Features from Accelerated Segment Test, 2006)
 
-FAST is a detector that pursues **extreme speed** over the accuracy of Harris. It was proposed by [Rosten & Drummond (2006)](https://arxiv.org/abs/0810.2434) to meet the real-time demand of detecting keypoints at tens of FPS in robot vision.
+FAST is a detector that pursues **extreme speed** over the accuracy of Harris. It was proposed by [Rosten & Drummond (ECCV 2006; the link is the extended version by Rosten, Porter & Drummond, TPAMI 2010)](https://arxiv.org/abs/0810.2434) to meet the real-time demand of detecting keypoints at tens of FPS in robot vision.
 
 The algorithm is surprisingly simple:
 
 1. Place 16 pixels on a circle of radius 3 centered on a candidate pixel $p$ (Bresenham circle).
 2. If $N$ consecutive pixels on the circle (typically $N=12$) are all brighter or all darker than $p$, then $p$ is a corner.
-3. Fast reject: first check only the 4 pixels at positions 1, 5, 9, 13 — if at least 3 of them fail the condition, immediately reject.
+3. Fast reject: first check only the 4 pixels at positions 1, 5, 9, 13 — reject immediately unless at least 3 of them are all brighter or all darker. This shortcut holds for $N=12$ and does not carry over to variants such as $N=9$, which is why the learned decision tree below takes its place.
 
 $$\text{FAST condition: } \exists \text{ contiguous arc of } N \text{ pixels on circle, all } > I_p + t \text{ or all } < I_p - t$$
 
@@ -249,7 +249,7 @@ BRIEF's comparison operation:
 
 $$b_i = \begin{cases} 1 & \text{if } I(\mathbf{p}_i) < I(\mathbf{q}_i) \\ 0 & \text{otherwise} \end{cases}, \quad \text{descriptor} = \sum_{1 \le i \le n} 2^{i-1} b_i$$
 
-Hamming distance is computed with XOR + popcount in a single CPU instruction:
+Hamming distance is computed with XOR and popcount. popcount is a word-level instruction, so a 256-bit descriptor takes four 64-bit XOR and popcount operations plus the sum, and a 512-bit descriptor twice that:
 
 $$d_H(\mathbf{a}, \mathbf{b}) = \text{popcount}(\mathbf{a} \oplus \mathbf{b})$$
 
@@ -269,7 +269,7 @@ FAST (2006)       — extreme-speed detection (no descriptor)
 ORB (2011)        — oFAST + rBRIEF, 256-bit binary (Hamming matching)
 ```
 
-This trade-off continues in the deep learning era as well, and SuperPoint aimed to achieve SIFT-level accuracy at ORB-level speed.
+This trade-off continues in the deep learning era as well. SuperPoint, for example, learns detection and description jointly to target matching that is robust to viewpoint and illumination changes, while its speed, about 70 FPS for 640×480 input on a GPU (§5.5.1), is tied to the hardware conditions.
 
 ---
 
@@ -372,14 +372,14 @@ If the ranking score correlates with inlier probability, trying high-ranked matc
 
 Proposed by Barath et al. One of the core problems of RANSAC is the **manual setting of the threshold $t$**. MAGSAC automates this:
 
-- Marginalize the quality of the model over all possible thresholds $\sigma$:
+- Marginalize the quality of the model over the threshold $\sigma$ on the range $[0, \sigma_{\max}]$:
 
 $$Q(\theta) = \int_0^{\sigma_{\max}} q(\theta, \sigma) f(\sigma) d\sigma$$
 
 Here, $q(\theta, \sigma)$ is the quality of the model $\theta$ at threshold $\sigma$, and $f(\sigma)$ is the prior over thresholds.
 
 - MAGSAC++ implements this more efficiently and adds a weighted least-squares fit based on $\sigma$-consensus.
-- As a result, sensitivity to threshold selection is substantially reduced.
+- The inlier/outlier decision threshold disappears, so sensitivity to its selection is substantially reduced. The integration bound $\sigma_{\max}$ still has to be specified, which is what the `ransacReprojThreshold` argument below supplies.
 
 ```python
 # OpenCV's USAC (includes MAGSAC++)
@@ -427,7 +427,7 @@ RANSAC (1981)   — a landmark random-sampling paradigm for robust estimation
     ↓ exploiting prior information
 PROSAC (2005)   — progressive sampling based on match quality
     ↓ threshold automation
-MAGSAC++ (2020) — threshold-free robust estimation
+MAGSAC++ (2020) — robust estimation without an inlier threshold
     ↓ learning-based rejection
 GeoTransformer (2022) — direct transformation estimation without RANSAC
 ```
@@ -605,20 +605,20 @@ Here, $m_p, m_n$ are the positive/negative margins.
 
 ```python
 import torch
-# SuperPoint usage example (hloc / kornia)
-from kornia.feature import SuperPoint as KorniaSuperPoint
+# SuperPoint usage example (cvg/LightGlue package; kornia.feature has no SuperPoint class)
+from lightglue import SuperPoint
 
 # Load model
-sp = KorniaSuperPoint(max_num_keypoints=2048)
+sp = SuperPoint(max_num_keypoints=2048)
 sp = sp.eval()
 
 # Inference
 with torch.no_grad():
     img_tensor = torch.from_numpy(img).float().unsqueeze(0).unsqueeze(0) / 255.0
-    pred = sp(img_tensor)
+    pred = sp({'image': img_tensor})   # returned keys: keypoints, keypoint_scores, descriptors
     keypoints = pred['keypoints']        # (1, N, 2)
     descriptors = pred['descriptors']    # (1, 256, N)
-    scores = pred['scores']              # (1, N)
+    scores = pred['keypoint_scores']              # (1, N)
 ```
 
 ### 5.5.2 D2-Net (2019): Detect-and-Describe Jointly
@@ -630,7 +630,7 @@ D2-Net uses the intermediate VGG16 feature map $\mathbf{F} \in \mathbb{R}^{H \ti
 - **Description**: use the $C$-dimensional vector at the same location as the descriptor
 
 Advantage: uses higher-level semantic features, so robust to large appearance changes.
-Disadvantage: detection repeatability may be lower than SuperPoint, and localization is only possible up to 1/4 of the input resolution.
+Disadvantage: detection repeatability may be lower than SuperPoint, and the detection grid sits at 1/4 of the input resolution, so localization precision is tied to that spacing. The original paper applies a local refinement on this grid to recover sub-pixel positions.
 
 ### 5.5.3 R2D2 (2019): Reliable and Repeatable Detector-Descriptor
 
@@ -846,7 +846,7 @@ Linear attention: $O(N)$, $\text{Attn}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \ph
 
 Here, $\phi$ is an ELU-based kernel function. By changing the associativity of the matrix products, $O(N)$ complexity is achieved.
 
-However, subsequent work revealed that standard attention has the edge in accuracy.
+Linear attention cuts computation at the cost of limiting what attention can express. QuadTree Attention and ASpanFormer, described next, address that limit by changing the structure of attention.
 
 #### Training
 
@@ -889,7 +889,7 @@ Attention is organized hierarchically:
 3. Perform the next resolution's attention only in the selected regions
 4. Repeat to realize hierarchical attention that concentrates on relevant regions
 
-This reduces complexity from $O(N^2)$ to $O(N \log N)$ while maintaining LoFTR-level accuracy.
+This reduces the $O(N^2)$ cost of standard attention to $O(N)$ while maintaining accuracy. The baseline for that comparison is standard attention; the linear attention LoFTR uses is also already $O(N)$, and the original paper reports improved accuracy at a computational cost comparable to linear attention.
 
 ### 5.7.4 ASpanFormer (2022): Adaptive Span Attention
 
@@ -937,7 +937,7 @@ Instead of regressing the matching position with a simple L2 loss, the **negativ
 
 $$L = -\sum_{(\mathbf{x}_A, \mathbf{x}_B^*)} \log p(\mathbf{x}_B^* | \mathbf{x}_A)$$
 
-This approach is robust to outliers: even if there are incorrect ground-truth correspondences, they are absorbed into the tail of the distribution, keeping training stable.
+Predicting a distribution lets an ambiguous match receive low probability so the loss is not dominated by a single correspondence. Robustness, however, depends on the family of distribution. Gaussian families have light tails and penalize large errors quadratically, so a heavy-tailed distribution, an explicit outlier component, or recasting regression as classification is needed before incorrect ground truth actually loses its influence.
 
 #### Performance
 
@@ -975,7 +975,7 @@ It combines RAFT's iterative refinement with LoFTR's detector-free design and pr
 
 In 2024-2025, methods emerged that go beyond 2D matching to **directly predict 3D geometry while performing matching**.
 
-**DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132) is a method that directly regresses a 3D pointmap from an arbitrary image pair without any calibration or pose information. Whereas existing matching pipelines followed the order "2D matching → 3D reconstruction," DUSt3R reverses this to **directly predict the 3D structure itself and treat correspondences as a natural byproduct of the 3D prediction**.
+**DUSt3R (Wang et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132) is a method that directly regresses a 3D pointmap from an arbitrary image pair without any calibration or pose information. Whereas existing matching pipelines followed the order "2D matching → 3D reconstruction," DUSt3R reverses this to **directly predict the 3D structure itself and treat correspondences as a natural byproduct of the 3D prediction**.
 
 **MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756) adds a dense local-feature head to DUSt3R. Its authors report a 30-percentage-point VCRE AUC improvement over the previous compared method under the paper's map-free localization setup.
 
@@ -1133,7 +1133,7 @@ GeoTransformer (2022) — geometric invariant transformer, RANSAC-free
 
 The most common cross-modal correspondence problem is **matching between 2D images and 3D point clouds**. Application scenarios:
 
-- **Camera-LiDAR extrinsic calibration**: find the same physical point observed by both sensors to estimate the extrinsic parameters
+- **Camera-LiDAR extrinsic calibration**: establish a correspondence between the two sensors — the same physical point for target-based methods, statistical dependence over the overlap for targetless MI-based methods
 - **Visual localization against a LiDAR map**: localize a camera image against a LiDAR map
 - **Loop closure**: cross-validate camera and LiDAR observations
 
@@ -1151,9 +1151,9 @@ The calibration tool of Koide et al. (2023) uses this approach: the LiDAR dense 
 
 #### Learning-Based Direct Matching
 
-LCD (LiDAR-Camera Descriptor): learns a common embedding space for 2D image patches and 3D point cloud patches.
+LCD (Learned Cross-Domain Descriptors): learns a common embedding space for 2D image patches and 3D point cloud patches.
 
-P2-Net (Yu et al., 2021): learns patch-to-point matching to infer direct correspondences between 2D image patches and 3D points.
+P2-Net (Wang et al., 2021): learns patch-to-point matching to infer direct correspondences between 2D image patches and 3D points.
 
 ### 5.9.3 Why Cross-Modal Is Difficult: The Representation Gap
 
@@ -1165,7 +1165,7 @@ Four differences make 2D-3D cross-modal matching difficult:
 
 3. **Density gap**: the resolution of camera images (millions of pixels) differs greatly from the density of LiDAR point clouds (tens of thousands to hundreds of thousands of points), and LiDAR density changes drastically with distance.
 
-4. **Appearance domain gap**: even for the same object, camera albedo and LiDAR reflection intensity measure different physical quantities.
+4. **Appearance domain gap**: the two sensors measure different quantities of the same object. The camera records brightness set jointly by illumination and surface reflectance, while LiDAR measures the light returned at the laser wavelength (intensity). Surface albedo itself is not obtained directly from either.
 
 Because of these difficulties, cross-modal correspondence remains less mature than unimodal (2D-2D or 3D-3D) matching. MI-based methods (Section 5.4) statistically bypass this domain gap, while projection-based methods express both observations in a common 2D image format.
 
@@ -1255,7 +1255,7 @@ Solving the Euler-Lagrange equations yields an iterative update formula. It prod
 
 $$C_{ijkl} = \sum_d g_1(i, j, d) \cdot g_2(k, l, d)$$
 
-Generates a 4D correlation volume $\mathbf{C} \in \mathbb{R}^{H \times W \times H \times W}$. This is average-pooled over the last two dimensions to build a 4-level **correlation pyramid** (scales 1, 2, 4, 8).
+Generates a 4D correlation volume $\mathbf{C} \in \mathbb{R}^{H/8 \times W/8 \times H/8 \times W/8}$, with every axis at feature-map resolution. This is average-pooled over the last two dimensions to build a 4-level **correlation pyramid** (scales 1, 2, 4, 8).
 
 The important twist is that **multi-scale lookup is performed at a single resolution**, rather than coarse-to-fine.
 
@@ -1325,7 +1325,7 @@ UniMatch unifies flow, stereo, and depth, so a single model adjusts the directio
 
 - **Stereo**: 1D horizontal correlation
 - **Flow**: 2D all-pairs correlation
-- **Depth**: depth regression from monocular features
+- **Depth**: cross-view matching between two views with known poses
 
 ### 5.10.4 Technical Flow: From Sparse Feature to Dense Correspondence
 
@@ -1389,7 +1389,7 @@ Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB
 [Detector-Free Matching]
 
     LoFTR (2021) ──→ QuadTree (2022) ──→ ASpanFormer (2022) ──→ RoMa (2024)
-      transformer         O(N log N)        adaptive span          DINOv2
+      transformer         O(N)        adaptive span          DINOv2
       coarse-to-fine       efficiency        texture-adaptive       probabilistic matching
       detector fully removed                                        foundation
                                                                     model leveraged

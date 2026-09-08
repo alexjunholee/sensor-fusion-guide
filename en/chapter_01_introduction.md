@@ -28,7 +28,7 @@ LiDAR (Light Detection And Ranging) is an active sensor that emits laser pulses 
 
 **Weather and environmental sensitivity.** In rain, fog, snow, dust, and similar conditions, the laser beam scatters, producing large numbers of ghost points or drastically reducing detection range. Measurements are also unstable on black objects or highly reflective surfaces (glass, metal).
 
-**Low resolution and cost.** Mechanical spinning LiDARs have limited vertical resolution (e.g., 16-channel, 32-channel). High-resolution LiDARs cost from several thousand to tens of thousands of dollars. Solid-state LiDARs have recently reduced cost, but at the cost of a narrower field of view (FoV).
+**Low resolution and cost.** Mechanical spinning LiDARs offer 16 to 32 channels of vertical resolution in low-cost models, 64 channels in standard reference sensors such as the HDL-64E used in KITTI, and up to 128 channels in high-end models. High-resolution LiDARs cost from several thousand to tens of thousands of dollars. Solid-state LiDARs have recently reduced cost, but at the cost of a narrower field of view (FoV).
 
 ### IMU Limitations
 
@@ -220,7 +220,7 @@ In this approach, fusion occurs at the **signal level** of the sensors. This ter
 
 **Analogous concepts in vision:**
 
-In visual-inertial systems, the counterpart to ultra-tight coupling is using the IMU prediction to constrain the camera's feature-point search region or directly correcting motion blur with IMU data. Initializing feature-point tracking with the IMU prediction in VINS-Mono comes close to this.
+In visual-inertial systems, the counterpart to ultra-tight coupling is using the IMU prediction to constrain the camera's feature-point search region or directly correcting motion blur with IMU data. A front-end design that uses the IMU prediction to narrow the feature-point search region comes close to this. VINS-Mono is not a fitting example here: its front end tracks features with KLT optical flow, and the IMU enters through pre-integration in the back end and initialization.
 
 ### Comparison of Coupling Levels
 

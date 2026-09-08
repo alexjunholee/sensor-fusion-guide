@@ -151,7 +151,7 @@ class SimpleBoW:
         self.inverted_index = defaultdict(list)  # word_id -> [(img_id, tf)]
         self.idf = np.ones(self.K)
         self.N = 0  # 데이터베이스 이미지 수
-        self.db_vectors = {}  # img_id -> tf-idf vector
+        self.db_words = {}  # img_id -> word_ids. TF-IDF 벡터는 질의 시점의 IDF로 다시 계산한다
     
     def quantize(self, descriptors):
         """로컬 기술자를 가장 가까운 시각 단어로 양자화."""
@@ -164,7 +164,10 @@ class SimpleBoW:
     
     def compute_bow_vector(self, descriptors):
         """이미지의 BoW 벡터 (TF-IDF 가중) 계산."""
-        word_ids = self.quantize(descriptors)
+        return self.bow_from_words(self.quantize(descriptors))
+    
+    def bow_from_words(self, word_ids):
+        """양자화된 단어 목록에서 현재 IDF로 TF-IDF 벡터 계산."""
         
         # Term Frequency
         tf = np.zeros(self.K)
@@ -184,12 +187,11 @@ class SimpleBoW:
     
     def add_to_database(self, img_id, descriptors):
         """이미지를 데이터베이스에 추가."""
-        bow_vector = self.compute_bow_vector(descriptors)
-        self.db_vectors[img_id] = bow_vector
+        word_ids = self.quantize(descriptors)
+        self.db_words[img_id] = word_ids   # 벡터는 저장하지 않고 단어만 보관한다
         self.N += 1
         
         # 역색인 업데이트
-        word_ids = self.quantize(descriptors)
         unique_words = np.unique(word_ids)
         for w in unique_words:
             self.inverted_index[w].append(img_id)
@@ -203,8 +205,14 @@ class SimpleBoW:
         """쿼리 이미지와 가장 유사한 데이터베이스 이미지 검색."""
         q_vector = self.compute_bow_vector(descriptors)
         
+        # 역색인으로 후보를 좁힌다: 쿼리 단어를 하나라도 공유하는 이미지만
+        candidates = set()
+        for w in np.unique(self.quantize(descriptors)):
+            candidates.update(self.inverted_index[w])
+        
         scores = {}
-        for img_id, db_vector in self.db_vectors.items():
+        for img_id in candidates:
+            db_vector = self.bow_from_words(self.db_words[img_id])   # 현재 IDF로 계산
             scores[img_id] = np.dot(q_vector, db_vector)
         
         # 유사도 순으로 정렬
@@ -230,7 +238,7 @@ $$
 
 최종 VLAD 디스크립터는 모든 $\mathbf{V}_k$를 연결(concatenate)한 벡터이다: $\mathbf{V} = [\mathbf{V}_1^T, \mathbf{V}_2^T, \ldots, \mathbf{V}_K^T]^T$. 차원은 $K \times D$이다.
 
-**Fisher Vector**: VLAD보다 더 풍부한 표현. 시각 단어를 GMM (Gaussian Mixture Model)로 모델링하고, 각 가우시안 컴포넌트에 대한 1차/2차 통계량을 Fisher Information Matrix의 제곱근으로 정규화한다. 차원이 $2KD$로 VLAD의 2배지만, 일반적으로 더 높은 성능을 보인다.
+**Fisher Vector**: VLAD보다 더 풍부한 표현. 시각 단어를 GMM (Gaussian Mixture Model)로 모델링하고, 각 가우시안 컴포넌트에 대한 1차/2차 통계량을 Fisher Information Matrix의 제곱근으로 정규화한다. 차원이 $2KD$로 VLAD의 2배다. 검색 성능의 우열은 지표·데이터·정규화 설정에 따라 갈리며, VLAD를 Fisher Vector의 단순화로 보고 같은 차원에서 비슷하거나 VLAD가 앞선다는 보고도 있다.
 
 ### 9.2.3 NetVLAD: 학습 기반 VPR의 기준점
 
@@ -256,7 +264,7 @@ $$
 
 이 $D \times K$ 행렬을 L2 정규화하고 벡터로 펼치면 최종 글로벌 디스크립터가 된다.
 
-Google Street View Time Machine 데이터를 활용한 약한 지도 학습(weakly supervised learning)으로 훈련된다. 같은 GPS 좌표의 다른 시간대 이미지를 positive pair, 먼 GPS 좌표의 이미지를 negative로 사용한다. Triplet ranking loss:
+Google Street View Time Machine 데이터를 활용한 약한 지도 학습(weakly supervised learning)으로 훈련된다. 약한 지도인 이유는 GPS가 가깝다고 같은 장면이 보인다는 보장이 없기 때문이다. 그래서 지리적으로 가까운 이미지들을 potential positive로 두고 그중 특징 공간에서 가장 잘 맞는 하나를 positive로 고르며, negative는 먼 이미지에서 hard negative를 채굴한다. Triplet ranking loss:
 
 $$
 \mathcal{L} = \sum_{(q, p^+, p^-)} \max\left(0, m + d(\mathbf{f}(q), \mathbf{f}(p^+)) - d(\mathbf{f}(q), \mathbf{f}(p^-))\right)
@@ -306,12 +314,13 @@ def anyloc_pipeline(images, dino_model, n_clusters=64, desc_dim=512):
     for img in images:
         # DINOv2 forward: (1, N_patches, D_feat) 형태의 패치 토큰
         patch_tokens = dino_model.get_intermediate_layers(img, n=1)[0]
-        # layer 31의 value facet 사용 (AnyLoc의 핵심 발견)
+        # 아래는 마지막 블록의 출력 토큰이다. AnyLoc의 핵심 발견인
+        # 특정 레이어의 value facet을 쓰려면 attention 모듈에 hook을 걸어야 한다.
         image_patch_features.append(patch_tokens)
         all_patch_features.append(patch_tokens)
     
     # Step 2: k-means 시각 어휘 구축
-    all_features = np.vstack(all_patch_features)  # (N_total_patches, D_feat)
+    all_features = np.concatenate([p.reshape(-1, p.shape[-1]) for p in all_patch_features], axis=0)  # (N_total_patches, D_feat)
     from sklearn.cluster import KMeans
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     kmeans.fit(all_features)
@@ -323,6 +332,7 @@ def anyloc_pipeline(images, dino_model, n_clusters=64, desc_dim=512):
     
     for patches in image_patch_features:
         # Hard assignment
+        patches = patches.reshape(-1, patches.shape[-1])   # (1, N, D) → (N, D)
         assignments = kmeans.predict(patches)  # (N_patches,)
         
         # VLAD: 각 클러스터에 대한 잔차 합산
@@ -359,15 +369,15 @@ def anyloc_pipeline(images, dino_model, n_clusters=64, desc_dim=512):
 
 ### 9.2.5 EigenPlaces
 
-**[EigenPlaces (Berton et al., 2023)](https://arxiv.org/abs/2308.10832)**는 [CosPlace (Berton et al., 2022)](https://arxiv.org/abs/2204.02287)의 후속작으로, PCA 기반 차원 축소를 학습 과정에 통합한 방법이다. CosPlace가 분류(classification) 기반 학습으로 triplet loss의 번거로운 hard negative mining을 대체한 것에서 더 나아가, 특징 공간의 구조를 PCA 관점에서 최적화한다.
+**[EigenPlaces (Berton et al., 2023)](https://arxiv.org/abs/2308.10832)**는 [CosPlace (Berton et al., 2022)](https://arxiv.org/abs/2204.02287)의 후속작으로, 시점 변화에 강건한 디스크립터를 학습하는 방법이다. CosPlace가 분류(classification) 기반 학습으로 triplet loss의 번거로운 hard negative mining을 대체한 데서 더 나아가, 각 클래스 안의 카메라 시점 분포에 PCA를 적용해 장면의 주 방향을 찾고 그 방향을 향하는 focal point 기준으로 학습 뷰를 구성한다. PCA가 적용되는 대상은 디스크립터 특징 공간이 아니라 학습 데이터의 시점 기하다.
 
 ### 9.2.6 Foundation Model 활용의 확장
 
 DINOv2 외에도 다양한 Foundation Model이 VPR에 활용되고 있다:
 
-- **CLIP**: 텍스트-이미지 대응 학습으로, "도시 거리", "숲 속 길" 같은 시맨틱 수준의 장소 인식에 활용 가능. 그러나 세밀한 구조적 차이 구분에서는 DINOv2에 뒤진다.
+- **CLIP**: 텍스트-이미지 대응 학습으로, "도시 거리", "숲 속 길" 같은 시맨틱 수준의 장소 인식에 활용 가능. AnyLoc의 foundation model 비교에서는 자신들의 레이어·facet·집계 설정과 데이터셋에서 DINOv2 특징이 더 나은 장소 식별 성능을 보였다.
 - **SAM (Segment Anything)**: 세그멘테이션 마스크를 장소의 구조적 표현으로 활용하는 연구가 진행 중.
-- **DINOv2 + NetVLAD**: 후속 연구에서는 AnyLoc의 비지도 VLAD 대신 DINOv2 특징에 학습된 NetVLAD 레이어를 붙여 성능을 더 높였다.
+- **DINOv2 + 학습된 집계**: AnyLoc의 비지도 VLAD 대신 DINOv2 특징 위에 집계를 학습시키는 계열이 이어졌다. SALAD(§9.7.4)는 VLAD의 할당을 최적 수송으로 바꾸고, SelaVPR(Lu et al., ICLR 2024)은 사전학습 모델을 VPR에 적응시킨다.
 
 ### 9.2.7 SeqSLAM과 시퀀스 매칭
 
@@ -393,7 +403,7 @@ $$
 
 ### 9.3.1 Handcrafted 방법: Scan Context
 
-**[Scan Context (Kim & Kim, 2018)](https://doi.org/10.1109/IROS.2018.8593953)**은 3D LiDAR 스캔을 histogram 없이 **공간 구조를 직접 보존하는 글로벌 디스크립터**로 변환한다. 학습이 불필요하고, LIO-SAM 등 주요 시스템에 loop closure 모듈로 널리 채택되어 있다.
+**[Scan Context (Kim & Kim, 2018)](https://doi.org/10.1109/IROS.2018.8593953)**은 3D LiDAR 스캔을 histogram 없이 **공간 구조를 직접 보존하는 글로벌 디스크립터**로 변환한다. 학습이 불필요하고 여러 LiDAR SLAM 시스템의 loop closure 모듈로 쓰인다. 다만 LIO-SAM의 공개 구현은 반경 검색과 ICP 기반 루프 검출을 기본으로 쓰고, Scan Context는 SC-LIO-SAM 같은 별도 통합 저장소로 제공된다.
 
 디스크립터 생성 과정:
 
@@ -407,7 +417,7 @@ $$
 
 평균 높이보다 최대 높이가 건물, 나무, 기둥 같은 돌출 구조물을 더 잘 포착한다.
 
-3. **Egocentric 표현의 장점**: 센서 중심 좌표계에서 표현하므로, 같은 장소를 **반대 방향**에서 재방문해도 디스크립터의 행(row, 즉 섹터 축)이 순환 이동(circular shift)된 것에 불과하다. 이를 행 이동 매칭으로 처리한다.
+3. **Egocentric 표현의 장점**: 센서 중심 좌표계에서 표현하므로, 센서 위치가 같고 yaw만 다르면 디스크립터의 행(row, 즉 섹터 축)이 순환 이동(circular shift)된 형태가 된다. 이를 행 이동 매칭으로 처리한다. 실제 반대 방향 재방문에는 횡방향 이동과 가림 변화가 함께 오므로 이동만으로 대응하지 않으며, 원 논문이 root shifting 증강을 따로 두는 이유가 그것이다.
 
 **검색 전략 — Ring Key & Sector Key**:
 
@@ -415,10 +425,10 @@ $$
 
 1. **Ring Key**: SC 행렬의 각 링(열)에 대해 섹터 방향으로 평균한 값을 벡터로 추출 — $\mathbf{k}_r = [\bar{h}_1, \bar{h}_2, \ldots, \bar{h}_{N_r}]$. 이 벡터로 kd-tree 검색하여 후보를 빠르게 좁힌다.
 
-2. **Sector Key**: 후보들에 대해, SC 행렬의 행(섹터 축) 이동을 시도하며 최적 매칭을 찾는다:
+2. **Sector Key**: 섹터별로 링 축을 집계한 회전 가변 키다. 두 스캔의 sector key를 비교해 최적 이동량의 초기 추정을 얻고, 그 근방의 소수 이동에 대해서만 아래의 거리를 계산한다(아래 식과 코드는 단순화를 위해 모든 이동을 탐색한다):
 
 $$
-d(\mathbf{SC}_q, \mathbf{SC}_d) = \min_{s \in [0, N_s)} \left\| \mathbf{SC}_q - \text{shift}(\mathbf{SC}_d, s) \right\|_F
+d(\mathbf{SC}_q, \mathbf{SC}_d) = \min_{s \in [0, N_s)} \frac{1}{N_s}\sum_{i=1}^{N_s}\left(1 - \frac{\mathbf{c}^q_i \cdot \mathbf{c}^d_{i+s}}{\|\mathbf{c}^q_i\|\,\|\mathbf{c}^d_{i+s}\|}\right)
 $$
 
 ```python
@@ -493,7 +503,10 @@ class ScanContext:
             min_dist = float('inf')
             for shift in range(self.n_sectors):
                 sc_shifted = np.roll(sc_db, shift, axis=0)
-                dist = np.linalg.norm(sc_query - sc_shifted)
+                # 섹터(행)별 코사인 거리의 평균 — 원 논문의 거리 정의
+                num = np.sum(sc_query * sc_shifted, axis=1)
+                den = np.linalg.norm(sc_query, axis=1) * np.linalg.norm(sc_shifted, axis=1) + 1e-9
+                dist = np.mean(1.0 - num / den)
                 min_dist = min(min_dist, dist)
             scores.append((idx, min_dist))
         
@@ -565,7 +578,7 @@ LiDAR 포인트 클라우드와 카메라 이미지는 데이터 표현(represen
 | 정보 | 기하(geometry) | 외관(appearance) |
 | 조명 의존 | 없음 | 매우 높음 |
 | 텍스처 | 없음 | 풍부 |
-| 밀도 | 거리에 반비례 | 균일 |
+| 밀도 | 점 간격이 거리에 비례 (표면 면적당 밀도는 거리 제곱에 반비례, 입사각에도 의존) | 이미지 평면에서 균일 |
 
 이 차이를 **domain gap**이라 하며, 같은 장소를 다른 모달리티로 관측했을 때 디스크립터 공간에서의 거리가 멀어지는 원인이 된다.
 
@@ -573,7 +586,7 @@ LiDAR 포인트 클라우드와 카메라 이미지는 데이터 표현(represen
 
 **[(LC)² (Lee et al., 2023)](https://arxiv.org/abs/2304.08660)**는 LiDAR 포인트 클라우드와 카메라 이미지를 **공통 디스크립터 공간(shared embedding space)**에 매핑하는 방법을 내놓았다.
 
-LiDAR 포인트 클라우드를 range image/BEV image로 변환하여 2D 표현으로 통일하고, 카메라 이미지와 LiDAR 투영 이미지를 각각 CNN으로 처리한다. **Contrastive learning**으로 같은 장소의 LiDAR-Camera 쌍을 임베딩 공간에서 가깝게, 다른 장소의 쌍을 멀게 학습한다.
+LiDAR 포인트 클라우드를 range image로 투영하고 카메라 이미지도 disparity/depth 표현으로 바꾸어 두 모달리티를 같은 range image 영역에서 맞춘다. 두 표현을 각각의 인코더로 처리한다. **Contrastive learning**으로 같은 장소의 LiDAR-Camera 쌍을 임베딩 공간에서 가깝게, 다른 장소의 쌍을 멀게 학습한다.
 
 $$
 \mathcal{L}_{\text{contrastive}} = \sum_{(l, c) \in \mathcal{P}^+} \| \mathbf{f}_L(l) - \mathbf{f}_C(c) \|^2 + \sum_{(l, c) \in \mathcal{P}^-} \max(0, m - \| \mathbf{f}_L(l) - \mathbf{f}_C(c) \|)^2
@@ -583,7 +596,7 @@ $$
 
 ### 9.4.4 ModaLink
 
-**ModaLink**는 (LC)²보다 더 범용적인 cross-modal 프레임워크를 지향하며, LiDAR, Camera, Radar 등 다양한 모달리티 조합에 대응한다.
+**ModaLink** (Xie et al., IROS 2024)는 이미지에서 포인트 클라우드를 찾는 cross-modal 장소 인식을 효율적으로 푸는 프레임워크다. 대상 모달리티는 카메라와 LiDAR이며, radar까지 포함하는 조합은 다루지 않는다.
 
 ### 9.4.5 Modality-Agnostic Descriptor 접근
 
@@ -607,7 +620,7 @@ $$
 
 **Data Augmentation**: 학습 시 다양한 조건의 이미지를 포함한다. NetVLAD가 Google Street View Time Machine을 활용한 것이 대표적이다.
 
-**Domain Invariant Feature**: 외관 변화에 불변하는 특징을 학습한다. 시맨틱 세그멘테이션 결과(건물, 도로, 하늘의 배치)는 조명에 불변적이다.
+**Domain Invariant Feature**: 외관 변화에 불변하는 특징을 학습한다. 시맨틱 세그멘테이션 결과(건물, 도로, 하늘의 배치)는 조명 변화에 비교적 강건하다. 다만 야간·역광처럼 세그멘테이션 자체의 정확도가 떨어지는 조건에서는 레이블 맵도 함께 흔들린다.
 
 **Foundation Model 활용**: AnyLoc에서 보여주었듯이, DINOv2의 특징은 조명·계절 변화에 강건하다. 자기지도 학습 과정에서 다양한 augmentation에 불변하는 특징을 학습하기 때문이다.
 
@@ -638,7 +651,7 @@ Place recognition이 후보를 찾았다면, 그것이 **진짜 같은 장소인
 카메라 기반 PR 후보에 대해:
 
 1. 쿼리 이미지와 후보 이미지 사이의 로컬 특징 매칭 (SuperPoint+LightGlue, ORB+BF 등)
-2. **PnP (Perspective-n-Point)**: 2D-3D 대응점으로부터 카메라의 상대 포즈를 추정
+2. **PnP (Perspective-n-Point)**: 1단계의 이미지 간 매칭을 후보 이미지에 연관된 3D 맵 포인트로 옮겨 2D-3D 대응을 만들고, 그 대응에서 카메라 포즈를 추정한다. 3D 점이 맵 좌표계면 결과는 질의 카메라의 절대 포즈이므로, 후보와의 상대 포즈는 후보의 알려진 포즈와 합성해 얻는다
 3. **RANSAC**: 아웃라이어를 제거하며 포즈 추정
 
 ```python
@@ -673,7 +686,8 @@ def geometric_verification_visual(query_keypoints, db_keypoints_3d,
     n_inliers = len(inliers)
     is_verified = n_inliers >= min_inliers
     
-    # 상대 포즈
+    # solvePnP의 (rvec, tvec)는 3D 점 좌표계 → 카메라 변환이다.
+    # 3D 점이 맵 좌표계면 T는 맵→질의 카메라 변환이고, 후보와의 상대 포즈는 후보 포즈와 합성해야 한다.
     R, _ = cv2.Rodrigues(rvec)
     T = np.eye(4)
     T[:3, :3] = R
@@ -747,7 +761,7 @@ def geometric_verification_lidar(query_cloud, db_cloud,
 
 **Inlier 수 기반 재랭킹**: 특징 매칭 후 인라이어 수가 많은 후보를 상위로 올린다.
 
-**포즈 일관성 검사**: 추정된 상대 포즈가 odometry의 누적 포즈와 일관성이 있는지 확인한다. 큰 불일치가 있으면 false positive로 거부한다.
+**포즈 일관성 검사**: 추정된 상대 포즈가 odometry의 누적 포즈와 일관성이 있는지 확인한다. 기준은 차이의 크기가 아니라 odometry 공분산에 대한 Mahalanobis 거리다. 루프 클로저의 목적이 누적 드리프트 교정이므로 긴 루프에서는 정상 검출도 큰 차이를 보이며, 크기만으로 거부하면 가장 유용한 루프를 버린다.
 
 ---
 

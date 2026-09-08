@@ -44,7 +44,7 @@ where $c(i) = \arg\min_j \|\mathbf{T} \cdot \mathbf{p}_i - \mathbf{q}_j\|$ is th
    When $\det(\mathbf{V}\mathbf{U}^T) = 1$, we have $\mathbf{R}^* = \mathbf{V}\mathbf{U}^T$; when $\det(\mathbf{V}\mathbf{U}^T) = -1$, the sign of the last column of $\mathbf{V}$ is flipped to prevent a reflection.
 
 Limitations of point-to-point ICP:
-- Sliding on planes — points on a plane can slide along the plane without changing the cost, leading to slow convergence.
+- Sliding on planes — on a plane, a small tangential displacement is met by re-association at the next iteration, which simply picks another nearby point, so the cost surface is nearly flat along that direction and convergence is slow. With the correspondences held fixed, a tangential shift does raise the cost; the flattening comes from the re-association, not from the cost function.
 - Initialization dependence — it easily falls into local minima.
 - Inaccurate closest-point correspondences — if the two scans have different sampling patterns, the nearest neighbor may not be the true correspondence.
 
@@ -77,7 +77,7 @@ $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i (\mathbf{T} \cdot \mathb
 where $\mathbf{C}_i^{\mathcal{P}}, \mathbf{C}_i^{\mathcal{Q}}$ are the local surface covariances at the source and target points, respectively.
 
 **Physical meaning of the covariance**:
-- For a point on a plane: small variance along the normal, large variance along the tangent directions $\rightarrow \mathbf{C} = \mathbf{R}_s \text{diag}(\epsilon, 1, 1) \mathbf{R}_s^T$ ($\epsilon \ll 1$; $\mathbf{R}_s$ is the rotation aligning the normal to the first axis).
+- For a point on a plane: small variance along the normal, large variance along the tangent directions $\rightarrow \mathbf{C} = \mathbf{R}_s \text{diag}(\epsilon, 1, 1) \mathbf{R}_s^T$ ($\epsilon \ll 1$; $\mathbf{R}_s$ is the rotation whose first column is the normal, i.e., $\mathbf{R}_s \mathbf{e}_1 = \mathbf{n}$). The eigenvectors of $\mathbf{C}$ are the columns of $\mathbf{R}_s$, so putting the normal in the first column is what makes the variance along that direction $\epsilon$.
 - In this case GICP automatically becomes plane-to-plane registration.
 - When $\mathbf{C}^{\mathcal{P}} = \mathbf{0}$ it reduces to point-to-plane, and when $\mathbf{C}^{\mathcal{P}} = \mathbf{C}^{\mathcal{Q}} = \mathbf{I}$ it reduces to point-to-point.
 
@@ -147,20 +147,21 @@ def gicp(P, Q, T_init, max_iter=50, tol=1e-6):
    $$\boldsymbol{\mu}_k = \frac{1}{n_k}\sum_{i \in k} \mathbf{q}_i, \quad \boldsymbol{\Sigma}_k = \frac{1}{n_k-1}\sum_{i \in k} (\mathbf{q}_i - \boldsymbol{\mu}_k)(\mathbf{q}_i - \boldsymbol{\mu}_k)^T$$
 
 2. **Optimize the transformation**: Optimize so that the transformed source points have high likelihood under the target NDT distribution:
-   $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i -\log p(\mathbf{T} \cdot \mathbf{p}_i \mid \boldsymbol{\mu}_{k(i)}, \boldsymbol{\Sigma}_{k(i)})$$
+   $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\max} \sum_i \exp\left(-\tfrac{1}{2}(\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})^T \boldsymbol{\Sigma}_{k(i)}^{-1} (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})\right)$$
    
-   Under the Gaussian assumption,
-   $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_i (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})^T \boldsymbol{\Sigma}_{k(i)}^{-1} (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})$$
+   Because the Gaussian values are summed without a logarithm, the contribution of a point with a large residual saturates. Replacing this with the sum of log-likelihoods, i.e. minimizing the sum of squared Mahalanobis distances
+   $$\sum_i (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})^T \boldsymbol{\Sigma}_{k(i)}^{-1} (\mathbf{T} \cdot \mathbf{p}_i - \boldsymbol{\mu}_{k(i)})$$
+   yields a voxel-based Mahalanobis ICP in which the influence of outliers grows without bound — a different algorithm from the original NDT. Practical implementations use an approximation that mixes a uniform distribution into the Gaussian.
 
 Advantages of NDT:
 - No explicit correspondence search is required — we only need to determine which voxel a point belongs to. There is no kd-tree construction cost.
 - The voxel size controls the trade-off between precision and the convergence basin — larger voxels give a wider convergence basin, smaller voxels give higher precision.
-- The cost function is smooth, so the optimization is stable.
+- The score function is smooth, and the contribution of distant points saturates, so it is less pulled by outliers.
 
 Disadvantages:
 - Sensitive to the choice of voxel size.
 - Covariance estimation is unstable in voxels with few points.
-- 2D NDT is widely used in autonomous driving, but 3D NDT tends to be slightly less accurate than ICP/GICP.
+- 3D NDT is widely used for prior-map-based localization in autonomous driving, as in Autoware's ndt_scan_matcher. For scan-to-scan odometry it is reported to be slightly less accurate than ICP/GICP, though the outcome varies by dataset.
 
 ### 7.1.4 Convergence and Initialization Dependence
 
@@ -198,13 +199,13 @@ where $\mathcal{S}_i$ is the set of left and right neighbors of $\mathbf{p}_i$ o
 Additional rules when selecting feature points:
 - Divide each scan line into four sectors to ensure a uniform distribution.
 - If a neighbor has already been selected, exclude the current point (non-maximum suppression).
-- Exclude points on near-horizontal surfaces or at occlusion boundaries because they are unstable.
+- Exclude points on surfaces nearly parallel to the laser beam and points on occlusion boundaries because they are unstable. The criterion is the incidence geometry relative to the beam, not horizontality in the world frame: a surface that the beam merely grazes yields an unstable range estimate, and a point on an occlusion boundary disappears under a small change of viewpoint.
 
 **Odometry module (~10 Hz)**
 
 A fast motion estimate is obtained via scan-to-scan matching. Feature points from the current scan are associated with feature points from the previous scan, but the distance metric depends on the feature type.
 
-**Edge point-to-edge distance**: For an edge point $\mathbf{p}$ in the current scan, find the two closest edge points $\mathbf{a}, \mathbf{b}$ in the previous scan. The distance from $\mathbf{p}$ to the line $\overline{\mathbf{ab}}$ is
+**Edge point-to-edge distance**: For an edge point $\mathbf{p}$ in the current scan, find the closest edge point $\mathbf{a}$ in the previous scan and the closest edge point $\mathbf{b}$ on a scan line adjacent to $\mathbf{a}$'s (two points from the same line make the line degenerate). The distance from $\mathbf{p}$ to the line $\overline{\mathbf{ab}}$ is
 
 $$d_e = \frac{\|(\mathbf{p}-\mathbf{a}) \times (\mathbf{p}-\mathbf{b})\|}{\|\mathbf{a}-\mathbf{b}\|}$$
 
@@ -297,7 +298,7 @@ class LOAM:
             # Edge point-to-edge residuals
             for p in edge_curr:
                 p_t = apply_transform(T_relative, p)
-                _, idx = tree_edge.query(p_t, k=2)
+                _, idx = tree_edge.query(p_t, k=2)  # The real LOAM picks the two points from different scan lines
                 a, b = edge_prev[idx[0]], edge_prev[idx[1]]
                 
                 d_e = point_to_line_distance(p_t, a, b)
@@ -308,7 +309,7 @@ class LOAM:
             # Planar point-to-plane residuals
             for p in planar_curr:
                 p_t = apply_transform(T_relative, p)
-                _, idx = tree_planar.query(p_t, k=3)
+                _, idx = tree_planar.query(p_t, k=3)  # The real LOAM uses two points on the same line + one on an adjacent line
                 a, b, c = planar_prev[idx[0]], planar_prev[idx[1]], planar_prev[idx[2]]
                 
                 d_p = point_to_plane_distance(p_t, a, b, c)
@@ -366,9 +367,9 @@ Over ten years have passed since LOAM was published in 2014, yet the LOAM-family
 
 3. **Extensibility**: A LiDAR frontend can be combined with an IMU (LIO-SAM) or camera (LVI-SAM). KISS-ICP belongs to a different lineage: it is a deliberately simple LiDAR-only ICP system, not an additional-sensor extension of LOAM.
 
-4. **Robustness**: The edge/planar classification acts as a kind of outlier filter — points belonging to noise or dynamic objects do not show consistent curvature patterns and are naturally excluded.
+4. **Robustness**: The edge/planar classification acts as a filter against noise and unstable incidence geometry — points whose curvature pattern is not consistent are not selected. Curvature, however, is a geometric quantity computed from neighbors on a single scan line, so it cannot distinguish motion. The corners and planes of a moving vehicle are selected as good features just the same, so removing dynamic objects requires a separate stage.
 
-That said, the limitations of the LOAM family are equally clear. Performance degrades in environments lacking geometric features (open fields, long tunnels), and the existing feature extraction is not well suited to the non-repetitive scan patterns of solid-state LiDARs. The direct approach of FAST-LIO2 addresses these limitations.
+That said, the limitations of the LOAM family are equally clear. First, the ring-based feature extraction does not carry over directly to solid-state LiDARs with non-repetitive scan patterns; the direct approach of FAST-LIO2 solves that one by removing feature extraction altogether. Second, odometry accuracy drops sharply in environments where geometric features are scarce, such as open fields and straight tunnels. That is a degeneracy of the environment's observation geometry, so it remains whether one extracts features or works with raw points.
 
 ---
 
@@ -392,7 +393,7 @@ LIO-SAM models the various sensor measurements as factors of a factor graph:
 
 4. **Loop Closure Factor**: Place recognition (e.g., Scan Context) detects a loop, ICP estimates the relative pose, and the result is added as a binary factor.
 
-All of these factors enter a single graph, and GTSAM's iSAM2 performs incremental optimization. The strength of the factor graph is its **modularity** — each sensor can independently add or remove factors, and adding a new sensor is straightforward.
+These factors enter a global pose graph that GTSAM's iSAM2 optimizes incrementally. On top of that, LIO-SAM keeps a separate graph for IMU odometry and resets it periodically, letting it handle state propagation at the IMU rate and bias estimation. The strength of the factor graph is its **modularity** — each sensor can independently add or remove factors, and adding a new sensor is straightforward.
 
 **IMU-based de-skewing**
 
@@ -468,6 +469,9 @@ class LIOSAM:
         self.values.insert(X(self.key_idx), T_predict.pose())
         self.values.insert(V(self.key_idx), T_predict.velocity())
         self.values.insert(B(self.key_idx), self.current_bias)
+        # Random-walk factor constraining the new bias variable. Without it the variable is unconstrained and the iSAM2 update fails
+        self.graph.add(gtsam.BetweenFactorConstantBias(
+            B(self.key_idx - 1), B(self.key_idx), gtsam.imuBias.ConstantBias(), self.bias_noise))
         
         # 5. iSAM2 incremental update
         result = self.isam.update(self.graph, self.values)
@@ -531,12 +535,12 @@ In addition to the rotation ${}^G\mathbf{R}_I$, position ${}^G\mathbf{p}_I$, vel
 ```cpp
 // FAST-LIO2 IEKF update pseudocode (C++)
 struct State {
-    Matrix3d R_GI;    // world-to-IMU rotation
+    Matrix3d R_GI;    // IMU -> world rotation (prefix notation G_R_I)
     Vector3d p_GI;    // IMU position in world
     Vector3d v_GI;    // IMU velocity in world
     Vector3d bg, ba;  // gyro/accel bias
-    Matrix3d R_IL;    // IMU-to-LiDAR rotation
-    Vector3d p_IL;    // IMU-to-LiDAR translation
+    Matrix3d R_IL;    // LiDAR -> IMU rotation (prefix notation I_R_L)
+    Vector3d p_IL;    // LiDAR origin expressed in the IMU frame
     Vector3d gravity; // gravity vector
 };
 
@@ -612,7 +616,7 @@ Instead of a kd-tree, the method uses a hash-map-based voxel structure. A plane 
 
 Point-LIO ([He et al., 2023](https://doi.org/10.1002/aisy.202200459)) is an extreme extension of the FAST-LIO series. It updates the state at the granularity of **individual points** rather than scans.
 
-Conventional LIO treats an entire scan (~100 ms) as a single observation. During that interval, motion distortion is corrected by constant-velocity interpolation, but under fast/high-angular-rate motion the constant-velocity assumption breaks down.
+Conventional LIO treats an entire scan (~100 ms) as a single observation. Distortion within the scan is corrected by integrating the IMU to recover the pose at each point's timestamp (§7.3.1), but the update itself is per scan, so the assumption that binds the whole interval into one motion remains. Under fast, high-angular-rate motion that assumption breaks down.
 
 Point-LIO propagates the state in point-timestamp order and performs point-wise updates. Using high-rate IMU measurements and LiDAR timestamps, it estimates the state at each observation time and achieves higher temporal resolution than the single-motion assumption of scan-level deskew. That state remains an estimate subject to IMU noise, bias, and synchronization error.
 
@@ -656,9 +660,9 @@ CT-ICP effectively compensates for motion distortion without an IMU, making it e
 
 A more general continuous-time approach represents the trajectory with a B-spline. A B-spline is a smooth curve defined by control points $\{\mathbf{T}_i\}$:
 
-$$\mathbf{T}(t) = \prod_{i=0}^{k} \text{Exp}\left(B_i(t) \cdot \text{Log}(\mathbf{T}_{i-1}^{-1}\mathbf{T}_i)\right)$$
+$$\mathbf{T}(t) = \mathbf{T}_0 \prod_{i=1}^{k} \text{Exp}\left(\tilde{B}_i(t) \cdot \text{Log}(\mathbf{T}_{i-1}^{-1}\mathbf{T}_i)\right)$$
 
-where $B_i(t)$ is a B-spline basis function. A cubic B-spline is $C^2$ across ordinary interior knots; repeated knots and boundary choices can reduce continuity.
+where $\tilde{B}_i(t)$ is a cumulative B-spline basis function. A cubic B-spline is $C^2$ across ordinary interior knots; repeated knots and boundary choices can reduce continuity.
 
 Advantages of a B-spline trajectory:
 1. **Query at arbitrary times**: At any time $t$, the pose is obtained by evaluating the trajectory, while velocity and acceleration are obtained by differentiation. This enables natural handling of asynchronous sensor data.
@@ -682,7 +686,7 @@ Solid-state LiDARs (e.g., the Livox series) use non-repetitive scan patterns rat
 | Property | Spinning (Velodyne, Ouster) | Solid-state (Livox) |
 |------|--------------------------|---------------------|
 | Scan pattern | Repetitive (same pattern every rotation) | Non-repetitive (petal / rose pattern) |
-| FoV | 360° horizontal | Limited (70-77°) |
+| FoV | 360° horizontal | Model-dependent (Mid-40 38.4° circular, Avia 70.4° circular, Horizon 81.7°×25.1°) |
 | Point density | Uniform | Accumulates over time, non-uniform |
 | Price | High | Low |
 | Size / weight | Large | Small |
@@ -691,9 +695,9 @@ Solid-state LiDARs (e.g., the Livox series) use non-repetitive scan patterns rat
 
 LOAM-style curvature-based feature extraction uses neighbors on the same scan line. However, solid-state LiDARs have no defined scan line and their points are distributed irregularly. The existing line-based curvature computation therefore does not apply; one must use KNN (K-Nearest Neighbors)-based local curvature or abandon feature extraction and use raw points.
 
-**Why FAST-LIO is strong on solid-state**
+**Why FAST-LIO2 is strong on solid-state**
 
-FAST-LIO/FAST-LIO2 use raw points directly and are therefore agnostic to the scan pattern. A solid-state LiDAR gradually fills its FoV more densely over time, and FAST-LIO2's ikd-Tree map naturally accommodates this progressive densification, so map quality improves over time. A narrow FoV means less information per scan, but tight coupling with the IMU compensates for this.
+FAST-LIO2 uses raw points directly and is therefore agnostic to the scan pattern. FAST-LIO still extracts edge/planar features; removing feature extraction is FAST-LIO2's contribution. A solid-state LiDAR gradually fills its FoV more densely over time, and FAST-LIO2's ikd-Tree map naturally accommodates this progressive densification, so map quality improves over time. A narrow FoV means less information per scan, but tight coupling with the IMU compensates for this.
 
 Livox sensors appear frequently in public work on drones, handheld devices, and small robots because of their non-repetitive scan pattern and compact form factor. FAST-LIO2 supports that pattern, so public examples and datasets using the pair are easy to find. Actual selection should compare field of view, range, time synchronization, point distribution, and the target platform in addition to price.
 
@@ -707,7 +711,7 @@ Learning-based LiDAR odometry trains a network that takes a pair of point clouds
 
 Representative approaches include the following:
 - **LO-Net** (Li et al., 2019): Converts a LiDAR scan to a 2D range image and uses a CNN to extract features and predict the pose. Normal estimation and mask prediction are added as auxiliary tasks to encourage geometric understanding.
-- **DeepLO** (Cho et al., 2020): Predicts the pose by processing 3D point clouds directly using a PointNet backbone.
+- **DeepLO** (Cho et al., 2020): Feeds spherically projected vertex and normal maps to a CNN and trains it unsupervised with a geometry-aware loss in the form of a point-to-plane ICP residual.
 - **PWCLO-Net** (Wang et al., 2021): Applies the Pyramid, Warping, and Cost-volume architecture to LiDAR odometry.
 
 ### 7.6.2 Current Limitations
@@ -723,9 +727,11 @@ Learning-based LiDAR odometry still lags behind classical methods for four reaso
 4. **Generalization**: A model trained on a particular LiDAR/environment does not generalize well to other LiDARs/environments.
 
 Today, learning is more effective as auxiliary components than as LiDAR odometry itself:
-- **Loop closure detection**: Scan Context, PointNetVLAD, etc.
+- **Loop closure detection**: PointNetVLAD, etc.
 - **Point cloud registration initialization**: GeoTransformer (see Ch.5)
 - **Semantic segmentation**: dynamic-object removal
+
+Scan Context, widely used in the same role, is a hand-crafted descriptor rather than a learned one, so it belongs on the comparison side rather than among the examples of learning.
 
 ---
 

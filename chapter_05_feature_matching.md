@@ -13,7 +13,7 @@ Ch.4에서 상태 추정의 수학적 프레임워크를 세웠다. 하지만 �
 Correspondence 문제는 두 개 이상의 관측(observation)에서 **물리적으로 동일한 점, 영역, 또는 구조물**을 식별하는 문제다. 센서 퓨전 파이프라인의 거의 모든 단계가 correspondence를 전제로 한다.
 
 - **Visual Odometry**: 연속된 프레임에서 같은 3D 점의 2D 투영을 찾아야 카메라 모션을 추정할 수 있다.
-- **Calibration**: 카메라-LiDAR 외부 파라미터를 추정하려면 두 센서가 관측한 같은 물리적 점을 식별해야 한다.
+- **Calibration**: 카메라-LiDAR 외부 파라미터를 추정하려면 두 센서 관측 사이의 대응을 찾아야 한다. target을 쓰는 방법은 같은 물리적 점을 대응으로 삼고, targetless MI 기반 방법(§5.4)은 겹치는 영역의 통계적 의존성을 대응으로 삼는다.
 - **Loop Closure**: 이전에 방문한 장소를 재인식하려면 현재 관측과 과거 관측 사이의 대응을 확인해야 한다.
 - **Point Cloud Registration**: 두 스캔의 정합(alignment)은 대응점 쌍을 기반으로 강체 변환을 추정하는 과정이다.
 
@@ -23,7 +23,7 @@ Correspondence 문제는 두 개 이상의 관측(observation)에서 **물리적
 
 두 이미지 사이에서 같은 3D 점의 투영을 찾는 문제다. Visual Odometry, Stereo Matching, Image Stitching의 기초가 된다.
 
-이미지 $I_1$의 점 $\mathbf{p}_1 = (u_1, v_1)$과 이미지 $I_2$의 점 $\mathbf{p}_2 = (u_2, v_2)$가 같은 3D 점 $\mathbf{X}$의 투영일 때, 이 쌍 $(\mathbf{p}_1, \mathbf{p}_2)$를 대응점(correspondence)이라 한다.
+이미지 $I_1$의 점 $\mathbf{p}_1 = (u_1, v_1)$과 이미지 $I_2$의 점 $\mathbf{p}_2 = (u_2, v_2)$가 같은 3D 점 $\mathbf{X}$의 투영일 때, 이 쌍 $(\mathbf{p}_1, \mathbf{p}_2)$를 대응점(correspondence)이라 한다. 아래 기하 식에서는 이 점을 동차 좌표 $(u, v, 1)^\top$로 쓴다. $3 \times 3$ 행렬과의 곱과 $\mathbf{K}^{-1}$ 적용이 모두 동차 좌표에서 정의되기 때문이다.
 
 두 이미지 사이의 기하학적 관계는 **epipolar constraint**로 표현된다:
 
@@ -108,19 +108,19 @@ img_float = np.float32(img)
 # blockSize: 이웃 크기, ksize: Sobel 커널, k: Harris 파라미터
 harris_response = cv2.cornerHarris(img_float, blockSize=2, ksize=3, k=0.04)
 
-# Non-maximum suppression & 임계값
+# 임계값 적용 — cornerHarris는 응답 맵만 돌려주므로 NMS는 별도 단계가 필요하다
 corners = harris_response > 0.01 * harris_response.max()
 ```
 
 #### FAST (Features from Accelerated Segment Test, 2006)
 
-FAST는 Harris의 정확성보다 **속도를 극한으로 추구**한 검출기다. 로봇 비전에서 수십 FPS로 특징점을 검출해야 하는 실시간 요구를 해결하기 위해 [Rosten & Drummond (2006)](https://arxiv.org/abs/0810.2434)가 제안했다.
+FAST는 Harris의 정확성보다 **속도를 극한으로 추구**한 검출기다. 로봇 비전에서 수십 FPS로 특징점을 검출해야 하는 실시간 요구를 해결하기 위해 [Rosten & Drummond (ECCV 2006; 링크는 Rosten, Porter & Drummond의 확장판, TPAMI 2010)](https://arxiv.org/abs/0810.2434)가 제안했다.
 
 알고리즘은 단순하다:
 
 1. 후보 픽셀 $p$를 중심으로 반지름 3의 원 위에 16개 픽셀을 배치 (Bresenham circle).
 2. 원 위의 연속된 $N$개 픽셀(보통 $N=12$)이 모두 $p$보다 밝거나 모두 어두우면 $p$는 코너.
-3. 고속 reject: 1, 5, 9, 13번 위치의 4개 픽셀만 먼저 확인 — 이 중 3개 이상이 조건을 만족하지 않으면 즉시 기각.
+3. 고속 reject: 1, 5, 9, 13번 위치의 4개 픽셀만 먼저 확인 — 이 중 3개 이상이 모두 밝거나 모두 어두운 조건을 만족하지 못하면 즉시 기각. 이 단축 검사는 $N=12$에서 성립하고 $N=9$ 같은 변형에는 그대로 쓸 수 없어서, 아래의 결정 트리 학습이 그 자리를 대신한다.
 
 $$\text{FAST condition: } \exists \text{ contiguous arc of } N \text{ pixels on circle, all } > I_p + t \text{ or all } < I_p - t$$
 
@@ -249,7 +249,7 @@ BRIEF의 비교 연산:
 
 $$b_i = \begin{cases} 1 & \text{if } I(\mathbf{p}_i) < I(\mathbf{q}_i) \\ 0 & \text{otherwise} \end{cases}, \quad \text{descriptor} = \sum_{1 \le i \le n} 2^{i-1} b_i$$
 
-Hamming distance는 XOR + popcount로 CPU에서 단일 명령어로 계산된다:
+Hamming distance는 XOR과 popcount로 계산한다. popcount는 워드 단위 명령이므로 256비트 디스크립터는 64비트 워드 4개의 XOR·popcount와 합산으로, 512비트는 그 두 배로 처리된다:
 
 $$d_H(\mathbf{a}, \mathbf{b}) = \text{popcount}(\mathbf{a} \oplus \mathbf{b})$$
 
@@ -269,7 +269,7 @@ FAST (2006)       — 극한 속도 검출 (descriptor 없음)
 ORB (2011)        — oFAST + rBRIEF, 256-bit binary (Hamming 매칭)
 ```
 
-이러한 속도와 정확도의 상충 관계는 딥러닝 기반 모델에서도 주요 설계 쟁점이다. 예컨대 SuperPoint는 SIFT 수준의 정합 정밀도를 확보하면서도 ORB에 근접하는 추론 속도를 달성하도록 설계되었다.
+이러한 속도와 정확도의 상충 관계는 딥러닝 기반 모델에서도 주요 설계 쟁점이다. 예컨대 SuperPoint는 검출과 기술을 함께 학습해 시점·조명 변화에 강건한 정합을 겨냥했고, 속도는 GPU 환경에서 640×480 기준 약 70 FPS(§5.5.1)로 하드웨어 조건에 묶인다.
 
 ---
 
@@ -372,14 +372,14 @@ Chum & Matas가 제안했다. RANSAC이 균등 무작위 샘플링을 하는 반
 
 Barath et al.이 제안. RANSAC의 핵심 문제 중 하나는 **임계값 $t$의 수동 설정**이다. MAGSAC은 이를 자동화한다:
 
-- 모든 가능한 임계값 $\sigma$에 대해 모델의 품질을 marginalize:
+- 임계값 $\sigma$를 $[0, \sigma_{\max}]$ 구간에서 marginalize하여 모델의 품질을 구한다:
 
 $$Q(\theta) = \int_0^{\sigma_{\max}} q(\theta, \sigma) f(\sigma) d\sigma$$
 
 여기서 $q(\theta, \sigma)$는 임계값 $\sigma$에서의 모델 $\theta$의 품질, $f(\sigma)$는 임계값의 사전 분포.
 
 - MAGSAC++는 이를 더 효율적으로 구현하고, $\sigma$-consensus 기반 가중 최소자승 피팅을 추가.
-- 임계값 선택에 대한 민감도가 크게 줄어든다.
+- 인라이어/아웃라이어 판정 임계값이 사라지므로 그 선택에 대한 민감도가 크게 줄어든다. 다만 적분 상한 $\sigma_{\max}$는 여전히 지정해야 하며, 아래 코드가 `ransacReprojThreshold`를 넘기는 것도 그 상한에 해당한다.
 
 ```python
 # OpenCV의 USAC (MAGSAC++ 포함)
@@ -427,7 +427,7 @@ RANSAC (1981)   — 무작위 표본 기반 robust estimation의 대표적 출�
     ↓ 사전 정보 활용
 PROSAC (2005)   — 매칭 품질 기반 진행적 샘플링
     ↓ 임계값 자동화
-MAGSAC++ (2020) — 임계값-free 로버스트 추정
+MAGSAC++ (2020) — 인라이어 임계값을 없앤 로버스트 추정
     ↓ 학습 기반 제거
 GeoTransformer (2022) — RANSAC 없이 직접 변환 추정
 ```
@@ -605,20 +605,20 @@ $$L_{desc} = \sum_{(i,j) \in \text{pos}} \max(0, m_p - \mathbf{d}_i^\top \mathbf
 
 ```python
 import torch
-# SuperPoint 사용 예제 (hloc / kornia)
-from kornia.feature import SuperPoint as KorniaSuperPoint
+# SuperPoint 사용 예제 (cvg/LightGlue 패키지. kornia.feature에는 SuperPoint 클래스가 없다)
+from lightglue import SuperPoint
 
 # 모델 로드
-sp = KorniaSuperPoint(max_num_keypoints=2048)
+sp = SuperPoint(max_num_keypoints=2048)
 sp = sp.eval()
 
 # 추론
 with torch.no_grad():
     img_tensor = torch.from_numpy(img).float().unsqueeze(0).unsqueeze(0) / 255.0
-    pred = sp(img_tensor)
+    pred = sp({'image': img_tensor})   # 반환 키: keypoints, keypoint_scores, descriptors
     keypoints = pred['keypoints']        # (1, N, 2)
     descriptors = pred['descriptors']    # (1, 256, N)
-    scores = pred['scores']              # (1, N)
+    scores = pred['keypoint_scores']              # (1, N)
 ```
 
 ### 5.5.2 D2-Net (2019): Detect-and-Describe Jointly
@@ -630,7 +630,7 @@ D2-Net은 VGG16의 중간 특징 맵 $\mathbf{F} \in \mathbb{R}^{H \times W \tim
 - **Description**: 같은 위치의 $C$-차원 벡터를 디스크립터로 사용
 
 장점: 높은 수준의 의미적(semantic) 특징을 사용하므로 큰 외관 변화에 강건.
-단점: 검출 반복성이 SuperPoint보다 낮을 수 있고, 입력 해상도의 1/4까지만 로컬라이제이션 가능.
+단점: 검출 반복성이 SuperPoint보다 낮을 수 있고, 검출 격자가 입력 해상도의 1/4이라 위치 정밀도가 그 간격에 묶인다. 원 논문은 이 격자 위에서 국소 정제를 적용해 서브픽셀 위치를 보완한다.
 
 ### 5.5.3 R2D2 (2019): Reliable and Repeatable Detector-Descriptor
 
@@ -846,7 +846,7 @@ Linear attention: $O(N)$, $\text{Attn}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \ph
 
 여기서 $\phi$는 ELU 기반 커널 함수. 행렬 곱의 결합 순서를 바꿔 $O(N)$ 복잡도를 달성한다.
 
-단, 후속 연구에서 standard attention이 정확도에서 우위라는 점이 밝혀졌다.
+linear attention은 계산을 줄이는 대신 attention의 표현력을 제한한다. 이어지는 QuadTree Attention과 ASpanFormer는 그 제한을 attention의 구조를 바꾸어 풀려는 시도다.
 
 #### 학습
 
@@ -889,7 +889,7 @@ LoFTR의 coarse-level transformer는 이미지의 모든 위치를 시퀀스로 
 3. 선택된 영역에서만 다음 해상도의 어텐션을 수행
 4. 이를 반복하여 관련 영역에만 집중하는 계층적 어텐션 실현
 
-이를 통해 $O(N^2)$에서 $O(N \log N)$으로 복잡도를 줄이면서도 LoFTR 수준의 정확도를 유지한다.
+이를 통해 standard attention의 $O(N^2)$ 비용을 $O(N)$으로 줄이면서 정확도를 유지한다. 비교의 기준은 standard attention이다. LoFTR가 쓰는 linear attention도 이미 $O(N)$이며, 원 논문은 linear attention과 비슷한 연산량으로 정확도를 높였다고 보고한다.
 
 ### 5.7.4 ASpanFormer (2022): Adaptive Span Attention
 
@@ -937,7 +937,7 @@ $$p(\mathbf{x}_B | \mathbf{x}_A) = \sum_{k} w_k \mathcal{N}(\mathbf{x}_B; \mu_k,
 
 $$L = -\sum_{(\mathbf{x}_A, \mathbf{x}_B^*)} \log p(\mathbf{x}_B^* | \mathbf{x}_A)$$
 
-이 접근법은 아웃라이어에 강건하다: 잘못된 ground-truth 대응점이 있더라도 분포의 꼬리(tail)로 흡수되어 학습이 안정적이다.
+분포를 예측하면 모호한 매칭에 낮은 확률을 배정해 손실이 한 대응에 지배되지 않게 할 수 있다. 다만 강건성은 분포 계열이 정한다. Gaussian 계열은 꼬리가 가벼워 큰 오차에 제곱 벌점을 주므로, 무거운 꼬리 분포나 명시적 outlier 성분, 또는 회귀를 분류로 바꾸는 설계를 함께 써야 잘못된 ground-truth의 영향이 실제로 줄어든다.
 
 #### 성능
 
@@ -975,7 +975,7 @@ RoMa는 RAFT의 iterative refinement 아이디어와 LoFTR의 detector-free 사�
 
 2024-2025년에는 2D 매칭을 넘어 **3D 기하학을 직접 예측하면서 매칭을 수행**하는 방법이 등장했다.
 
-**DUSt3R (Leroy et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132)는 캘리브레이션이나 포즈 정보 없이 임의의 이미지 쌍에서 직접 3D pointmap을 회귀하는 방법이다. 기존 매칭 파이프라인은 "2D 매칭 → 3D 복원" 순서로 동작했다. DUSt3R는 이 순서를 바꾸어 **3D 형상 자체를 직접 회귀하고, 대응점은 3D 공간의 근접성에서 자연스럽게 유도되는 결과물**로 취급한다.
+**DUSt3R (Wang et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132)는 캘리브레이션이나 포즈 정보 없이 임의의 이미지 쌍에서 직접 3D pointmap을 회귀하는 방법이다. 기존 매칭 파이프라인은 "2D 매칭 → 3D 복원" 순서로 동작했다. DUSt3R는 이 순서를 바꾸어 **3D 형상 자체를 직접 회귀하고, 대응점은 3D 공간의 근접성에서 자연스럽게 유도되는 결과물**로 취급한다.
 
 **MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756)는 DUSt3R에 dense local feature head를 추가했다. 저자들은 논문의 map-free localization 설정에서 이전 비교 방법보다 VCRE AUC가 30%p 높았다고 보고한다.
 
@@ -1151,9 +1151,9 @@ Koide et al. (2023)의 캘리브레이션 툴이 이 접근법을 사용한다: 
 
 #### 학습 기반 직접 매칭
 
-LCD (LiDAR-Camera Descriptor): 2D 이미지 패치와 3D 점군 패치의 공통 임베딩 공간을 학습한다.
+LCD (Learned Cross-Domain Descriptors): 2D 이미지 패치와 3D 점군 패치의 공통 임베딩 공간을 학습한다.
 
-P2-Net (Yu et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패치와 3D 점의 직접 대응을 추론한다.
+P2-Net (Wang et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패치와 3D 점의 직접 대응을 추론한다.
 
 ### 5.9.3 왜 Cross-Modal이 어려운가: Representation Gap
 
@@ -1165,7 +1165,7 @@ P2-Net (Yu et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패
 
 3. **밀도 차이(Density Gap)**: 카메라 이미지의 해상도(수백만 픽셀)와 LiDAR 점군의 밀도(수만~수십만 점)가 크게 다르며, LiDAR 점군은 거리에 따라 밀도가 급격히 변한다.
 
-4. **외관 도메인 갭(Appearance Domain Gap)**: 같은 물체라도 카메라의 반사율(albedo)과 LiDAR의 반사 강도(intensity)는 다른 물리적 양을 측정한다.
+4. **외관 도메인 갭(Appearance Domain Gap)**: 같은 물체를 두 센서가 서로 다른 양으로 잰다. 카메라는 조명과 표면 반사 특성이 함께 결정하는 밝기를 기록하고, LiDAR는 레이저 파장에서 되돌아온 광량(intensity)을 측정한다. 표면 고유의 반사율(albedo)은 어느 쪽에서도 직접 얻어지지 않는다.
 
 이런 어려움 때문에 cross-modal correspondence는 아직 unimodal (2D-2D 또는 3D-3D) 매칭보다 덜 성숙한 연구 영역이다. MI 기반 접근법 (5.4절)은 이 도메인 갭을 통계적으로 우회하고, 투영 기반 접근법은 두 관측을 같은 2D 영상 형식으로 표현한다.
 
@@ -1255,7 +1255,7 @@ Euler-Lagrange 방정식을 풀면 반복적 갱신 수식을 얻는다. Dense f
 
 $$C_{ijkl} = \sum_d g_1(i, j, d) \cdot g_2(k, l, d)$$
 
-4D correlation volume $\mathbf{C} \in \mathbb{R}^{H \times W \times H \times W}$ 생성. 이를 후반 두 차원에 대해 average pooling하여 4단계 **correlation pyramid**을 구축 (스케일 1, 2, 4, 8).
+4D correlation volume $\mathbf{C} \in \mathbb{R}^{H/8 \times W/8 \times H/8 \times W/8}$ 생성. 축은 모두 특징 맵 해상도 기준이다. 이를 후반 두 차원에 대해 average pooling하여 4단계 **correlation pyramid**을 구축 (스케일 1, 2, 4, 8).
 
 **coarse-to-fine이 아닌, single resolution에서 multi-scale lookup**을 수행한다는 점이 이전 방법과의 차이다.
 
@@ -1325,7 +1325,7 @@ UniMatch는 flow, stereo, depth를 통합하여, 하나의 모델이 태스크�
 
 - **Stereo**: 수평 방향 1D correlation
 - **Flow**: 2D all-pairs correlation
-- **Depth**: monocular 특징에서 depth regression
+- **Depth**: 자세를 아는 두 시점 사이의 cross-view matching
 
 ### 5.10.4 기술 흐름: Sparse Feature → Dense Correspondence
 
@@ -1389,7 +1389,7 @@ Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB
 [Detector-Free Matching — 파이프라인 해체]
 
     LoFTR (2021) ──→ QuadTree (2022) ──→ ASpanFormer (2022) ──→ RoMa (2024)
-      transformer         O(N log N)        adaptive span          DINOv2
+      transformer         O(N)        adaptive span          DINOv2
       coarse-to-fine       효율화           텍스처 적응             확률적 매칭
       검출기 완전 제거                                              foundation
                                                                     model 활용

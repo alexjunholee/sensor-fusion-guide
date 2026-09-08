@@ -273,7 +273,7 @@ F = np.array([[1, dt],
               [0, 1]])      # (2, 2) constant-velocity transition matrix
 H = np.array([[1, 0]])       # (1, 2) observe position only
 Q = np.array([[dt**3/3, dt**2/2],
-              [dt**2/2, dt]]) * 0.1  # (2, 2) process noise (constant-acceleration model)
+              [dt**2/2, dt]]) * 0.1  # (2, 2) process noise (constant-velocity model + continuous-time white-noise acceleration)
 R = np.array([[1.0]])         # (1, 1) observation noise variance
 
 kf = KalmanFilter(F, H, Q, R)
@@ -795,7 +795,7 @@ Until the early 2000s, EKF-SLAM was the mainstream of SLAM. Gradually, the field
 
 The EKF is "linearize once, and you're done." The Jacobian at time $k$ is computed at the time-$k$ estimate, and if a better estimate is later obtained, the past Jacobians are not revised. In contrast, batch optimization can iteratively relinearize the Jacobians of the entire trajectory at the current estimate.
 
-[Strasdat et al. (2012) "Visual SLAM: Why Filter?"](https://doi.org/10.1016/j.imavis.2012.02.009) presented this argument systematically: given the same computational budget, adding more keyframes to optimization yields higher accuracy than adding more observations to filtering.
+[Strasdat et al. (2012) "Visual SLAM: Why Filter?"](https://doi.org/10.1016/j.imavis.2012.02.009) presented this argument systematically: given the same computational budget, increasing the number of features improves accuracy more than increasing the number of frames, and bundle adjustment, whose cost is linear in the number of features, is more efficient in that respect than filtering, whose cost is cubic.
 
 **2. Consistency issues**
 
@@ -959,7 +959,7 @@ iSAM2 uses four mechanisms:
 
 GTSAM implements iSAM2, which serves as the backend of systems such as [LIO-SAM](https://arxiv.org/abs/2007.00258). VINS-Mono instead uses Ceres-based sliding-window optimization.
 
-> **Recent trends — continuous-time factor graph**: there is active research extending discrete keyframe-based factor graphs to **continuous time**. [Wong et al. (2024)](https://arxiv.org/abs/2402.06174) use a Gaussian Process motion prior to unify radar-inertial and LiDAR-inertial odometry in a continuous-time factor graph, and show that asynchronous sensor measurements can be handled naturally.
+> **Recent trends — continuous-time factor graph**: there is active research extending discrete keyframe-based factor graphs to **continuous time**. [Burnett et al. (2024)](https://arxiv.org/abs/2402.06174) use a Gaussian Process motion prior to unify radar-inertial and LiDAR-inertial odometry in a continuous-time factor graph, and show that asynchronous sensor measurements can be handled naturally.
 
 ### 4.5.7 GTSAM / Ceres / g2o Comparison
 
@@ -1040,7 +1040,7 @@ Integrating the IMU measurements between two keyframes to obtain the relative po
 
 $$\mathbf{R}_j = \mathbf{R}_i \prod_{k=i}^{j-1} \text{Exp}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g) \Delta t)$$
 $$\mathbf{v}_j = \mathbf{v}_i + \mathbf{g} \Delta t_{ij} + \sum_{k=i}^{j-1} \mathbf{R}_k (\tilde{\mathbf{a}}_k - \mathbf{b}_a) \Delta t$$
-$$\mathbf{p}_j = \mathbf{p}_i + \mathbf{v}_i \Delta t_{ij} + \frac{1}{2}\mathbf{g}\Delta t_{ij}^2 + \sum_{k=i}^{j-1}\left[\mathbf{v}_k \Delta t + \frac{1}{2}\mathbf{R}_k(\tilde{\mathbf{a}}_k - \mathbf{b}_a)\Delta t^2\right]$$
+$$\mathbf{p}_j = \mathbf{p}_i + \sum_{k=i}^{j-1}\left[\mathbf{v}_k \Delta t + \frac{1}{2}\left(\mathbf{R}_k(\tilde{\mathbf{a}}_k - \mathbf{b}_a) + \mathbf{g}\right)\Delta t^2\right]$$
 
 The problem: this integration depends on the state $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ at keyframe $i$ and on the biases $(\mathbf{b}_g, \mathbf{b}_a)$. In the optimization loop, whenever the estimates of $\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i$ change, all intermediate states must be re-integrated. The same is true when the bias estimates change. This means hundreds of exponential-map evaluations per optimization iteration.
 
@@ -1089,7 +1089,7 @@ $$\Delta\hat{\mathbf{p}}_{ij}(\mathbf{b} + \delta\mathbf{b}) \approx \Delta\hat{
 
 The Jacobians $\frac{\partial \Delta\bar{\mathbf{R}}_{ij}}{\partial \mathbf{b}_g}$ and the like are accumulated recursively during preintegration. For example, the bias Jacobian of the rotation:
 
-$$\frac{\partial \Delta\bar{\mathbf{R}}_{i,k+1}}{\partial \mathbf{b}_g} = -\Delta\bar{\mathbf{R}}_{k,k+1}^\top \text{Jr}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g)\Delta t) \Delta t + \Delta\bar{\mathbf{R}}_{k,k+1}^\top \frac{\partial \Delta\bar{\mathbf{R}}_{ik}}{\partial \mathbf{b}_g}$$
+$$\frac{\partial \Delta\bar{\mathbf{R}}_{i,k+1}}{\partial \mathbf{b}_g} = \Delta\bar{\mathbf{R}}_{k,k+1}^\top \frac{\partial \Delta\bar{\mathbf{R}}_{ik}}{\partial \mathbf{b}_g} - \text{Jr}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g)\Delta t) \Delta t$$
 
 where $\text{Jr}(\boldsymbol{\phi})$ is the right Jacobian of SO(3):
 
@@ -1268,7 +1268,7 @@ class IMUPreintegration:
         self.d_v_d_bg += -self.delta_R @ skew(acc) @ self.d_R_d_bg * dt
         self.d_v_d_ba += -self.delta_R * dt
         # rotation Jacobian
-        self.d_R_d_bg = dR.T @ (self.d_R_d_bg - Jr * dt)
+        self.d_R_d_bg = dR.T @ self.d_R_d_bg - Jr * dt   # the new term is not multiplied by dR.T
         
         # --- covariance propagation (Step 4) ---
         A = np.eye(9)
@@ -1283,8 +1283,9 @@ class IMUPreintegration:
         B[6:9, 3:6] = 0.5 * self.delta_R * dt**2
         
         Sigma_eta = np.zeros((6, 6))
-        Sigma_eta[0:3, 0:3] = np.eye(3) * self.sigma_g**2
-        Sigma_eta[3:6, 3:6] = np.eye(3) * self.sigma_a**2
+        # continuous-time noise density -> discrete-time covariance: density^2/dt (B already carries a factor of dt)
+        Sigma_eta[0:3, 0:3] = np.eye(3) * self.sigma_g**2 / dt
+        Sigma_eta[3:6, 3:6] = np.eye(3) * self.sigma_a**2 / dt
         
         self.cov = A @ self.cov @ A.T + B @ Sigma_eta @ B.T
         
@@ -1342,7 +1343,7 @@ import gtsam
 def create_imu_factor_gtsam():
     """Example using GTSAM's built-in IMU preintegration."""
     # IMU parameters
-    imu_params = gtsam.PreintegrationParams.MakeSharedU(9.81)  # gravity direction: +z
+    imu_params = gtsam.PreintegrationParams.MakeSharedU(9.81)  # for a Z-up frame; the internal gravity vector is (0, 0, -9.81)
     imu_params.setAccelerometerCovariance(np.eye(3) * 0.01**2)
     imu_params.setGyroscopeCovariance(np.eye(3) * 0.001**2)
     imu_params.setIntegrationCovariance(np.eye(3) * 1e-8)
@@ -1556,4 +1557,4 @@ The state estimation methods relate as follows:
 
 The same machinery appears in VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8).
 
-> **2024-2025 research directions**: the Equivariant Filter and Invariant EKF exploit Lie-group symmetries to improve error dynamics, consistency, and convergence analysis for specific systems and assumptions. Continuous-time factor graphs with Gaussian-process motion priors support asynchronous multi-sensor fusion. Work such as [AI-Aided Kalman Filters (Revach et al., 2024)](https://arxiv.org/abs/2410.12289) learns a gain or part of the model; distribution shift and safety validation remain open.
+> **2024-2025 research directions**: the Equivariant Filter and Invariant EKF exploit Lie-group symmetries to improve error dynamics, consistency, and convergence analysis for specific systems and assumptions. Continuous-time factor graphs with Gaussian-process motion priors support asynchronous multi-sensor fusion. Work such as [AI-Aided Kalman Filters (Shlezinger et al., 2024)](https://arxiv.org/abs/2410.12289) learns a gain or part of the model; distribution shift and safety validation remain open.

@@ -311,13 +311,19 @@ calibration_flags = (
     + cv2.fisheye.CALIB_CHECK_COND
     + cv2.fisheye.CALIB_FIX_SKEW
 )
+# CALIB_CHECK_COND aborts with an exception if even one image is badly conditioned.
+# In that case, drop the offending image or remove this flag.
 
 K_fisheye = np.zeros((3, 3))
 D_fisheye = np.zeros((4, 1))  # k1, k2, k3, k4
 
+# The fisheye module requires object points as (N, 1, 3) and image points as (N, 1, 2) (convert the (N, 3) object points from 3.1.4)
+obj_points_f = [o.reshape(-1, 1, 3).astype(np.float64) for o in obj_points]
+img_points_f = [p.reshape(-1, 1, 2).astype(np.float64) for p in img_points]
+
 ret, K_fisheye, D_fisheye, rvecs, tvecs = cv2.fisheye.calibrate(
-    obj_points,
-    img_points,
+    obj_points_f,
+    img_points_f,
     gray.shape[::-1],
     K_fisheye,
     D_fisheye,
@@ -542,19 +548,27 @@ def calibrate_camera_lidar_target(
     all_points_3d_lidar = []
     all_points_2d_camera = []
 
-    for i, (corners_2d, (normal, d)) in enumerate(zip(img_corners_list, lidar_planes_list)):
+    # Collect (camera-frame plane, LiDAR-frame plane) pairs from each observation. Planes are n·x + d = 0
+    planes_cam, planes_lidar = [], []
+    for corners_2d, (normal_l, d_l) in zip(img_corners_list, lidar_planes_list):
         # Checkerboard pose as seen from the camera (PnP)
-        ret, rvec, tvec = cv2.solvePnP(
-            board_corners_3d, corners_2d, K, dist
-        )
+        ret, rvec, tvec = cv2.solvePnP(board_corners_3d, corners_2d, K, dist)
         R_cam_board, _ = cv2.Rodrigues(rvec)
+        # Checkerboard plane in the camera frame: normal is the board z-axis, distance from the board origin
+        n_c = R_cam_board[:, 2]
+        d_c = -n_c @ tvec.ravel()
+        planes_cam.append((n_c, d_c))
+        planes_lidar.append((normal_l, d_l))
 
-        # Transform checkerboard corners into the camera frame
-        corners_cam = (R_cam_board @ board_corners_3d.T + tvec).T
+    # Rotation: align normal pairs (Kabsch/SVD), n_c = R n_l
+    N_c = np.stack([n for n, _ in planes_cam])
+    N_l = np.stack([n for n, _ in planes_lidar])
+    U, _, Vt = np.linalg.svd(N_c.T @ N_l)
+    R_cam_lidar = U @ np.diag([1, 1, np.sign(np.linalg.det(U @ Vt))]) @ Vt
 
-        # Collect points on the LiDAR plane
-        # (in practice, use plane inliers from the LiDAR point cloud)
-        all_points_2d_camera.append(corners_2d)
+    # Translation: plane-distance constraint n_c · t = d_l - d_c by least squares (needs at least 3 planes)
+    b = np.array([d_l - d_c for (_, d_c), (_, d_l) in zip(planes_cam, planes_lidar)])
+    t_cam_lidar, *_ = np.linalg.lstsq(N_c, b, rcond=None)
 
     # The final result is refined by nonlinear optimization
     return R_cam_lidar, t_cam_lidar
@@ -680,7 +694,7 @@ Starting from the initial estimate, a Nelder-Mead optimization minimizes the NID
 | Autoware Calibration Toolkit | Target-based | Yes | Offline workflow with operator steps | Supported sensors and target; initialization |
 | `direct_visual_lidar_calibration` (Koide) | Targetless (NID) | No | Automated offline pipeline | Scene overlap, intensity rendering, initialization success |
 | ACSC (Automatic Calibration) | Target-based + automatic corner extraction | Yes | Automated target detection | Required target and supported sensor model |
-| LiveCalib | Online | No | Estimation during operation | Motion observability and drift-monitoring criterion |
+| Online extrinsic estimation (VIO/LIO state augmentation) | Online | No | Estimation during operation | Motion observability and drift-monitoring criterion |
 
 Recently, [MFCalib (2024)](https://arxiv.org/abs/2409.00992) combined depth-continuity, depth-discontinuity, and intensity-discontinuity edges. Its authors model LiDAR-beam formation to address edge inflation and report lower calibration errors than the compared methods under the paper's datasets and metrics.
 
@@ -690,7 +704,7 @@ Koide et al. (2023) propose using an initial target-based result as the referenc
 
 ## 3.4 Camera-IMU Extrinsic + Temporal Calibration
 
-The spatial displacement (extrinsic) and temporal offset between the camera and IMU must be estimated together. Representative VIO (Visual-Inertial Odometry) systems and calibration tools, including VINS-Mono, OpenVINS, and Kalibr, require both as calibration inputs.
+The spatial displacement (extrinsic) and temporal offset between the camera and IMU must be estimated together. VIO (Visual-Inertial Odometry) systems such as VINS-Mono and OpenVINS take both parameters as initial values and refine them during operation, whereas calibration tools such as Kalibr are what estimate these two values in the first place.
 
 ### 3.4.1 Why Time Offset Matters
 
@@ -1078,7 +1092,7 @@ FAST-LIO2 can estimate LiDAR-IMU extrinsics during operation, but it still requi
 
 1. Estimate the attitude using only IMU data, and estimate the pose via LiDAR matching
 2. Iteratively refine the relative transform from the difference of the two estimates
-3. Include the LiDAR-IMU extrinsic in the state vector of the Error-State Iterated Kalman Filter (ESIKF) to estimate it online
+3. Hand the result to FAST-LIO2. Subsequent online refinement is carried out by FAST-LIO2's Error-State Iterated Kalman Filter (ESIKF), which updates the LiDAR-IMU extrinsic included in its state vector
 
 The initialization module estimates extrinsics when LIO starts, without a separate target or additional sensor. Sufficient motion excitation is required; the public implementation recommends an initial stationary period and 15–30 seconds of online refinement after initialization.
 
@@ -1167,7 +1181,7 @@ The most direct method uses a tape measure, laser rangefinder, or similar tool. 
 
 **Method 2: Filter-based online estimation**
 
-Include the lever arm $\mathbf{l}$ in the EKF state vector and estimate it online. For the lever arm to be observable in the GNSS observation model, sufficient rotational motion is needed. Straight-line motion alone makes it hard to estimate the forward component ($l_x$) of the lever arm.
+Include the lever arm $\mathbf{l}$ in the EKF state vector and estimate it online. For the lever arm to be observable in the GNSS observation model, sufficient rotational motion is needed. In straight-line motion at constant attitude, $\mathbf{R}\mathbf{l}$ is absorbed into a constant bias, so none of the three lever-arm components is observable; with yaw rotation only, the vertical component ($l_z$), parallel to the rotation axis, remains unobserved.
 
 **Method 3: Post-processing**
 
@@ -1341,7 +1355,7 @@ Recently, [iKalibr (Chen et al., 2024)](https://arxiv.org/abs/2407.11420) extend
 
 **Observability conditions**: For the time offset to be observable, the platform must undergo sufficient accelerated motion. With constant-velocity straight-line motion, the time offset cannot be estimated (temporal shift is indistinguishable from spatial shift).
 
-Kalibr (Section 3.4.2), OpenVINS, VINS-Mono, and other modern VIO systems all implement variants of this method.
+Modern VIO systems such as OpenVINS and VINS-Mono implement variants of this method. Kalibr (Section 3.4.2), an offline tool, estimates the same quantities separately through continuous-time B-spline batch optimization.
 
 ### 3.9.5 Practical Synchronization Strategy Guide
 
