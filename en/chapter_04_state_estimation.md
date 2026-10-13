@@ -1032,7 +1032,7 @@ for i in range(5):
 
 ### 4.6.1 Why Preintegration Is Needed
 
-An IMU usually measures acceleration and angular velocity at 200 Hz to 1000 Hz, while camera/LiDAR keyframes arrive at 10 Hz to 30 Hz intervals. At these rates, approximately 7–100 IMU measurements occur between two keyframes $i, j$.
+An IMU usually measures acceleration and angular velocity at 200 Hz to 1000 Hz, while camera/LiDAR keyframes are generated at 10 Hz to 30 Hz. At these rates, approximately 7–100 IMU measurements occur between two keyframes $i, j$.
 
 **Naive approach: direct integration**
 

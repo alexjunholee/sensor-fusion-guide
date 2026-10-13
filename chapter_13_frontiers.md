@@ -18,11 +18,11 @@ Foundation model—대규모 데이터로 사전학습된 범용 모델(DINOv2, 
 - 객체 category와 장면 semantics가 feature similarity에 반영될 수 있다.
 - Patch-level structure가 correspondence·segmentation 같은 downstream task에 활용된다.
 
-**AnyLoc의 접근**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023)은 DINOv2의 dense feature를 VLAD로 집계하여 글로벌 장소 디스크립터를 생성한다. 이 디스크립터는:
+**AnyLoc의 접근**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023)은 DINOv2의 dense feature를 VLAD로 집계하여 글로벌 장소 디스크립터를 생성한다.
 
-- 도심, 실내, 항공, 수중, 지하를 포함한 논문 benchmark에서 VPR 전용 fine-tuning 없이 평가됐다.
-- 원 논문의 여러 dataset에서 비교한 NetVLAD·CosPlace 계열보다 높은 recall을 보고했지만, 모든 환경에 대한 보장은 아니다.
-- 31번째 layer의 value-facet dense feature가 전역 CLS token 디스크립터보다 좋았다는 논문 내 ablation을 제시한다. 개선 폭은 지표와 평가 대상에 따라 다르므로 원 논문의 ablation 표에서 지표 이름과 평균 범위를 함께 읽는다.
+- 논문은 이 디스크립터를 도심, 실내, 항공, 수중, 지하를 포함한 benchmark에서 VPR 전용 fine-tuning 없이 평가했다.
+- 원 논문은 여러 dataset에서 비교한 NetVLAD·CosPlace 계열보다 높은 recall을 보고했지만, 모든 환경에 대한 보장은 아니다.
+- 논문 내 ablation에서는 31번째 layer의 value-facet dense feature가 전역 CLS token 디스크립터보다 좋았다. 개선 폭은 지표와 평가 대상에 따라 다르므로 원 논문의 ablation 표에서 지표 이름과 평균 범위를 함께 읽는다.
 
 ```python
 import numpy as np

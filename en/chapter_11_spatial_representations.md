@@ -708,7 +708,7 @@ def render_gaussians(gaussians, T_world_to_cam, K, image_size):
 
 ## 11.4 Semantic Maps
 
-A geometric map answers only the "where" of "where is what." A semantic map also answers the "what" — whether this is a wall, a door, a chair, or a person. A robot needs semantic information to distinguish the objects and categories in its environment.
+A geometric map answers only the "where" part of the question "what is where." A semantic map also answers the "what" — whether this is a wall, a door, a chair, or a person. A robot needs semantic information to distinguish the objects and categories in its environment.
 
 ### 11.4.1 Object-Level Maps
 

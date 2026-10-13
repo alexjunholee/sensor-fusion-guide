@@ -1191,7 +1191,7 @@ Process the collected GNSS/IMU data with a forward-backward smoother to optimize
 
 The antenna phase center (APC) of a GNSS antenna does not coincide with the antenna's physical center and varies with the satellite's elevation angle and frequency. This variation is called the Phase Center Variation (PCV), and is on the order of mm to cm.
 
-In precision RTK or PPP processing, apply antenna phase-center corrections when required by the error budget and processing convention. The decision depends on the antenna model, base/rover processing, attitude changes, and target accuracy.
+In precision RTK or PPP processing, apply antenna phase-center correction data (ANTEX files) when required by the error budget and processing convention. The decision depends on the antenna model, base/rover processing, attitude changes, and target accuracy.
 
 ---
 

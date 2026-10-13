@@ -844,7 +844,7 @@ Lee (2023) (LC)² [LiDAR ↔ Camera shared embedding]
 
 ## Chapter 9 Summary
 
-Place recognition supplies loop-closure candidates that can constrain drift. Visual PR spans BoW, VLAD, NetVLAD, and systems such as AnyLoc that reuse foundation-model features without task-specific labels. LiDAR PR spans Scan Context, PointNetVLAD, MinkLoc3D, and OverlapTransformer; range-image methods offer a different efficiency–invariance tradeoff.
+Place Recognition helps correct drift by finding loop-closure candidates in a SLAM system. Visual PR developed from BoW (Video Google) through VLAD and NetVLAD to AnyLoc, with more recent methods using features from foundation models such as DINOv2 for general-purpose zero-shot recognition. LiDAR PR developed from Scan Context (handcrafted) through PointNetVLAD and MinkLoc3D to OverlapTransformer, with range-image-based methods improving computational efficiency.
 
 Cross-modal PR faces a domain gap, and shared-embedding-space learning and modality-agnostic descriptors are active research directions. Long-term PR must cope with seasonal, illumination, and structural changes; researchers are applying Foundation Model features to this problem.
 

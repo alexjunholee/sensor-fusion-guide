@@ -375,7 +375,7 @@ That said, the limitations of the LOAM family are equally clear. First, the ring
 
 ## 7.3 Tightly-Coupled LiDAR-Inertial Odometry
 
-With LiDAR alone, motion distortion becomes severe under fast motion, and providing a good initial guess is difficult. A tightly coupled combination with an IMU overcomes these limitations.
+With LiDAR alone, motion distortion becomes severe under fast motion, and providing a good initial guess is difficult. A tightly coupled combination with an IMU can overcome these limitations.
 
 ### 7.3.1 LIO-SAM
 
@@ -765,4 +765,4 @@ LiDAR odometry systems published in 2023-2024 include the following.
 
 The LOAM (2014) → LeGO-LOAM (2018) → LIO-SAM (2020) lineage illustrates **feature-based + factor graph** design. FAST-LIO (2021) → FAST-LIO2 (2022) → Point-LIO (2023) illustrates **direct + Kalman filter** design. Relative accuracy and runtime depend on the sensor pattern, motion, map scale, hardware, and benchmark protocol.
 
-The feature-based approach is strong in structured environments (buildings, cities), and the direct approach is strong in unstructured environments (forests, caves) and on solid-state LiDARs. Multi-sensor fusion architectures integrate these two sensor modalities (camera + LiDAR) together with an IMU.
+Feature-based methods are stable in urban environments rich in geometric planes and edges, while direct methods have advantages in irregular environments such as forests and with solid-state LiDARs. Combining a camera and LiDAR with an IMU raises the question of multi-sensor fusion architecture.

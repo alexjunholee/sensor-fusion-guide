@@ -18,11 +18,11 @@ Research increasingly uses representations from foundation models — general-pu
 - Object categories and scene semantics can affect feature similarity.
 - Patch-level structure can support downstream correspondence and segmentation tasks.
 
-**AnyLoc's approach**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023) aggregates DINOv2's dense features with VLAD to produce a global place descriptor. This descriptor:
+**AnyLoc's approach**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023) aggregates DINOv2's dense features with VLAD to produce a global place descriptor.
 
-- was evaluated without VPR-specific fine-tuning on paper benchmarks spanning urban, indoor, aerial, underwater, and subterranean settings.
-- reports higher recall than the tested NetVLAD- and CosPlace-family baselines on several datasets, not a guarantee for every environment.
-- includes an ablation in which value-facet dense features from layer 31 outperform the global CLS-token descriptor. The size of the improvement depends on the metric and on what is being evaluated, so read the metric name together with the reported average range in the paper's own ablation table.
+- The paper evaluated this descriptor without VPR-specific fine-tuning on benchmarks spanning urban, indoor, aerial, underwater, and subterranean settings.
+- The paper reports higher recall than the tested NetVLAD- and CosPlace-family baselines on several datasets, but this is not a guarantee for every environment.
+- In the paper's ablation, value-facet dense features from layer 31 outperform the global CLS-token descriptor. The size of the improvement depends on the metric and on what is being evaluated, so read the metric name together with the reported average range in the paper's own ablation table.
 
 ```python
 import numpy as np
@@ -748,7 +748,7 @@ The deployment scope of 4D radar fusion remains limited. Ego-motion estimation a
 
 ## Closing
 
-The sensor fusion pipeline runs from sensor modeling (Ch.2) through calibration (Ch.3), state estimation theory (Ch.4), feature matching (Ch.5), VO/VIO (Ch.6), LiDAR odometry (Ch.7), multi-sensor fusion (Ch.8), Place Recognition (Ch.9), Loop Closure (Ch.10), spatial representation (Ch.11), practical systems (Ch.12), and research frontiers (Ch.13).
+The discussion has progressed from sensor modeling (Ch.2) through calibration (Ch.3), state estimation theory (Ch.4), feature matching (Ch.5), VO/VIO (Ch.6), LiDAR odometry (Ch.7), multi-sensor fusion (Ch.8), Place Recognition (Ch.9), Loop Closure (Ch.10), spatial representation (Ch.11), practical systems (Ch.12), and research frontiers (Ch.13).
 
 Four trends emerge from this sequence:
 

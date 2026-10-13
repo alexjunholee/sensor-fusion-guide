@@ -4576,7 +4576,7 @@ for i in range(5):
 
 ### 4.6.1 왜 Preintegration이 필요한가
 
-IMU는 보통 200~1000Hz로 가속도와 각속도를 측정하지만, 카메라/LiDAR 키프레임은 10~30Hz 간격이다. 이 주파수 범위에서는 두 키프레임 $i, j$ 사이에 대략 7~100개의 IMU 측정이 존재한다.
+IMU는 보통 200~1000Hz로 가속도와 각속도를 측정하지만, 카메라/LiDAR 키프레임은 10~30Hz로 생성된다. 이 주파수 범위에서는 두 키프레임 $i, j$ 사이에 대략 7~100개의 IMU 측정이 존재한다.
 
 **Naive 접근: 직접 적분**
 
@@ -10662,7 +10662,7 @@ class MultiMapAtlas:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$가 걸린 경계 상태에 대해 정보를 교환한다. ADMM이나 Gauss-Seidel 계열 블록 좌표 하강을 분산으로 돌린다. 다만 회전이 들어간 pose graph 목적식은 비볼록이라 ADMM의 볼록 수렴 보장이 적용되지 않고, 도달하는 것은 초기값과 통신 그래프에 의존하는 1차 임계점이다. 전역 최적성은 사후 검증을 붙인 certifiably correct 계열에서 특정 조건에서만 얻는다.
+각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$가 걸린 경계 상태에 대해 정보를 교환한다. ADMM이나 Gauss-Seidel 계열 블록 좌표 하강을 분산으로 돌린다. 다만 회전이 들어간 pose graph 목적식은 비볼록이므로 ADMM의 볼록 수렴 보장을 그대로 적용할 수 없다. 1차 임계점으로의 수렴도 선택한 알고리즘의 가정을 확인해야 한다. 예를 들어 [비볼록 ADMM의 수렴 결과](https://arxiv.org/abs/1410.1390)는 특정 문제 구조와 충분히 큰 페널티 계수 같은 조건을 요구한다. ADMM이나 Gauss-Seidel을 썼다는 사실만으로 이 목적식의 수렴이 보장되지는 않는다. 초기값과 통신 그래프는 수렴 과정과 얻어지는 해에 영향을 준다. [DC2-PGO 같은 certifiably correct 방법](https://arxiv.org/abs/1911.03721)은 자신이 다루는 문제와 조건 아래에서 해를 구하고, 사후 검증으로 그 해의 전역 최적성을 확인한다.
 
 ---
 
@@ -12468,11 +12468,11 @@ Foundation model—대규모 데이터로 사전학습된 범용 모델(DINOv2, 
 - 객체 category와 장면 semantics가 feature similarity에 반영될 수 있다.
 - Patch-level structure가 correspondence·segmentation 같은 downstream task에 활용된다.
 
-**AnyLoc의 접근**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023)은 DINOv2의 dense feature를 VLAD로 집계하여 글로벌 장소 디스크립터를 생성한다. 이 디스크립터는:
+**AnyLoc의 접근**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023)은 DINOv2의 dense feature를 VLAD로 집계하여 글로벌 장소 디스크립터를 생성한다.
 
-- 도심, 실내, 항공, 수중, 지하를 포함한 논문 benchmark에서 VPR 전용 fine-tuning 없이 평가됐다.
-- 원 논문의 여러 dataset에서 비교한 NetVLAD·CosPlace 계열보다 높은 recall을 보고했지만, 모든 환경에 대한 보장은 아니다.
-- 31번째 layer의 value-facet dense feature가 전역 CLS token 디스크립터보다 좋았다는 논문 내 ablation을 제시한다. 개선 폭은 지표와 평가 대상에 따라 다르므로 원 논문의 ablation 표에서 지표 이름과 평균 범위를 함께 읽는다.
+- 논문은 이 디스크립터를 도심, 실내, 항공, 수중, 지하를 포함한 benchmark에서 VPR 전용 fine-tuning 없이 평가했다.
+- 원 논문은 여러 dataset에서 비교한 NetVLAD·CosPlace 계열보다 높은 recall을 보고했지만, 모든 환경에 대한 보장은 아니다.
+- 논문 내 ablation에서는 31번째 layer의 value-facet dense feature가 전역 CLS token 디스크립터보다 좋았다. 개선 폭은 지표와 평가 대상에 따라 다르므로 원 논문의 ablation 표에서 지표 이름과 평균 범위를 함께 읽는다.
 
 ```python
 import numpy as np
@@ -15843,7 +15843,7 @@ Process the collected GNSS/IMU data with a forward-backward smoother to optimize
 
 The antenna phase center (APC) of a GNSS antenna does not coincide with the antenna's physical center and varies with the satellite's elevation angle and frequency. This variation is called the Phase Center Variation (PCV), and is on the order of mm to cm.
 
-In precision RTK or PPP processing, apply antenna phase-center corrections when required by the error budget and processing convention. The decision depends on the antenna model, base/rover processing, attitude changes, and target accuracy.
+In precision RTK or PPP processing, apply antenna phase-center correction data (ANTEX files) when required by the error budget and processing convention. The decision depends on the antenna model, base/rover processing, attitude changes, and target accuracy.
 
 ---
 
@@ -17104,7 +17104,7 @@ for i in range(5):
 
 ### 4.6.1 Why Preintegration Is Needed
 
-An IMU usually measures acceleration and angular velocity at 200 Hz to 1000 Hz, while camera/LiDAR keyframes arrive at 10 Hz to 30 Hz intervals. At these rates, approximately 7–100 IMU measurements occur between two keyframes $i, j$.
+An IMU usually measures acceleration and angular velocity at 200 Hz to 1000 Hz, while camera/LiDAR keyframes are generated at 10 Hz to 30 Hz. At these rates, approximately 7–100 IMU measurements occur between two keyframes $i, j$.
 
 **Naive approach: direct integration**
 
@@ -20316,7 +20316,7 @@ That said, the limitations of the LOAM family are equally clear. First, the ring
 
 ## 7.3 Tightly-Coupled LiDAR-Inertial Odometry
 
-With LiDAR alone, motion distortion becomes severe under fast motion, and providing a good initial guess is difficult. A tightly coupled combination with an IMU overcomes these limitations.
+With LiDAR alone, motion distortion becomes severe under fast motion, and providing a good initial guess is difficult. A tightly coupled combination with an IMU can overcome these limitations.
 
 ### 7.3.1 LIO-SAM
 
@@ -20706,7 +20706,7 @@ LiDAR odometry systems published in 2023-2024 include the following.
 
 The LOAM (2014) → LeGO-LOAM (2018) → LIO-SAM (2020) lineage illustrates **feature-based + factor graph** design. FAST-LIO (2021) → FAST-LIO2 (2022) → Point-LIO (2023) illustrates **direct + Kalman filter** design. Relative accuracy and runtime depend on the sensor pattern, motion, map scale, hardware, and benchmark protocol.
 
-The feature-based approach is strong in structured environments (buildings, cities), and the direct approach is strong in unstructured environments (forests, caves) and on solid-state LiDARs. Multi-sensor fusion architectures integrate these two sensor modalities (camera + LiDAR) together with an IMU.
+Feature-based methods are stable in urban environments rich in geometric planes and edges, while direct methods have advantages in irregular environments such as forests and with solid-state LiDARs. Combining a camera and LiDAR with an IMU raises the question of multi-sensor fusion architecture.
 
 
 ---
@@ -20756,8 +20756,8 @@ $$
 Here $\mathbf{r}^{\text{IMU}}_i$ is the IMU preintegration residual, $\mathbf{r}^{\text{LiDAR}}_j$ is the point-to-plane residual, and $\mathbf{r}^{\text{cam}}_k$ is the reprojection error.
 
 **Advantages**:
-- Sensor-to-sensor interaction is exploited to the fullest. For example, the IMU corrects the LiDAR's motion distortion, and the LiDAR anchors the VIO's scale.
-- Fusion is close to information-theoretically optimal.
+- Interactions between sensors are used directly. For example, the IMU corrects the LiDAR's motion distortion, and the LiDAR anchors the VIO's scale.
+- Fusion close to information-theoretic optimality is possible.
 
 **Disadvantages**:
 - System complexity is high. The observation models, noise models, and time synchronization of all sensors must be managed within a single framework.
@@ -21483,7 +21483,7 @@ Items that must always be checked when designing a real multi-sensor fusion syst
 
 Multi-sensor fusion architectures are broadly classified as loosely/tightly/ultra-tightly coupled, and in modern robotics **tightly coupled** is the mainstream choice. Three-sensor fusion with camera, LiDAR, and IMU is implemented in systems such as R3LIVE, LVI-SAM, and FAST-LIVO2, which use a dual subsystem, factor graph, and sequential update, respectively.
 
-GNSS integration constrains drift with a global-coordinate observation, while 4D radar can add weather tolerance and radial-velocity measurements. Multi-robot systems such as Kimera-Multi and Swarm-SLAM combine distributed estimation with cross-robot place recognition under communication constraints.
+GNSS integration provides global-coordinate observations that constrain accumulated drift during long-distance travel. In adverse weather such as fog, rain, or snow, 4D radar can help measure Doppler-based radial velocity, but its errors must be checked under each condition. Multi-robot systems such as Kimera-Multi and Swarm-SLAM combine distributed estimation with cross-robot place recognition under communication constraints.
 
 In practical system design, sensor selection, time synchronization, and failure-mode handling matter as much as the algorithms. Engineering decisions in these areas affect deployment results.
 
@@ -22338,7 +22338,7 @@ Lee (2023) (LC)² [LiDAR ↔ Camera shared embedding]
 
 ## Chapter 9 Summary
 
-Place recognition supplies loop-closure candidates that can constrain drift. Visual PR spans BoW, VLAD, NetVLAD, and systems such as AnyLoc that reuse foundation-model features without task-specific labels. LiDAR PR spans Scan Context, PointNetVLAD, MinkLoc3D, and OverlapTransformer; range-image methods offer a different efficiency–invariance tradeoff.
+Place Recognition helps correct drift by finding loop-closure candidates in a SLAM system. Visual PR developed from BoW (Video Google) through VLAD and NetVLAD to AnyLoc, with more recent methods using features from foundation models such as DINOv2 for general-purpose zero-shot recognition. LiDAR PR developed from Scan Context (handcrafted) through PointNetVLAD and MinkLoc3D to OverlapTransformer, with range-image-based methods improving computational efficiency.
 
 Cross-modal PR faces a domain gap, and shared-embedding-space learning and modality-agnostic descriptors are active research directions. Long-term PR must cope with seasonal, illumination, and structural changes; researchers are applying Foundation Model features to this problem.
 
@@ -23233,7 +23233,7 @@ Distributed pose graph optimization can be written as:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally, and exchanges information for the boundary states touched by the inter-robot edges $\mathcal{E}_{\text{inter}}$. ADMM or Gauss-Seidel-style block coordinate descent is run in a distributed fashion. Note, though, that a pose graph objective containing rotations is non-convex, so ADMM's convex convergence guarantees do not apply; what is reached is a first-order critical point that depends on the initialization and the communication graph. Global optimality is obtained only under specific conditions, by certifiably correct methods that attach an a posteriori verification.
+Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally, and exchanges information for the boundary states touched by the inter-robot edges $\mathcal{E}_{\text{inter}}$. ADMM or Gauss-Seidel-style block coordinate descent is run in a distributed fashion. A pose graph objective containing rotations is non-convex, so ADMM's convex convergence guarantees cannot be applied directly. Convergence to a first-order critical point also requires checking the chosen algorithm's assumptions. For example, [non-convex ADMM convergence results](https://arxiv.org/abs/1410.1390) require conditions such as a particular problem structure and a sufficiently large penalty parameter. Using ADMM or Gauss-Seidel alone does not guarantee convergence for this objective. Initialization and the communication graph affect convergence and the solution obtained. [Certifiably correct methods such as DC2-PGO](https://arxiv.org/abs/1911.03721) solve their specified problems under the relevant conditions and use a posteriori verification to certify global optimality.
 
 ---
 
@@ -23962,7 +23962,7 @@ def render_gaussians(gaussians, T_world_to_cam, K, image_size):
 
 ## 11.4 Semantic Maps
 
-A geometric map answers only the "where" of "where is what." A semantic map also answers the "what" — whether this is a wall, a door, a chair, or a person. A robot needs semantic information to distinguish the objects and categories in its environment.
+A geometric map answers only the "where" part of the question "what is where." A semantic map also answers the "what" — whether this is a wall, a door, a chair, or a person. A robot needs semantic information to distinguish the objects and categories in its environment.
 
 ### 11.4.1 Object-Level Maps
 
@@ -25050,11 +25050,11 @@ Research increasingly uses representations from foundation models — general-pu
 - Object categories and scene semantics can affect feature similarity.
 - Patch-level structure can support downstream correspondence and segmentation tasks.
 
-**AnyLoc's approach**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023) aggregates DINOv2's dense features with VLAD to produce a global place descriptor. This descriptor:
+**AnyLoc's approach**: [AnyLoc](https://arxiv.org/abs/2308.00688) (Keetha et al. 2023) aggregates DINOv2's dense features with VLAD to produce a global place descriptor.
 
-- was evaluated without VPR-specific fine-tuning on paper benchmarks spanning urban, indoor, aerial, underwater, and subterranean settings.
-- reports higher recall than the tested NetVLAD- and CosPlace-family baselines on several datasets, not a guarantee for every environment.
-- includes an ablation in which value-facet dense features from layer 31 outperform the global CLS-token descriptor. The size of the improvement depends on the metric and on what is being evaluated, so read the metric name together with the reported average range in the paper's own ablation table.
+- The paper evaluated this descriptor without VPR-specific fine-tuning on benchmarks spanning urban, indoor, aerial, underwater, and subterranean settings.
+- The paper reports higher recall than the tested NetVLAD- and CosPlace-family baselines on several datasets, but this is not a guarantee for every environment.
+- In the paper's ablation, value-facet dense features from layer 31 outperform the global CLS-token descriptor. The size of the improvement depends on the metric and on what is being evaluated, so read the metric name together with the reported average range in the paper's own ablation table.
 
 ```python
 import numpy as np
@@ -25780,7 +25780,7 @@ The deployment scope of 4D radar fusion remains limited. Ego-motion estimation a
 
 ## Closing
 
-The sensor fusion pipeline runs from sensor modeling (Ch.2) through calibration (Ch.3), state estimation theory (Ch.4), feature matching (Ch.5), VO/VIO (Ch.6), LiDAR odometry (Ch.7), multi-sensor fusion (Ch.8), Place Recognition (Ch.9), Loop Closure (Ch.10), spatial representation (Ch.11), practical systems (Ch.12), and research frontiers (Ch.13).
+The discussion has progressed from sensor modeling (Ch.2) through calibration (Ch.3), state estimation theory (Ch.4), feature matching (Ch.5), VO/VIO (Ch.6), LiDAR odometry (Ch.7), multi-sensor fusion (Ch.8), Place Recognition (Ch.9), Loop Closure (Ch.10), spatial representation (Ch.11), practical systems (Ch.12), and research frontiers (Ch.13).
 
 Four trends emerge from this sequence:
 

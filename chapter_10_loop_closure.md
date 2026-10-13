@@ -877,7 +877,7 @@ class MultiMapAtlas:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$가 걸린 경계 상태에 대해 정보를 교환한다. ADMM이나 Gauss-Seidel 계열 블록 좌표 하강을 분산으로 돌린다. 다만 회전이 들어간 pose graph 목적식은 비볼록이라 ADMM의 볼록 수렴 보장이 적용되지 않고, 도달하는 것은 초기값과 통신 그래프에 의존하는 1차 임계점이다. 전역 최적성은 사후 검증을 붙인 certifiably correct 계열에서 특정 조건에서만 얻는다.
+각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$가 걸린 경계 상태에 대해 정보를 교환한다. ADMM이나 Gauss-Seidel 계열 블록 좌표 하강을 분산으로 돌린다. 다만 회전이 들어간 pose graph 목적식은 비볼록이므로 ADMM의 볼록 수렴 보장을 그대로 적용할 수 없다. 1차 임계점으로의 수렴도 선택한 알고리즘의 가정을 확인해야 한다. 예를 들어 [비볼록 ADMM의 수렴 결과](https://arxiv.org/abs/1410.1390)는 특정 문제 구조와 충분히 큰 페널티 계수 같은 조건을 요구한다. ADMM이나 Gauss-Seidel을 썼다는 사실만으로 이 목적식의 수렴이 보장되지는 않는다. 초기값과 통신 그래프는 수렴 과정과 얻어지는 해에 영향을 준다. [DC2-PGO 같은 certifiably correct 방법](https://arxiv.org/abs/1911.03721)은 자신이 다루는 문제와 조건 아래에서 해를 구하고, 사후 검증으로 그 해의 전역 최적성을 확인한다.
 
 ---
 

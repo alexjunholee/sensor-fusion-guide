@@ -43,8 +43,8 @@ $$
 Here $\mathbf{r}^{\text{IMU}}_i$ is the IMU preintegration residual, $\mathbf{r}^{\text{LiDAR}}_j$ is the point-to-plane residual, and $\mathbf{r}^{\text{cam}}_k$ is the reprojection error.
 
 **Advantages**:
-- Sensor-to-sensor interaction is exploited to the fullest. For example, the IMU corrects the LiDAR's motion distortion, and the LiDAR anchors the VIO's scale.
-- Fusion is close to information-theoretically optimal.
+- Interactions between sensors are used directly. For example, the IMU corrects the LiDAR's motion distortion, and the LiDAR anchors the VIO's scale.
+- Fusion close to information-theoretic optimality is possible.
 
 **Disadvantages**:
 - System complexity is high. The observation models, noise models, and time synchronization of all sensors must be managed within a single framework.
@@ -770,7 +770,7 @@ Items that must always be checked when designing a real multi-sensor fusion syst
 
 Multi-sensor fusion architectures are broadly classified as loosely/tightly/ultra-tightly coupled, and in modern robotics **tightly coupled** is the mainstream choice. Three-sensor fusion with camera, LiDAR, and IMU is implemented in systems such as R3LIVE, LVI-SAM, and FAST-LIVO2, which use a dual subsystem, factor graph, and sequential update, respectively.
 
-GNSS integration constrains drift with a global-coordinate observation, while 4D radar can add weather tolerance and radial-velocity measurements. Multi-robot systems such as Kimera-Multi and Swarm-SLAM combine distributed estimation with cross-robot place recognition under communication constraints.
+GNSS integration provides global-coordinate observations that constrain accumulated drift during long-distance travel. In adverse weather such as fog, rain, or snow, 4D radar can help measure Doppler-based radial velocity, but its errors must be checked under each condition. Multi-robot systems such as Kimera-Multi and Swarm-SLAM combine distributed estimation with cross-robot place recognition under communication constraints.
 
 In practical system design, sensor selection, time synchronization, and failure-mode handling matter as much as the algorithms. Engineering decisions in these areas affect deployment results.
 
