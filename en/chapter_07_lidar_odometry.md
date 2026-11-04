@@ -469,7 +469,7 @@ class LIOSAM:
         self.values.insert(X(self.key_idx), T_predict.pose())
         self.values.insert(V(self.key_idx), T_predict.velocity())
         self.values.insert(B(self.key_idx), self.current_bias)
-        # Random-walk factor constraining the new bias variable. Without it the variable is unconstrained and the iSAM2 update fails
+        # Random-walk factor constraining the new bias variable. Without it the update still runs, but the bias loses its temporal constraint: each B(k) is fixed by a single IMU factor and the estimate jumps between keyframes
         self.graph.add(gtsam.BetweenFactorConstantBias(
             B(self.key_idx - 1), B(self.key_idx), gtsam.imuBias.ConstantBias(), self.bias_noise))
         
@@ -686,7 +686,7 @@ Solid-state LiDARs (e.g., the Livox series) use non-repetitive scan patterns rat
 | Property | Spinning (Velodyne, Ouster) | Solid-state (Livox) |
 |------|--------------------------|---------------------|
 | Scan pattern | Repetitive (same pattern every rotation) | Non-repetitive (petal / rose pattern) |
-| FoV | 360° horizontal | Model-dependent (Mid-40 38.4° circular, Avia 70.4° circular, Horizon 81.7°×25.1°) |
+| FoV | 360° horizontal | Model-dependent (Mid-40 38.4° circular, Avia 70.4°×77.2°, Horizon 81.7°×25.1°) |
 | Point density | Uniform | Accumulates over time, non-uniform |
 | Price | High | Low |
 | Size / weight | Large | Small |

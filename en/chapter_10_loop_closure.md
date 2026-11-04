@@ -705,7 +705,9 @@ class MonteCarloLocalization:
         Cells are looked up by adding a direction vector to real-valued
         coordinates, so cells can be skipped or queried more than once.
         When every cell the line passes through must be visited exactly
-        once, use Bresenham or the Amanatides-Woo DDA.
+        once, use the Amanatides-Woo DDA. Bresenham avoids repeated lookups,
+        but as an 8-connected rasterization it still skips some cells the
+        line passes through.
         """
         dx = np.cos(angle) * self.resolution
         dy = np.sin(angle) * self.resolution

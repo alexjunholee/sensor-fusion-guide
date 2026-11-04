@@ -555,7 +555,7 @@ Comparison of the three libraries:
 - Uses an AprilGrid target
 - Widely used for camera-IMU calibration, though installation is tricky (ROS dependency)
 
-**OpenCalib** (2023):
+**OpenCalib** (2022):
 - Unified calibration across the full autonomous driving sensor stack
 - A collection of per-sensor-pair tools: camera intrinsics, LiDAR-camera, LiDAR-IMU, radar-camera, LiDAR-LiDAR, and others. There is not a module for every combination of the four sensors
 - Covers both target-based and targetless methods

@@ -1,30 +1,28 @@
 # Ch.11 — Spatial Representations
 
-로봇은 센서 데이터로 궤적을 추정하고 loop closure로 전역 일관성을 맞춘 뒤, 그 결과를 맵으로 남긴다. 맵은 로봇이 세상을 기억하고 활용하는 형태다.
+로봇은 센서 데이터로 궤적을 추정하고 loop closure로 궤적의 어긋남을 바로잡은 뒤, 그 결과를 맵으로 남긴다.
 
-**맵(map)**은 환경의 공간적 표현이다. SLAM 시스템은 로봇의 궤적뿐 아니라, 그 궤적을 통해 관측한 환경의 구조도 추정한다. 어떤 형태로 환경을 표현하느냐에 따라 로봇이 할 수 있는 일이 달라진다. 경로 계획은 free/occupied 정보를 요구하고, 시각적 렌더링은 텍스처를 요구하며, 인간과의 상호작용은 의미론적 레이블을 요구한다.
-
-출발점은 metric map(정량적 기하 맵)이고, 그 뒤에 mesh, neural representation, semantic map, 장기 유지(long-term maintenance)가 이어진다.
+**맵(map)**은 환경을 공간적으로 나타낸 것이다. SLAM 시스템은 로봇의 궤적과 함께 그 궤적에서 관측한 환경의 구조를 추정한다. 맵을 어떤 형태로 두느냐에 따라 로봇이 그 맵으로 할 수 있는 일이 정해진다. 경로 계획에는 어디가 비어 있고 어디가 막혀 있는지(free/occupied)가 필요하다. 시각적 렌더링에는 텍스처가 필요하고, 사람과 말로 주고받으려면 의미 레이블이 필요하다.
 
 ---
 
 ## 11.1 Metric Maps
 
-Metric map은 환경의 기하학적 구조를 정량적 좌표로 표현한다. Localization·planning에 직접 연결하기 쉬워 여러 로봇 시스템에서 널리 쓰이지만, 필요한 표현은 작업과 센서에 따라 달라진다.
+Metric map은 환경의 기하 구조를 좌표로 나타낸다. localization과 planning에 바로 쓸 수 있다. 어떤 metric map이 맞는지는 작업과 센서에 따라 다르다.
 
 ### 11.1.1 Occupancy Grid (2D/3D)
 
-Occupancy grid는 공간을 균일한 격자(grid)로 분할하고, 각 셀이 occupied/free/unknown 상태를 갖는 확률적 표현이다.
+Occupancy grid는 공간을 같은 크기의 격자(grid)로 나누고 칸마다 점유 확률을 둔다. 칸의 상태는 occupied(점유), free(빈 곳), unknown(미관측)으로 읽는다.
 
-**2D occupancy grid**: 평면 환경(실내, 단층)에서 사용한다. 각 셀 $m_i$에 대해 occupancy 확률 $p(m_i \mid z_{1:t})$를 베이즈 갱신으로 유지한다.
+**2D occupancy grid**: 단층 실내처럼 평면으로 볼 수 있는 환경에서 쓴다. 칸 $m_i$마다 occupancy 확률 $p(m_i \mid z_{1:t})$를 베이즈 갱신으로 고쳐 나간다.
 
 $$\text{log-odds}(m_i \mid z_{1:t}) = \text{log-odds}(m_i \mid z_{1:t-1}) + \text{log-odds}(m_i \mid z_t) - \text{log-odds}(m_i)$$
 
-여기서 log-odds 표현을 사용하면 곱셈이 덧셈이 되어 계산이 효율적이고, 수치적으로도 안정적이다:
+log-odds로 쓰면 확률의 곱셈이 덧셈이 되어 계산이 가볍고, 확률이 0이나 1에 가까워져도 수치가 안정적이다. log-odds의 정의는 다음과 같다:
 
 $$l(m_i) = \log\frac{p(m_i)}{1 - p(m_i)}$$
 
-**문제**: 해상도 $r$로 $L \times W \times H$ 공간을 dense 3D grid로 표현하면 $(L/r)(W/r)(H/r)$개의 cell이 필요하다. 예를 들어 100 m $\times$ 100 m $\times$ 10 m를 5 cm로 나누면 $2000 \times 2000 \times 200 = 8 \times 10^8$개 cell이다. cell당 float 하나만 저장해도 약 3.2 GB이고, weight·semantic·자료구조 overhead를 더하면 커진다.
+**메모리**: 해상도 $r$로 $L \times W \times H$ 공간을 빈틈없는(dense) 3D grid로 나타내면 $(L/r)(W/r)(H/r)$개의 cell이 필요하다. 예를 들어 100 m $\times$ 100 m $\times$ 10 m를 5 cm로 나누면 $2000 \times 2000 \times 200 = 8 \times 10^8$개 cell이다. cell마다 4바이트 float 하나만 저장해도 약 3.2 GB이고, 가중치·semantic 정보·자료구조 overhead를 더하면 더 커진다.
 
 ```python
 import numpy as np
@@ -117,15 +115,15 @@ class OccupancyGrid2D:
 
 ### 11.1.2 Voxel Maps: OctoMap, VDB, ikd-tree
 
-균일 격자의 메모리 문제를 해결하기 위해, 다양한 적응적(adaptive) 자료구조가 제안되었다.
+균일 격자의 메모리 문제를 줄이려고 필요한 곳만 저장하는(sparse) 자료구조들이 나왔다.
 
-**[OctoMap](https://doi.org/10.1007/s10514-012-9321-0)** (Hornung et al. 2013): octree 기반의 확률적 3D occupancy map. 공간을 재귀적으로 8등분하며 occupied 또는 free인 영역에서는 분할을 조기에 중단(pruning)한다. 빈 공간은 큰 단위로, 세밀한 구조 근처만 작은 단위로 표현해 메모리를 절약한다.
+**[OctoMap](https://doi.org/10.1007/s10514-012-9321-0)** (Hornung et al. 2013): octree로 만든 확률적 3D occupancy map이다. 공간을 재귀적으로 8등분한다. 한 노드의 자식 8개가 모두 같은 점유 값으로 굳으면(log-odds가 clamping 상한이나 하한에 닿으면) 자식을 지우고 부모 노드 하나로 대신한다(pruning). 나중에 어긋나는 관측이 들어오면 자식을 다시 만든다. 그래서 넓은 빈 공간은 큰 칸 하나로, 구조가 복잡한 곳만 작은 칸으로 저장해 메모리를 아낀다.
 
-OctoMap은 다음 특성을 갖는다.
-- **확률적 갱신**: occupancy grid와 동일한 log-odds 갱신 사용
-- **적응적 해상도**: 최고 해상도(예: 2 cm, leaf node)부터 최저 해상도(예: 수 m, root 근처)까지 자동 조절
-- **메모리 효율**: 관측된 경계 근처만 세분화하므로 free/unknown 영역이 큰 장면에서 dense grid보다 적은 memory를 쓸 수 있다. 절감률은 점유 구조와 tree overhead에 따라 달라진다.
-- **한계**: pointer/tree overhead가 있고, 표준 occupancy query에는 적합하지만 kNN·surface registration용 index를 대신하지는 않는다. 동적 객체를 지우려면 inverse sensor update와 시간 정책을 별도로 설계해야 한다.
+OctoMap의 특성:
+- **확률적 갱신**: occupancy grid와 같은 log-odds 갱신을 쓴다
+- **적응적 해상도**: leaf node의 가장 고운 해상도(예: 2 cm)부터 root 근처의 거친 해상도(예: 수 m)까지 쓴다
+- **메모리 효율**: 관측한 경계 근처만 잘게 나누므로 free나 unknown 영역이 넓은 장면에서는 dense grid보다 메모리를 덜 쓴다. 얼마나 줄어드는지는 점유 구조와 tree overhead에 따라 다르다.
+- **한계**: pointer와 tree overhead가 있다. 점유 여부 조회에는 맞지만, kNN 검색이나 표면 정합(surface registration)용 index로 쓰기에는 맞지 않는다. 움직이는 물체를 지우려면 inverse sensor update와 시간에 따른 갱신 규칙을 따로 설계해야 한다.
 
 ```python
 class SimpleOctreeNode:
@@ -207,28 +205,23 @@ class SimpleOctreeNode:
             self.is_leaf = True
 ```
 
-**OpenVDB**: 영화 VFX 산업에서 유래한 sparse volumetric 자료구조다. 고정 깊이의 넓고 얕은 hierarchical tree와 tile/value 압축으로 background 영역을 생략한다. OctoMap과 구조·API 목적이 달라 속도를 일반적으로 서열화할 수 없으며, occupancy 확률 갱신은 응용에서 정의해야 한다.
+**OpenVDB**: 영화 VFX 업계에서 만든 sparse volumetric 자료구조다. 깊이가 고정된 넓고 얕은 계층 tree를 쓰고, 값이 같은 넓은 background 영역은 tile 하나로 저장한다. OctoMap과 구조와 쓰임이 달라 어느 쪽이 더 빠르다고 일반적으로 말하기 어렵다. occupancy 확률 갱신은 OpenVDB에 들어 있지 않으므로 응용에서 직접 정해야 한다.
 
-**ikd-tree** (FAST-LIO2): incremental k-d tree로, 포인트 하나의 삽입을 분할 상환 $O(\log n)$에 수행하며 동적 재균형을 지원한다. 삭제는 범위 단위 lazy deletion이고 재균형은 기준을 넘을 때 부분 트리에 대해 일어나므로, 이 두 연산의 비용은 점 단위 $O(\log n)$과 별개다. FAST-LIO2에서 맵 자료구조로 사용되어, LiDAR 포인트를 실시간으로 맵에 추가하면서 kNN을 효율적으로 수행한다.
+**[ikd-tree](https://arxiv.org/abs/2102.10808)** (Cai et al. 2021): 점을 하나씩 넣고 빼는 incremental k-d tree로, FAST-LIO2가 맵 자료구조로 쓴다(§7.3.2). 큰 부분 트리는 별도 스레드에서 다시 만든다.
 
-ikd-tree는 세 연산을 제공한다.
-- **삽입**: 새 포인트를 k-d tree에 삽입. 불균형이 임계값을 초과하면 부분적으로 재균형.
-- **삭제**: 일정 범위 밖의 오래된 포인트를 lazy deletion으로 제거.
-- **kNN 검색**: 관측 포인트의 최근접 맵 포인트를 찾아 point-to-plane 정합에 사용.
-
-OctoMap vs ikd-tree 비교:
+OctoMap과 ikd-tree 비교:
 
 | 특성 | OctoMap | ikd-tree |
 |------|---------|----------|
 | 자료구조 | Octree | k-d tree |
 | 확률적 갱신 | 내장 (log-odds) | 없음 (포인트 저장만) |
-| kNN 검색 | 느림 | 빠름 |
-| 동적 삽입/삭제 | 가능하지만 느림 | 점 삽입은 분할 상환 $O(\log n)$, 범위 삭제·재균형은 별도 비용 |
+| kNN 검색 | 검색용 index로 설계되지 않음 | 빠름 |
+| 동적 삽입/삭제 | 가능 (관측마다 log-odds 갱신·pruning) | 점 단위 $O(\log n)$, 부분 트리 재구성은 별도 비용 |
 | 용도 | 경로 계획, 탐사 | LiDAR odometry 맵 유지 |
 
 ### 11.1.3 Surfel Maps
 
-Surfel(surface element)은 포인트에 법선 벡터와 반경 정보를 추가한 디스크(disk) 형태의 표면 원소다. 각 surfel은 $(\mathbf{p}, \mathbf{n}, r, c, w)$로 표현된다:
+Surfel(surface element)은 점에 법선 벡터와 반경을 더한 작은 원판(disk) 모양의 표면 조각이다. surfel 하나를 $(\mathbf{p}, \mathbf{n}, r, c, w)$로 나타낸다:
 
 - $\mathbf{p} \in \mathbb{R}^3$: 위치
 - $\mathbf{n} \in \mathbb{R}^3$: 법선 벡터 (단위)
@@ -236,13 +229,13 @@ Surfel(surface element)은 포인트에 법선 벡터와 반경 정보를 추가
 - $c$: 색상 (관측된 값)
 - $w$: 융합 신뢰도 (누적 가중치)
 
-**[ElasticFusion](https://doi.org/10.15607/RSS.2015.XI.001)** (Whelan et al. 2015)은 RGB-D 센서로부터 surfel map을 실시간 구축하는 dense SLAM 시스템이다. 다음 세 과정으로 동작한다.
+**[ElasticFusion](https://doi.org/10.15607/RSS.2015.XI.001)** (Whelan et al., RSS 2015)은 RGB-D 센서로 surfel map을 실시간으로 만드는 dense SLAM 시스템이다. 동작 과정:
 
 1. Frame-to-model tracking: 현재 프레임을 surfel map의 렌더링과 정합한다.
-2. Map deformation: loop closure 시 embedded deformation graph로 surfel map 전체를 비강체적으로 변형한다.
-3. Surfel fusion: 기존 surfel과 새 관측이 겹치면 가중 평균으로 병합한다.
+2. Map deformation: loop closure가 들어오면 embedded deformation graph로 surfel map 전체를 비강체적으로 변형한다.
+3. Surfel fusion: 기존 surfel과 새 관측이 겹치면 가중 평균으로 합친다.
 
-Surfel은 명시적 mesh 없이도 연속적 표면을 표현할 수 있다. 포인트 클라우드보다 표면 정보가 풍부하면서도, mesh보다 갱신이 간단하다.
+Surfel은 mesh를 따로 만들지 않고도 이어진 표면을 나타낸다. 점마다 법선과 크기가 있어 포인트 클라우드보다 표면 정보가 많고, 삼각형 사이 연결 관계가 없어 mesh보다 갱신이 간단하다.
 
 ```python
 class Surfel:
@@ -314,25 +307,25 @@ class SurfelMap:
 
 ## 11.2 Mesh & CAD-level Maps
 
-Mesh는 삼각형(triangle) 면의 집합으로 표면을 표현한다. Voxel이나 포인트 클라우드보다 시각적으로 자연스럽고, 물리 시뮬레이션(충돌 감지 등)에도 직접 활용할 수 있다.
+Mesh는 삼각형(triangle) 면을 이어 표면을 나타낸다. Voxel이나 포인트 클라우드보다 보기에 자연스럽고, 충돌 감지 같은 물리 시뮬레이션에 바로 넣을 수 있다.
 
 ### 11.2.1 TSDF (Truncated Signed Distance Function)
 
-TSDF는 각 voxel에 관측된 시선 방향의 부호 거리(signed distance)를 저장한다. 모든 방향의 최근접 표면까지의 거리를 담는 것은 뒤에 나오는 ESDF(§11.2.2)이고, 여기서 쓰는 것은 depth 관측을 투영해 얻는 projective TSDF다:
+TSDF는 voxel마다 시선 방향으로 잰 표면까지의 부호 거리(signed distance)를 저장한다. 여기서 다루는 것은 depth 관측을 투영해 얻는 projective TSDF다. 방향과 상관없이 가장 가까운 표면까지의 거리를 담는 ESDF는 §11.2.2에서 다룬다. TSDF 값의 부호:
 
 - 양수: 표면 앞 (free space)
 - 음수: 관측된 표면 뒤 (truncation band 안)
 - zero crossing: 실제 표면 위치
 
-부호는 관측된 시선을 따라 정의된다. 표면 앞쪽은 $+\delta$로 잘라 갱신하고, 표면 뒤 $-\delta$를 넘는 물체 내부는 아래 코드처럼 갱신에서 건너뛰어 기본값으로 남긴다. 따라서 음수 TSDF는 §11.1의 occupied 상태와 같은 점유 확정이 아니다.
+표면 앞쪽 값은 $+\delta$에서 자른다. 표면 뒤로 $-\delta$보다 깊은 물체 내부는 아래 코드처럼 갱신하지 않고 기본값으로 둔다. 그래서 음수 TSDF 값은 표면 바로 뒤의 얇은 띠에만 있다. §11.1의 occupied처럼 그 칸이 막혀 있다고 확정하는 값과는 뜻이 다르다.
 
-**TSDF 갱신**: 새 depth 관측이 들어올 때마다 해당 시선(ray)을 따라 voxel을 갱신한다:
+**TSDF 갱신**: 새 depth 관측이 들어올 때마다 그 시선(ray)을 따라 voxel 값을 가중 평균으로 고친다:
 
 $$\text{TSDF}(\mathbf{v}) \leftarrow \frac{W(\mathbf{v}) \cdot \text{TSDF}(\mathbf{v}) + w_{\text{new}} \cdot d_{\text{new}}}{W(\mathbf{v}) + w_{\text{new}}}$$
 
 $$W(\mathbf{v}) \leftarrow \min(W(\mathbf{v}) + w_{\text{new}}, W_{\max})$$
 
-여기서 $d_{\text{new}}$는 새로운 관측에서 계산한 부호 거리, $w_{\text{new}}$는 관측 가중치, $W(\mathbf{v})$는 누적 가중치다. 부호 거리는 truncation distance $\delta$ 이내로 제한(truncate)된다:
+여기서 $d_{\text{new}}$는 새 관측에서 계산한 부호 거리, $w_{\text{new}}$는 관측 가중치, $W(\mathbf{v})$는 누적 가중치다. 부호 거리는 truncation distance $\delta$ 안으로 자른다(truncate):
 
 $$d_{\text{new}} = \text{clip}\left(D(\mathbf{u}) - \lambda^{-1}\|\mathbf{v} - \mathbf{c}\|, -\delta, \delta\right), \quad \lambda = \|\mathbf{K}^{-1}\dot{\mathbf{u}}\|$$
 
@@ -473,86 +466,84 @@ class TSDFVolume:
 
 ### 11.2.2 Voxblox
 
-**[Voxblox](https://arxiv.org/abs/1611.03631)** (Oleynikova et al. 2017)는 TSDF 기반 실시간 3D 재구성 시스템으로, 기울기 기반·최적화 기반 경로 계획에 유용한 **ESDF (Euclidean Signed Distance Field)**를 효율적으로 계산한다. 표본 기반·탐색 기반 계획은 점유 맵에서 직접 동작하므로 ESDF가 계획 일반의 전제는 아니다.
+**[Voxblox](https://arxiv.org/abs/1611.03631)** (Oleynikova et al., IROS 2017)는 TSDF로 ESDF(Euclidean Signed Distance Field)를 점진적으로 만드는 시스템이다. 논문은 MAV의 궤적 최적화 local planner가 장애물 거리 정보가 필요해서 이 방법을 만들었다고 밝히고, CPU 코어 하나로 실시간으로 돈다는 것을 보였다. 샘플링 기반이나 탐색 기반 planner는 점유 맵만으로도 돌아가므로 모든 경로 계획에 ESDF가 필요하지는 않다.
 
-Voxblox는 세 단계로 동작한다.
+동작 단계:
 
-1. **TSDF 통합**: RGB-D 또는 depth 포인트 클라우드를 TSDF에 projective 방식으로 통합.
-2. **Mesh 추출**: TSDF에서 Marching Cubes로 mesh를 incremental하게 추출. 변경된 voxel 블록만 재처리.
-3. **ESDF 계산**: TSDF에서 ESDF를 계산. ESDF는 각 voxel에서 가장 가까운 장애물까지의 유클리드 거리를 저장한다.
+1. **TSDF 통합**: RGB-D나 depth 포인트 클라우드를 projective 방식으로 TSDF에 넣는다.
+2. **Mesh 추출**: Marching Cubes로 TSDF에서 mesh를 뽑는다. 바뀐 voxel 블록만 다시 처리한다.
+3. **ESDF 계산**: TSDF로 ESDF를 계산한다. ESDF는 voxel마다 가장 가까운 장애물까지의 유클리드 거리를 저장한다.
 
-경로 계획에서는 로봇과 장애물 사이의 안전 거리를 유지해야 한다. ESDF가 있으면 임의의 점에서 장애물까지의 거리를 $O(1)$에 조회할 수 있다. 그래디언트 정보도 함께 제공하므로 장애물을 피하는 방향도 바로 구할 수 있다.
+경로 계획에서는 로봇이 장애물에서 일정 거리 이상 떨어져 있어야 한다. ESDF가 있으면 어느 voxel에서든 장애물까지의 거리를 $O(1)$에 읽는다. 이웃 voxel 값으로 그래디언트를 구하면 장애물에서 멀어지는 방향도 바로 나온다.
 
 ### 11.2.3 Poisson Surface Reconstruction
 
-Poisson reconstruction은 oriented point cloud(위치 + 법선)로부터 수밀(watertight) mesh를 생성하는 방법이다.
-
-Poisson reconstruction은 법선 벡터를 gradient field로 해석하고, 이 gradient의 divergence를 구하여 Poisson 방정식을 푼다.
+Poisson reconstruction은 위치와 법선이 있는 점들(oriented point cloud)로 빈틈없이 닫힌(watertight) mesh를 만든다. 물체 안쪽은 1, 바깥은 0인 indicator function을 생각하면, 그 gradient는 표면 근처에서만 0이 아니고 안쪽을 향하는 법선(inward normal) 방향을 가리킨다. 점의 법선으로 이 gradient를 근사하는 vector field를 만들고, 아래 Poisson 방정식을 풀어 indicator function $\chi$를 구한 뒤 등위면을 mesh로 뽑는다.
 
 $$\nabla^2 \chi = \nabla \cdot \mathbf{V}$$
 
-여기서 $\mathbf{V}$는 법선 벡터 필드, $\chi$는 indicator function(표면 안쪽 = 1, 바깥쪽 = 0)이다. 이 PDE를 octree 위에서 효율적으로 풀어 iso-surface를 추출한다.
+$\mathbf{V}$가 앞에서 말한 vector field다. 원 논문은 이 방정식을 octree 위에서 푼다.
 
-Poisson reconstruction은 전역 implicit 함수를 풀어 연결된 surface를 만들며, oriented normal의 품질과 depth·screening 설정에 민감하다. 입력 바깥을 닫아 watertight surface를 만들 수 있지만 원하지 않는 막이 생길 수도 있다. 계산비용 때문에 online incremental mapping보다 후처리에 자주 쓰이고, TSDF meshing은 depth integration과 incremental update가 필요한 경우에 적합하다.
+Poisson reconstruction은 장면 전체에 대한 implicit 함수 하나를 풀어 이어진 표면을 만든다. 결과는 법선 방향의 품질과 octree depth·screening 설정에 크게 좌우된다. 관측하지 못한 부분까지 닫아 watertight 표면을 만들기 때문에 원하지 않는 막이 생기기도 한다. depth를 계속 넣으면서 점진적으로 갱신해야 할 때는 TSDF meshing을 쓴다.
 
 ### 11.2.4 실시간 Mesh 생성
 
-SLAM 시스템은 TSDF를 incremental meshing하거나, online point/surfel map을 별도 surface reconstruction 단계로 넘길 수 있다.
+SLAM 시스템에서 mesh를 얻는 방법으로는 TSDF를 점진적으로 meshing하는 방법과, online으로 만든 point/surfel map을 따로 surface reconstruction하는 방법이 있다.
 
-1. **Voxblox incremental meshing**: TSDF가 갱신된 voxel 블록에서만 Marching Cubes를 재실행. 전체 볼륨을 재처리하지 않으므로 실시간 가능.
-2. **FAST-LIVO2 colored point map + 후처리**: FAST-LIVO2는 camera intensity를 이용한 visual update와 colored point map을 제공하지만, 원 시스템의 online output을 mesh라고 부르면 안 된다. Mesh가 필요하면 exported point map의 normals·density를 확인한 뒤 Poisson, Ball Pivoting 같은 별도 reconstruction을 수행한다.
+1. **Voxblox incremental meshing**: §11.2.2에서 본 대로 바뀐 voxel 블록만 다시 처리하므로 실시간으로 돌아간다.
+2. **FAST-LIVO2 colored point map + 후처리**: FAST-LIVO2는 카메라 밝기값으로 visual update를 하고 색이 입혀진 point map을 내놓는다. 이 online 출력은 mesh가 아니다. mesh가 필요하면 내보낸 point map의 법선과 밀도를 확인한 뒤 Poisson이나 Ball Pivoting으로 따로 재구성한다.
 
 ---
 
 ## 11.3 Neural / Learned Representations
 
-Voxel, mesh, surfel 표현은 3D 구조를 직접 저장하는 명시적(explicit) 방식이다. 이 절이 다루는 학습된 표현은 그 안에서 다시 갈린다. 단일 MLP가 장면을 가중치에 담는 **암묵적(implicit)** 방식이 한쪽 끝이고, hash-grid나 계층 grid처럼 공간 feature를 명시적 자료구조에 두고 작은 MLP로 복호하는 방식이 중간이며, 3D Gaussian처럼 명시적 primitive를 쓰는 방식이 반대쪽 끝이다.
+Voxel, mesh, surfel은 3D 구조를 그대로 저장하는 명시적(explicit) 표현이다. 학습으로 만드는 표현에는 MLP 하나의 가중치에 장면을 담는 암묵적(implicit) 방식, hash-grid나 계층 grid에 공간 feature를 두고 작은 MLP로 읽어 내는 방식, 3D Gaussian처럼 명시적 primitive를 최적화하는 방식이 있다.
 
 ### 11.3.1 NeRF-SLAM: Neural Implicit + Odometry
 
-**[NeRF](https://arxiv.org/abs/2003.08934) (Neural Radiance Field)** (Mildenhall et al. 2020)는 3D 좌표와 시선 방향을 입력받아 색상과 밀도를 출력하는 MLP로 장면을 표현한다:
+**[NeRF](https://arxiv.org/abs/2003.08934) (Neural Radiance Field)** (Mildenhall et al., ECCV 2020)는 3D 좌표와 시선 방향을 넣으면 색과 밀도를 내는 MLP로 장면을 나타낸다:
 
 $$F_\theta: (\mathbf{x}, \mathbf{d}) \to (c, \sigma)$$
 
 여기서 $\mathbf{x} \in \mathbb{R}^3$은 3D 위치, $\mathbf{d} \in \mathbb{S}^2$은 시선 방향, $c$는 RGB 색상, $\sigma$는 체적 밀도(volume density)다.
 
-**볼륨 렌더링 방정식**: 카메라 ray $\mathbf{r}(t) = \mathbf{o} + t\mathbf{d}$를 따라 적분하여 픽셀 색상을 합성한다:
+**볼륨 렌더링 방정식**: 카메라 ray $\mathbf{r}(t) = \mathbf{o} + t\mathbf{d}$를 따라 적분해 픽셀 색을 만든다:
 
 $$\hat{C}(\mathbf{r}) = \int_{t_n}^{t_f} T(t) \sigma(\mathbf{r}(t)) c(\mathbf{r}(t), \mathbf{d}) \, dt$$
 
 여기서 $T(t) = \exp\left(-\int_{t_n}^{t} \sigma(\mathbf{r}(s)) ds\right)$는 누적 투과율(accumulated transmittance)이다.
 
-**NeRF-SLAM 파이프라인**: 기존 NeRF가 오프라인 재구성(offline reconstruction)을 위한 방법이었다면, NeRF-SLAM은 SLAM과 결합하여 온라인으로 동작한다:
+**NeRF-SLAM 파이프라인**: NeRF는 포즈를 아는 이미지들로 장면을 오프라인으로 재구성한다. NeRF-SLAM은 이 표현을 SLAM에 넣어 온라인으로 돌린다:
 
-1. **Tracking**: 현재 프레임의 camera pose를 기존 neural map에 대해 최적화한다 (photometric loss + depth loss).
-2. **Mapping**: 추정된 pose에서 neural network 가중치를 갱신한다. 새로운 관측 영역을 학습하면서 기존 영역의 일관성도 유지해야 한다.
+1. **Tracking**: 현재 neural map을 고정하고 photometric loss와 depth loss로 현재 프레임의 카메라 포즈를 최적화한다.
+2. **Mapping**: 추정한 포즈로 network 가중치를 갱신한다. 새로 본 영역을 학습하는 동안 이미 학습한 영역이 망가지지 않게 해야 한다.
 
-**[iMAP](https://arxiv.org/abs/2103.12352)** (Sucar et al. 2021)은 단일 MLP를 handheld RGB-D 실시간 SLAM의 유일한 장면 표현으로 사용한 초기 시스템이다. 원 논문은 keyframe 구조와 정보 기반 pixel sampling으로 tracking 10 Hz, global map update 2 Hz를 보고한다.
+**[iMAP](https://arxiv.org/abs/2103.12352)** (Sucar et al., ICCV 2021)은 손에 든 RGB-D 카메라로 실시간 SLAM을 하면서 MLP 하나만 장면 표현으로 쓴 첫 시스템이다. 키프레임 구조, 멀티프로세싱, 정보량에 따라 픽셀을 고르는 sampling으로 tracking 10 Hz, 전역 맵 갱신 2 Hz를 얻었다.
 
-한계는 세 가지다. MLP 학습 속도(training speed)가 느려 실시간 mapping에 제약이 있고, 새 영역을 학습하면 이전 영역의 표현이 퇴화하는 catastrophic forgetting이 발생한다. 대규모 환경에서는 단일 MLP의 용량 한계도 드러난다.
+MLP 학습이 느려 mapping도 느리다. 새 영역을 학습하면 이전 영역의 표현이 망가지는 catastrophic forgetting도 생긴다. 환경이 커지면 MLP 하나에 다 담기 어렵다.
 
-Instant-NGP는 multi-resolution hash-grid feature encoding으로 신경 장면 표현의 학습과 렌더링을 가속했고, 이를 활용한 NeRF-SLAM 변형도 등장했다. 공간의 여러 해상도에서 해시 테이블로 local feature를 저장하고 조회한다.
+Instant-NGP는 여러 해상도의 격자 위치마다 해시 테이블에 local feature를 저장하고 조회한다(multi-resolution hash-grid encoding). 이 방법으로 신경 장면 표현의 학습과 렌더링이 빨라졌고, 이를 쓴 NeRF-SLAM 변형도 나왔다.
 
-**[NICE-SLAM](https://arxiv.org/abs/2112.12130)** (Zhu et al. 2022): iMAP의 확장성 문제를 해결하기 위해 계층적 feature grid와 사전학습된 기하 디코더를 도입한 dense SLAM 시스템. 대규모 실내 환경에서도 안정적으로 동작하며, CVPR 2022에서 발표되었다.
+**[NICE-SLAM](https://arxiv.org/abs/2112.12130)** (Zhu et al., CVPR 2022): 계층적 feature grid에 장면을 담고, 미리 학습한 기하 decoder를 써서 최적화하는 dense SLAM 시스템이다. 논문은 MLP 하나만 쓰는 방식이 장면을 지나치게 매끈하게 재구성하고 큰 장면으로 넓히기 어렵다고 지적하고, 이 구조로 큰 실내 장면에서 세밀한 재구성을 얻었다고 보고한다.
 
 ### 11.3.2 3DGS-SLAM: 3D Gaussian Splatting 기반 SLAM
 
-**[3D Gaussian Splatting (3DGS)](https://arxiv.org/abs/2308.04079)** (Kerbl et al. 2023)은 NeRF의 대안으로 등장한 표현으로, 장면을 수백만 개의 3D Gaussian으로 표현한다. 각 Gaussian은:
+**[3D Gaussian Splatting (3DGS)](https://arxiv.org/abs/2308.04079)** (Kerbl et al. 2023)은 장면을 수많은 3D Gaussian으로 나타낸다. Gaussian 하나에는 다음 값이 있다:
 
 - 위치 $\boldsymbol{\mu} \in \mathbb{R}^3$
 - 공분산 $\boldsymbol{\Sigma} \in \mathbb{R}^{3 \times 3}$ (회전 + 스케일로 파라미터화)
-- 불투명도 $\alpha \in [0, 1]$
+- 불투명도 $\alpha \in [0, 1)$
 - 색상 (spherical harmonics 계수)
 
-렌더링은 splatting — 3D Gaussian을 이미지 평면에 투영하고 깊이 순서대로 alpha blending — 으로 수행한다. 명시적 primitive와 rasterization 덕분에 원 3DGS 논문은 자체 실험의 장면·해상도·하드웨어 설정에서 실시간 렌더링을 보고했다.
+렌더링은 splatting으로 한다. 3D Gaussian을 이미지 평면에 투영한 뒤 깊이 순서대로 alpha blending한다. 원 논문은 1080p 해상도에서 30 fps 이상의 실시간 novel-view 렌더링을 보고했다.
 
-**[Gaussian Splatting SLAM](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024, 공개 구현 이름은 MonoGS): 3DGS를 SLAM 표현으로 사용한다. 아래는 이 계열이 다루는 세 과제다.
+**[Gaussian Splatting SLAM](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024, 공개 구현 이름은 MonoGS): 3DGS를 SLAM의 장면 표현으로 쓴다. 이런 시스템은 다음 일을 해야 한다.
 
-1. **Tracking**: Gaussian map을 렌더링한 예측 이미지와 실제 이미지의 photometric + geometric loss로 camera pose를 최적화.
+1. **Tracking**: Gaussian map을 렌더링한 이미지와 실제 이미지 사이의 photometric·geometric loss로 카메라 포즈를 최적화한다.
 2. **Mapping**: 새 관측에 따라 Gaussian을 추가(densification), 분할(splitting), 제거(pruning)한다.
-3. **Loop closure**: pose 보정 시 Gaussian들의 위치도 함께 변형해야 한다. 이것은 이 계열의 미해결 과제이며 위 논문은 루프 클로저를 구현하지 않는다.
+3. **Loop closure**: 포즈를 보정하면 Gaussian 위치도 같이 옮겨야 한다. Gaussian Splatting SLAM 논문은 loop closure를 넣지 않았고, 앞으로 넣을 과제로 남겼다.
 
-**NeRF-SLAM vs 3DGS-SLAM 비교**:
+**NeRF-SLAM과 3DGS-SLAM 비교**:
 
 | 특성 | NeRF-SLAM | 3DGS-SLAM |
 |------|-----------|-----------|
@@ -561,15 +552,15 @@ Instant-NGP는 multi-resolution hash-grid feature encoding으로 신경 장면 �
 | 학습 속도 | 느림 | 빠름 |
 | 편집 가능성 | 어려움 | 용이 (개별 Gaussian 조작) |
 | 메모리 | 단일 MLP는 고정 (모델 크기), 공간 feature grid 변형은 장면 규모에 따라 증가 | 가변 (Gaussian 수에 비례) |
-| Loop closure 대응 | 어려움 (가중치 변형) | 표현상으로는 상대적 용이 (Gaussian 변환). 시스템 구현은 아직 드묾 |
+| Loop closure 대응 | 어려움 (가중치 변형) | 표현상으로는 상대적 용이 (Gaussian 변환). 예: [LoopSplat (3DV 2025)](https://arxiv.org/abs/2408.10154)은 3DGS submap끼리 직접 정합해 loop 제약을 만든다 |
 
-Neural map과 TSDF·surfel map의 우열은 센서, 장면 규모, 동적 물체, 장시간 일관성, 렌더링 요구에 따라 달라진다. Neural representation은 novel-view rendering을 함께 최적화할 수 있지만, 대규모·장시간 운용에서는 메모리 증가와 loop correction을 별도로 평가해야 한다.
+Neural map과 TSDF·surfel map 가운데 무엇이 나은지는 센서, 장면 규모, 움직이는 물체, 장시간 운용, 렌더링 필요 여부에 따라 다르다. Neural representation은 새 시점 렌더링(novel-view rendering)까지 함께 최적화한다. 넓은 장소를 오래 다닐 때는 메모리가 얼마나 느는지, loop closure 보정을 어떻게 반영하는지 따로 따져 봐야 한다.
 
 **최근 시스템 (2024~2025)**:
 
-- **[SplaTAM](https://arxiv.org/abs/2312.02126)** (Keetha et al. CVPR 2024): RGB-D 카메라로부터 3D Gaussian을 online tracking·mapping하며 silhouette mask로 맵을 확장한다. 원 논문은 비교한 지표와 장면에 따라 camera pose, map construction, novel-view synthesis에서 최대 2배 개선을 보고한다.
-- **[MonoGS](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024 Highlight): 3D Gaussian을 단안 SLAM의 유일한 3D 표현으로 사용해 tracking·mapping·렌더링을 통합한다. 원 논문은 3 fps 운용을 보고하며, geometric verification과 regularization으로 단안 재구성의 모호성을 다룬다.
-- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025): 3D reconstruction foundation model(MASt3R)을 SLAM에 통합한다. 지도 표현은 Gaussian이 아니라 MASt3R가 예측하는 dense pointmap이다. 원 논문은 카메라 모델을 미리 가정하지 않는 dense SLAM과 15 fps 처리 결과를 보고한다.
+- **[SplaTAM](https://arxiv.org/abs/2312.02126)** (Keetha et al. CVPR 2024): RGB-D 카메라 하나로 3D Gaussian 맵을 만들며 online tracking과 mapping을 한다. silhouette mask로 이미 맵이 있는 영역을 가려내고, 빈 곳에 Gaussian을 더해 맵을 넓힌다. 논문은 카메라 포즈 추정, 맵 구축, novel-view synthesis에서 기존 방법보다 최대 2배 좋았다고 보고한다.
+- **[MonoGS](https://arxiv.org/abs/2312.06741)** (Matsuki et al. CVPR 2024 Highlight): 위에서 다룬 Gaussian Splatting SLAM이다. 단안 SLAM에서 3D 표현으로 Gaussian만 쓰고 3 fps로 돈다. 점진적 재구성에서 생기는 모호성은 geometric verification과 regularization으로 다룬다. 깊이 센서가 있으면 RGB-D SLAM으로도 쓴다.
+- **[MASt3R-SLAM](https://arxiv.org/abs/2412.12392)** (Murai et al. CVPR 2025 Highlight): 두 이미지에서 3D 구조와 대응을 예측하는 MASt3R를 바탕으로 처음부터 설계한 실시간 단안 dense SLAM이다. 맵은 MASt3R가 예측한 dense pointmap으로 이루어진다. 카메라 중심이 하나라는 것 말고는 카메라 모델을 가정하지 않으며, loop closure와 2차 전역 최적화를 포함해 15 FPS로 돈다.
 
 ```python
 import numpy as np
@@ -703,17 +694,15 @@ def render_gaussians(gaussians, T_world_to_cam, K, image_size):
 
 ## 11.4 Semantic Maps
 
-기하학적 맵은 "어디에 무엇이 있는가"의 "어디"만 답한다. **Semantic map(의미 맵)**은 "무엇"까지 답한다 — 이것이 벽인지, 문인지, 의자인지, 사람인지. 로봇이 환경의 대상과 범주를 구분하려면 이 레이블 정보가 필요하다.
+기하 맵에는 어디가 막혀 있는지만 있다. Semantic map(의미 맵)에는 그것이 벽인지, 문인지, 의자인지, 사람인지 같은 레이블이 더 붙는다. 로봇이 물체와 그 종류를 구분하려면 이 레이블이 필요하다.
 
 ### 11.4.1 Object-Level Maps
 
-Object-level map은 환경의 객체(object)를 인식하고 그 위치와 크기를 맵에 등록한다.
-
-Object-level map은 네 단계로 구축한다.
-1. **2D detection/segmentation**: 카메라 이미지에서 객체를 검출 (YOLO, Mask R-CNN, SAM 등).
-2. **3D lifting**: depth 정보와 camera pose를 이용하여 2D 검출을 3D 공간으로 역투영.
-3. **Data association**: 여러 프레임에서 관측된 같은 객체를 연결 (tracking + re-identification).
-4. **Map integration**: 객체의 3D 바운딩 박스 또는 형상 모델을 맵에 등록.
+Object-level map은 환경의 물체(object)를 인식해 그 위치와 크기를 맵에 올린다. 만드는 순서:
+1. **2D detection/segmentation**: YOLO, Mask R-CNN, SAM 같은 모델로 카메라 이미지에서 물체를 찾는다.
+2. **3D lifting**: depth와 카메라 포즈로 2D 검출 결과를 3D 공간에 역투영한다.
+3. **Data association**: 여러 프레임에서 본 같은 물체를 tracking과 re-identification으로 묶는다.
+4. **Map integration**: 물체의 3D 바운딩 박스나 형상 모델을 맵에 올린다.
 
 ```python
 class ObjectMap:
@@ -795,42 +784,42 @@ class ObjectMap:
 
 ### 11.4.2 3D Scene Graph: Hydra & S-Graphs
 
-Object-level map은 개별 객체만 인식한다. 하지만 인간은 환경을 "이 방에 테이블이 있고, 그 위에 컵이 있고, 이 방은 거실이다"와 같은 계층적 관계로 이해한다. **3D Scene Graph**는 이러한 계층적, 관계적 환경 표현이다.
+3D Scene Graph는 object-level map에 물체, 방, 건물 사이의 계층과 관계를 더한다. 예: "거실에 테이블이 있고 테이블 위에 컵이 있다."
 
-**[Hydra](https://arxiv.org/abs/2201.13360)** (Hughes et al. 2022)는 센서 데이터에서 3D scene graph의 여러 계층을 online으로 점진 구축하고 loop closure 뒤 전체 계층을 함께 보정하는 초기 공개 시스템이다. 5개 계층으로 구성된다:
+**[Hydra](https://arxiv.org/abs/2201.13360)** (Hughes et al., RSS 2022)는 로봇이 탐사하는 동안 센서 데이터로 3D scene graph의 계층들을 실시간으로 쌓아 간다. Loop closure가 들어오면 embedded deformation graph로 scene graph 전체를 보정한다. 논문은 이를 loop closure에 맞춰 3D scene graph를 최적화하는 첫 알고리즘이라고 밝힌다. 계층 구성:
 
 | Layer | 내용 | 구성 방법 |
 |-------|------|-----------|
 | 1 | Metric-Semantic 3D Mesh | TSDF 통합 + semantic segmentation |
-| 2 | Objects & Agents | 3D bounding box detection |
+| 2 | Objects & Agents | object: 의미 레이블별로 mesh 정점을 Euclidean clustering (중심·bounding box) / agent: 로봇 궤적의 pose graph |
 | 3 | Places (topological) | GVD(Generalized Voronoi Diagram)에서 추출 |
-| 4 | Rooms | 장소 그래프의 커뮤니티 검출 |
-| 5 | Buildings | 방들의 상위 그룹핑 |
+| 4 | Rooms | place 그래프 dilation + 커뮤니티 검출 |
+| 5 | Buildings | 건물 노드 하나를 모든 방에 연결 (논문은 건물이 하나라고 가정) |
 
-**Places layer의 구축**: Hydra는 이 계층을 다음과 같이 구축한다.
+**Places 계층 만들기**:
 
 1. TSDF에서 ESDF를 계산한다.
-2. ESDF에서 GVD를 점진적으로 추출한다. GVD는 둘 이상의 최근접 장애물에서 등거리인 점들의 집합이고, 그래프의 꼭짓점은 셋 이상에서 등거리인 점이다. 즉 여유 공간이 국소적으로 최대인 자리이며, 로봇이 통과하기 좋은 지점이 된다.
-3. GVD 꼭짓점들을 place 노드로, GVD 에지를 place 간 연결로 구성한다.
-4. 이 place graph는 경로 계획에 직접 사용할 수 있는 topological map이다.
+2. ESDF를 갱신하면서 GVD를 함께 얻는다. GVD는 가장 가까운 장애물 두 개 이상에서 거리가 같은 voxel의 집합으로, 환경의 뼈대 모양을 이룬다. Hydra는 장애물 넷 이상에서 거리가 같은 GVD voxel과, 모서리 모양 템플릿에 맞는 voxel을 place 노드로 삼는다.
+3. Flood-fill로 GVD voxel에 가장 가까운 노드를 표시해 이웃 노드끼리 엣지 후보를 만들고, 직선 엣지가 GVD에서 너무 벗어나면 그 자리에 노드를 더해 엣지를 나눈다.
+4. Place 노드는 장애물이 없는 위치이고, 엣지는 두 place 사이를 직선으로 지나갈 수 있다는 뜻이다. 논문은 이 부분 그래프를 사실상 topological map이라고 설명한다.
 
-**Room detection**: place graph에서 방을 검출하는 방법:
+**Room detection**: place graph에서 방을 찾는 순서:
 
-1. 각 place 노드에 장애물까지의 거리(clearance)를 값으로 둔다.
+1. place 노드마다 장애물까지의 거리(clearance)가 있다.
 2. 문(doorway) 같은 좁은 통로에서는 이 값이 낮다.
-3. clearance 임계를 차례로 올려(dilation) 좁은 연결을 끊은 뒤, 남은 부분 그래프에 modularity 기반 커뮤니티 검출을 적용해 place들을 방으로 묶는다.
+3. 맵을 점점 더 두껍게 부풀리며(dilation, 논문 예: 0.45~1.2 m 사이를 같은 간격으로 나눈 10단계) clearance가 그보다 작은 place를 지워 좁은 연결을 끊는다. 단계마다 남은 그래프의 연결 성분 수를 세고, 그 중앙값만큼 연결 성분을 가진 그래프 가운데 가장 큰 것을 고른다. 그 연결 성분들이 방의 씨앗이다. 지워져서 빠진 place는 이 씨앗을 초기 커뮤니티로 둔 greedy modularity 커뮤니티 검출로 방에 배정한다.
 
-**계층적 loop closure**: Hydra는 scene graph의 여러 계층을 활용하여 loop closure의 품질을 높인다. place와 object 계층의 디스크립터로 후보를 좁히고, 두 scene graph 부분 사이의 정합을 TEASER++로 검증한다. 원 논문은 이 구조가 자신들의 실험에서 외관 기반 BoW 방식보다 더 많은 루프를 더 정확하게 잡았다고 보고한다.
+**계층적 loop closure**: Hydra는 계층마다 디스크립터를 둔다. 맨 아래 agent 계층에는 DBoW2 외관 디스크립터를, 그 위에는 object와 place의 통계를 담은 디스크립터를 써서 후보를 찾는다. 후보가 나오면 아래 계층부터 정합한다. 먼저 시각 특징을 RANSAC으로 정합하고, 실패하면 물체들을 TEASER++로 정합한다. 둘 다 실패하면 버린다. 논문은 이 방식이 BoW나 시각 특징 매칭 방식보다 루프를 더 많이, 더 정확하게 잡았다고 보고한다.
 
-**S-Graphs** (Situational Graphs): Hydra와 유사한 계층적 scene graph이지만, factor graph 최적화에 계층 정보를 직접 포함시킨다. Room, wall, floor 같은 구조적 요소를 factor graph의 변수로 추가하여 SLAM 정확도를 향상시킨다.
+**S-Graphs** (Situational Graphs): Hydra처럼 계층적 scene graph를 쓴다. 차이는 계층 정보를 factor graph 최적화에 직접 넣는 데 있다. room, wall, floor 같은 구조 요소를 factor graph의 변수로 두고 함께 최적화한다.
 
 ### 11.4.3 Open-Vocabulary Semantic Mapping
 
-전통적 semantic mapping은 사전에 정의된 클래스 집합(예: COCO의 80개 클래스)에서만 동작한다. **Open-vocabulary semantic mapping**은 임의의 텍스트 질의로 맵을 탐색할 수 있게 한다.
+기존 semantic mapping은 COCO의 80개 클래스처럼 미리 정한 클래스만 다룬다. Open-vocabulary semantic mapping에서는 아무 텍스트로나 맵을 검색한다.
 
-각 관측(이미지 또는 패치)에서 CLIP image feature를 추출하여 대응하는 3D 위치에 부착한다. 사용자가 "빨간 소화기"라고 질의하면, CLIP text encoder로 텍스트를 인코딩하고 맵의 CLIP feature와 코사인 유사도를 계산하여 해당 위치를 반환한다. 텍스트와 공유 임베딩 공간을 갖는 것은 CLIP image encoder뿐이므로, DINO 특징은 이 비교에 쓸 수 없고 분할이나 관측 일관성 같은 별도 채널로 쓴다.
+이미지나 패치마다 CLIP image feature를 뽑아 그에 해당하는 3D 위치에 붙인다. 사용자가 "빨간 소화기"를 찾으면 CLIP text encoder로 그 문장을 벡터로 바꾸고, 맵의 CLIP feature와 코사인 유사도를 계산해 가장 비슷한 위치를 돌려준다. 이 구성에서 텍스트와 같은 임베딩 공간을 쓰는 것은 CLIP image encoder다. DINO 특징을 함께 쓸 때는 분할이나 프레임 사이 대응 같은 다른 용도에 쓴다.
 
-이 방식은 로봇이 사전에 학습하지 않은 객체에도 동작한다. 예측 불가능한 환경에서 운용되는 가정용 로봇이나 탐사 로봇에 특히 유용하다.
+CLIP text encoder로 질의하므로 학습할 때 클래스로 정하지 않은 물체도 찾는다. 어떤 물체가 있을지 미리 알 수 없는 가정용 로봇이나 탐사 로봇에 쓴다.
 
 ```python
 class OpenVocabSemanticMap:
@@ -916,16 +905,16 @@ class OpenVocabSemanticMap:
 
 ## 11.5 Long-Term & Dynamic Maps
 
-실제 환경은 정적이지 않다. 사람이 오가고, 가구가 옮겨지고, 계절에 따라 외관이 달라진다. 장기간 운용되는 로봇은 이러한 변화에 적응해야 한다.
+실제 환경은 계속 바뀐다. 사람이 오가고, 가구 위치가 바뀌고, 계절에 따라 겉모습이 달라진다. 오래 운용하는 로봇의 맵은 이런 변화를 따라가야 한다.
 
 ### 11.5.1 Change Detection (변화 감지)
 
-맵과 현재 관측을 비교하여 변화된 부분을 식별한다.
+맵과 현재 관측을 비교해 바뀐 곳을 찾는다.
 
 **Geometric change detection**: 과거 맵의 예상 관측과 현재 센서 관측을 비교한다.
 
-1. **Free-to-occupied**: 맵에서 free인 영역에 새 장애물이 감지되면 → 새 객체가 나타난 것.
-2. **Occupied-to-free**: 맵에서 occupied인 영역을 현재 관측이 관통(pass-through)하면 → 기존 객체가 사라진 것.
+1. **Free-to-occupied**: 맵에서 free였던 곳에 장애물이 보이면 새 물체가 나타난 것이다.
+2. **Occupied-to-free**: 맵에서 occupied였던 곳을 지금 센서 빔이 통과하면(pass-through) 있던 물체가 사라진 것이다.
 
 ```python
 def detect_changes(occupancy_map, current_scan, robot_pose, threshold=0.3):
@@ -959,34 +948,34 @@ def detect_changes(occupancy_map, current_scan, robot_pose, threshold=0.3):
     return new_objects, removed_objects
 ```
 
-**Semantic change detection**: 기하학적 변화뿐 아니라 객체의 클래스나 상태 변화도 잡는다. "의자가 이동됨", "문이 열림/닫힘" 같은 사례가 여기 해당한다.
+**Semantic change detection**: 모양 변화에 더해 물체의 종류나 상태가 바뀐 것도 잡는다. 의자가 옮겨졌거나 문이 열리고 닫힌 경우가 그렇다.
 
 ### 11.5.2 Map Maintenance: 유지 전략
 
-장기 운용에서는 맵의 모든 관측을 무한히 저장할 수 없으므로, 정보를 유지하고 삭제하는 기준이 필요하다.
+오래 운용하면 관측을 모두 저장할 수 없으므로, 무엇을 남기고 무엇을 지울지 기준이 필요하다.
 
-**Recency weighting**: 최근 관측에 더 높은 가중치를 주고 오래된 관측의 영향을 줄여간다. TSDF 가중치를 시간에 따라 감쇠하는 것이 대표적인 구현이다.
+**Recency weighting**: 최근 관측에 가중치를 더 주고 오래된 관측의 영향은 줄여 간다. 예를 들어 TSDF 가중치를 시간에 따라 줄인다.
 
-**Semi-static classification**: 환경 요소를 세 범주로 나눈다. 벽·바닥·건물 같은 정적(static) 요소는 영구 보존하고, 가구나 주차된 차량 같은 준정적(semi-static) 요소는 주기적으로 갱신하며, 보행자나 이동 차량 같은 동적(dynamic) 요소는 맵에서 제외한다.
+**Semi-static classification**: 벽·바닥·건물 같은 정적(static) 요소는 계속 남긴다. 가구나 주차된 차량 같은 준정적(semi-static) 요소는 주기적으로 갱신한다. 보행자나 이동 차량 같은 동적(dynamic) 요소는 맵에서 뺀다.
 
-**Multi-experience mapping**: 같은 장소의 여러 "경험(experience)"을 저장한다. 조명 조건이나 계절이 다른 여러 버전의 맵을 두고, 현재 관측과 가장 일치하는 경험을 고른다.
+**Multi-experience mapping**: 같은 장소를 지난 여러 번의 기록(experience)을 따로 저장한다. 조명이나 계절이 다른 여러 맵을 두고, 지금 관측과 가장 잘 맞는 것을 골라 쓴다.
 
 ### 11.5.3 Dynamic Object 처리
 
-SLAM에서 동적 객체(움직이는 사람, 차량)는 두 가지 문제를 일으킨다:
+움직이는 사람이나 차량 같은 동적 객체가 SLAM에 일으키는 문제:
 
-1. **Tracking 오류**: 동적 객체의 특징점을 정적 환경의 것으로 잘못 사용하면 pose 추정이 틀어진다.
-2. **맵 오염**: 동적 객체가 맵에 기록되면 "유령 장애물"이 된다.
+1. **Tracking 오류**: 움직이는 물체의 특징점을 정적 환경의 것으로 알고 쓰면 포즈 추정이 틀어진다.
+2. **맵 오염**: 지나간 물체가 맵에 남으면 실제로는 없는 장애물이 된다.
 
 **대응 방법**:
 
-1. **Semantic filtering**: semantic segmentation으로 동적 객체(사람, 차량) 클래스를 구분하고, 해당 관측을 SLAM 파이프라인에서 뺀다.
+1. **Semantic filtering**: semantic segmentation으로 사람·차량처럼 움직일 수 있는 클래스를 찾아 그 관측을 SLAM 입력에서 뺀다.
 
-2. **Geometric consistency check**: 보일 것으로 예측되는데 다시 관측된 위치가 자기 운동으로 설명되지 않는 포인트를 동적으로 분류한다. 관측이 사라지는 데는 시야 이탈, 정적 구조에 의한 가림, 연관 실패 같은 정적 원인이 함께 있으므로, 소실 자체가 아니라 가시성 추론과 재투영 잔차를 기준으로 삼는다.
+2. **Geometric consistency check**: 로봇 자신의 움직임만으로는 새 관측 위치가 설명되지 않는 점을 동적으로 분류한다. 점이 안 보이는 것은 시야를 벗어나거나, 정적 구조에 가려지거나, 대응을 못 찾아서일 수도 있다. 그래서 동적 여부는 그 점이 보여야 하는 자리인지 따지는 가시성 추론과 재투영 잔차로 판정한다.
 
 3. **Background subtraction**: TSDF에서 free-to-occupied-to-free 패턴을 보이는 voxel을 동적으로 판별한다.
 
-4. **SLAM with dynamic object tracking**: 동적 객체를 무시하는 대신 별도의 상태 변수로 추적한다. 동적 객체의 궤적도 함께 추정할 수 있다 (SLAM + MOT).
+4. **SLAM with dynamic object tracking**: 움직이는 물체를 빼지 않고 상태 변수를 따로 두어 그 궤적도 함께 추정한다(SLAM + MOT, multi-object tracking).
 
 ```python
 class DynamicMapManager:
@@ -1071,4 +1060,4 @@ class DynamicMapManager:
 
 ---
 
-각 표현은 서로 다른 downstream task에 맞는다. 현대 시스템은 이들을 계층적으로 조합한다 — OctoMap으로 경로를 계획하고, surfel로 렌더링하고, scene graph로 의미 질의를 처리한다. 실제 플랫폼에서는 이 알고리즘과 표현을 자율주행·드론·핸드헬드 시스템 안에서 통합하고 평가해야 한다.
+한 시스템 안에서 여러 표현을 함께 쓰기도 한다. 예를 들어 OctoMap으로 경로를 계획하고, surfel로 렌더링하고, scene graph로 의미 질의를 처리한다.

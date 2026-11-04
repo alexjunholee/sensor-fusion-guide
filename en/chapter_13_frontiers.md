@@ -357,7 +357,7 @@ The following extensions are being studied on top of 3D Scene Graph representati
 
 **Scene Graph + LLM**: An LLM such as GPT-4 takes a scene graph as input and performs high-level reasoning. It can answer queries such as "if a person falls in this room, where is the nearest phone?"
 
-**Dynamic scene graphs**: Hydra does place human agents as nodes (see the layer table in §11.4.2), but its geometric and semantic mesh, its place and room layers, and the optimization built on top of them all assume a static structure. Dynamic scene graphs aim to update moving agents — vehicles included — and their relations inside the map structure in real time. Social navigation and human-robot interaction (HRI) can use this information.
+**Dynamic scene graphs**: Hydra's agent layer (see the layer table in §11.4.2) holds only the robot's own trajectory as a pose graph, and its geometric and semantic mesh, its place and room layers, and the optimization built on top of them all assume a static structure. Dynamic scene graphs aim to update moving agents such as people and vehicles, and their relations inside the map structure in real time. Social navigation and human-robot interaction (HRI) can use this information.
 
 ### 13.3.3 Time-Series Spatial Memory Management
 

@@ -1,19 +1,16 @@
 # Ch.8 — Multi-Sensor Fusion 아키텍처
 
-> 개별 odometry를 넘어 **여러 센서를 어떻게 통합하는가**의 설계론.
-> Visual Odometry와 LiDAR Odometry를 하나의 시스템으로 엮으려면 결합 수준과 추정 구조를 정해야 한다.
+> Visual Odometry와 LiDAR Odometry를 한 시스템으로 엮으려면 결합 수준과 추정 구조를 정해야 한다.
 
 ---
 
 ## 8.1 Fusion 아키텍처 분류
 
-멀티센서 퓨전 시스템을 설계할 때 가장 먼저 결정해야 하는 것은 **센서 데이터를 어느 수준에서 결합할 것인가**이다. 이 결합의 깊이에 따라 시스템의 복잡도와 성능, 실패 모드가 갈린다.
+멀티센서 퓨전 시스템을 설계할 때는 센서 데이터를 어느 수준에서 합칠지부터 정한다. 결합의 깊이에 따라 시스템의 복잡도와 성능, 실패 모드가 갈린다.
 
 ### 8.1.1 Loosely Coupled (느슨한 결합)
 
-각 센서를 독립적인 "전문가"로 본다. 각 전문가는 자기 데이터로 독립 추정한 뒤, 상위 레벨에서 그 결과를 종합한다.
-
-구체적으로, LiDAR odometry 모듈이 LiDAR 스캔으로부터 $\mathbf{T}_{L}$을, Visual odometry 모듈이 이미지로부터 $\mathbf{T}_{V}$를 각각 독립적으로 추정하고, 상위의 fusion 모듈이 이 두 추정치를 결합한다.
+센서마다 따로 추정하고, 상위 단계에서 그 결과를 합친다. 예를 들어 LiDAR odometry 모듈이 스캔으로 $\mathbf{T}_{L}$을, Visual odometry 모듈이 영상으로 $\mathbf{T}_{V}$를 따로 추정하면, 상위 fusion 모듈이 두 추정치를 합친다.
 
 $$
 \hat{\mathbf{x}} = \arg\min_{\mathbf{x}} \left\| \mathbf{x} - \mathbf{x}_{LiDAR} \right\|^2_{\mathbf{P}_{L}^{-1}} + \left\| \mathbf{x} - \mathbf{x}_{Visual} \right\|^2_{\mathbf{P}_{V}^{-1}}
@@ -21,15 +18,15 @@ $$
 
 여기서 $\mathbf{P}_{L}$, $\mathbf{P}_{V}$는 각 서브시스템이 보고하는 공분산이다.
 
-장점은 모듈성이다. 각 센서 모듈을 독립적으로 교체하거나 업그레이드할 수 있고, 문제가 어느 모듈에서 왔는지 추적하기 용이하다. 한 센서가 실패해도 나머지가 계속 동작한다.
+장점은 모듈성이다. 센서 모듈을 따로 바꾸거나 올릴 수 있고, 문제가 어느 모듈에서 왔는지 찾기 쉽다. 한 센서가 고장 나도 나머지는 계속 돈다.
 
-단점은 정보 손실이다. 각 서브시스템이 이미 정보를 압축한 상태에서 결합하므로, 센서 간 상호 보완의 이점을 최대한 활용하지 못한다. 예를 들어 LiDAR의 정밀한 기하 정보가 카메라의 스케일 모호성을 해결할 수 있지만, loosely coupled에서는 이 상호작용이 제한적이다. 각 서브시스템이 보고하는 공분산의 일관성(consistency)도 보장되지 않아, 낙관적 공분산을 보고하면 fusion 결과가 왜곡된다.
+단점은 정보 손실이다. 서브시스템마다 정보를 요약한 뒤 합치므로 센서끼리 메워 주는 효과가 약하다. 예를 들어 LiDAR 기하로 단안 카메라의 스케일 모호성을 풀 수 있지만, loosely coupled에서는 카메라 모듈이 LiDAR 깊이를 보지 못한다. 서브시스템이 보고하는 공분산의 일관성(consistency)도 따로 검증해야 한다. 공분산이 낙관적이면 fusion 결과가 왜곡된다.
 
 ### 8.1.2 Tightly Coupled (긴밀한 결합)
 
-모든 센서의 **원시 측정(raw measurement)**이 하나의 공유 상태를 직접 제약한다. "전문가"를 두고 그 결과를 합치는 것이 아니라, 원본 데이터가 상태 추정에 직접 들어간다. 기준은 측정이 들어가는 수준이며 optimizer가 하나인지가 아니다. R3LIVE처럼 두 하위 시스템이 하나의 공유 상태를 갱신하는 구성이나 FAST-LIVO2처럼 순차 갱신을 쓰는 구성도 tightly coupled다. LVI-SAM처럼 두 하위 시스템이 각자 그래프를 두더라도 서로의 측정(LiDAR 깊이)과 상태(초기값)를 직접 주고받으면 같은 수준으로 분류한다.
+모든 센서의 원시 측정(raw measurement)이 한 공유 상태를 직접 제약한다. 분류 기준은 측정이 들어가는 수준이다. R3LIVE처럼 두 하위 시스템이 하나의 공유 상태를 갱신하는 구성이나 FAST-LIVO2처럼 순차 갱신을 쓰는 구성도 tightly coupled다. LVI-SAM처럼 두 하위 시스템이 각자 그래프를 두더라도 서로의 측정(LiDAR 깊이)과 상태(초기값)를 직접 주고받으면 같은 수준으로 분류한다.
 
-Factor graph 관점에서, 각 센서의 raw measurement가 독립적인 factor로 삽입된다:
+Factor graph로 보면 센서의 raw measurement가 저마다 factor가 된다.
 
 $$
 \hat{\mathbf{x}} = \arg\min_{\mathbf{x}} \sum_{i} \left\| \mathbf{r}^{\text{IMU}}_i(\mathbf{x}) \right\|^2_{\boldsymbol{\Sigma}^{-1}_{\text{IMU}}} + \sum_{j} \left\| \mathbf{r}^{\text{LiDAR}}_j(\mathbf{x}) \right\|^2_{\boldsymbol{\Sigma}^{-1}_{\text{LiDAR}}} + \sum_{k} \left\| \mathbf{r}^{\text{cam}}_k(\mathbf{x}) \right\|^2_{\boldsymbol{\Sigma}^{-1}_{\text{cam}}}
@@ -37,27 +34,25 @@ $$
 
 여기서 $\mathbf{r}^{\text{IMU}}_i$는 IMU preintegration 잔차, $\mathbf{r}^{\text{LiDAR}}_j$는 point-to-plane 잔차, $\mathbf{r}^{\text{cam}}_k$는 reprojection error이다.
 
-센서 간 상호작용을 직접 활용한다. IMU가 LiDAR의 motion distortion을 보정하고, LiDAR가 VIO의 스케일을 잡아준다. 정보 이론적으로 최적에 가까운 융합이 가능하다.
+센서끼리 직접 돕는다. IMU가 LiDAR의 motion distortion을 보정하고, LiDAR가 VIO의 스케일을 잡아 준다. 측정 모델과 노이즈 모델이 맞다면 정보를 요약하지 않으므로 loosely coupled보다 버리는 정보가 적다.
 
-대신 시스템 복잡도가 높다. 모든 센서의 관측 모델, 노이즈 모델, 시간 동기화를 하나의 프레임워크에서 관리해야 하고, 한 센서의 이상 데이터가 전체 추정을 오염시킬 수 있어 outlier 처리가 필수다. 실시간성 확보도 어렵다.
+대신 시스템이 복잡하다. 모든 센서의 관측 모델, 노이즈 모델, 시간 동기화를 한 프레임워크에서 다뤄야 하고, 한 센서의 이상 데이터가 전체 추정을 망칠 수 있어 outlier 처리를 꼭 해야 한다. 실시간으로 돌리기도 어렵다.
 
-대표 시스템으로는 [LIO-SAM (Shan et al. 2020)](https://arxiv.org/abs/2007.00258) (LiDAR+IMU+GPS), VINS-Mono (Camera+IMU), [R3LIVE (Lin et al. 2022)](https://arxiv.org/abs/2109.07982) (Camera+LiDAR+IMU)이 있다.
+대표 시스템으로는 [LIO-SAM (Shan et al. 2020)](https://arxiv.org/abs/2007.00258) (LiDAR+IMU+GPS), VINS-Mono (Camera+IMU), [R3LIVE (Lin et al. 2022)](https://arxiv.org/abs/2109.07982) (Camera+LiDAR+IMU)가 있다.
 
 ### 8.1.3 Ultra-Tightly Coupled (신호 수준 결합)
 
-센서의 측정값이 아니라 **신호 자체**를 결합한다. 가장 극단적인 통합이다.
-
-대표적으로 GNSS-INS ultra-tight coupling이 있다. 일반적인 tightly coupled GNSS-INS 구성에서는 수신기가 위성 신호에서 추출한 의사거리(pseudorange)를 INS와 결합하지만, ultra-tight에서는 INS가 추정한 위치/속도로 GNSS 수신기의 코드/반송파 추적 루프(tracking loop)를 직접 보조한다. 이렇게 하면 약한 신호 환경(도심 캐니언, 실내 진입 직후)에서도 GNSS 신호를 더 오래 추적할 수 있다.
+센서 안의 신호 처리 단계에서 합친다. 대표 예는 GNSS-INS ultra-tight coupling이다. tightly coupled GNSS-INS에서는 수신기가 위성 신호에서 뽑은 의사거리(pseudorange)를 INS와 합치지만, ultra-tight에서는 INS가 추정한 위치/속도로 GNSS 수신기의 코드/반송파 추적 루프(tracking loop)를 직접 보조한다. 이렇게 하면 약한 신호 환경(도심 캐니언, 실내 진입 직후)에서도 GNSS 신호를 더 오래 추적할 수 있다.
 
 $$
 \text{NCO frequency} = f_{\text{nominal}} + \Delta f_{\text{INS-aided}}
 $$
 
-여기서 NCO (Numerically Controlled Oscillator)의 주파수를 INS가 예측한 도플러 이동으로 보정하여, 수신기의 추적 범위를 넓힌다.
+NCO (Numerically Controlled Oscillator, 수치 제어 발진기)의 주파수를 INS가 예측한 도플러 이동으로 보정해 수신기의 추적 범위를 넓힌다.
 
-**구현 경계**: ultra-tight coupling은 GNSS 수신기의 correlator나 tracking loop에 접근해야 하므로 일반 수신기의 측정 API만으로는 구현할 수 없다. 수신기 SDK·FPGA·펌웨어를 제어할 수 있는 통합 GNSS/INS 제품과 연구 플랫폼에서 사용되며, 보통의 로보틱스 개발에서는 raw pseudorange·carrier·Doppler를 쓰는 tightly coupled 구성이 접근하기 쉽다.
+**구현 경계**: ultra-tight coupling은 GNSS 수신기의 correlator나 tracking loop에 접근해야 하므로 수신기 SDK·FPGA·펌웨어를 제어할 수 있는 통합 GNSS/INS 제품과 연구 플랫폼에서 쓰인다. 일반 로보틱스 개발에서는 raw pseudorange·carrier·Doppler를 쓰는 tightly coupled 구성이 접근하기 쉽다.
 
-### 8.1.4 세 가지 수준의 비교
+### 8.1.4 결합 수준 비교
 
 ```
 측정 흐름:
@@ -81,13 +76,13 @@ from scipy.linalg import inv
 def loosely_coupled_fusion(x_lidar, P_lidar, x_visual, P_visual):
     """
     Loosely coupled fusion: 두 서브시스템의 독립적 추정치를 공분산 가중 평균으로 결합.
-    
+
     Parameters:
         x_lidar: LiDAR 서브시스템의 상태 추정 (n,)
         P_lidar: LiDAR 추정의 공분산 (n, n)
         x_visual: Visual 서브시스템의 상태 추정 (n,)
         P_visual: Visual 추정의 공분산 (n, n)
-    
+
     Returns:
         x_fused: 융합된 상태 추정 (n,)
         P_fused: 융합된 공분산 (n, n)
@@ -95,14 +90,14 @@ def loosely_coupled_fusion(x_lidar, P_lidar, x_visual, P_visual):
     # 정보 형식(information form)으로 변환
     I_lidar = inv(P_lidar)
     I_visual = inv(P_visual)
-    
+
     # 정보 행렬의 합산
     I_fused = I_lidar + I_visual
     P_fused = inv(I_fused)
-    
+
     # 정보 가중 평균
     x_fused = P_fused @ (I_lidar @ x_lidar + I_visual @ x_visual)
-    
+
     return x_fused, P_fused
 
 
@@ -125,24 +120,23 @@ print(f"Fused:  {x_fused}, P_diag: {np.diag(P_fused)}")
 
 ## 8.2 Camera + LiDAR + IMU 융합
 
-카메라, LiDAR, IMU 조합은 텍스처·색상, 3D 거리, 고속 관성을 함께 제공한다. 다만 비용·전력·기상·가용 거리와 실패 상관관계까지 고려해야 하며, 세 센서를 장착했다는 사실만으로 강건성이 보장되지는 않는다:
+카메라, LiDAR, IMU를 함께 쓰면 텍스처·색상, 3D 거리, 짧은 주기의 관성 측정을 모두 얻는다. 다만 비용·전력·기상·가용 거리와, 센서들이 같은 상황에서 함께 실패하는지도 따져야 한다. 세 센서를 달았다고 강건해지지는 않는다. 상황별로 정리하면 다음과 같다.
 
 | 상황 | 카메라 | LiDAR | IMU |
 |------|--------|-------|-----|
-| 어두운 환경 | ✗ | ✓ | ✓ |
-| 텍스처 없는 벽 | ✗ | ✓ | ✓ |
-| 기하적 퇴화 (긴 복도) | ✓ | ✗ | ✓ |
-| 고속 회전 | ✗ | ✗ | ✓ |
-| 스케일 관측 | ✗ (단안) | ✓ | ✓ (가속도가 metric 단위; 운동 여기 필요) |
-| 색상/시맨틱 | ✓ | ✗ | ✗ |
+| 조명 변화 | 영향을 받음 | 자체 레이저를 쓰므로 조명과 무관 | 주변을 관측하지 않음 |
+| 텍스처 없는 환경 | 데이터 연관이 어려움 | 텍스처와 무관 (기하 구조가 있어야 함) | 주변을 관측하지 않음 |
+| 기하 제약이 모자란 환경 (좁은 터널, 길게 이어진 벽 하나) | 기하 구조와 무관 (텍스처가 있어야 함) | 성능이 떨어짐 | 주변을 관측하지 않음 |
+| 깊이·스케일 | 직접 측정하지 못함 (단안) | 직접 측정 | 가속도가 metric 단위 (운동 여기 필요) |
+| 색상 | 있음 | 없음 | 없음 |
 
-이 세 센서를 효과적으로 결합하기 위해 다양한 밀결합 융합 아키텍처가 제안되었다.
+카메라와 LiDAR 칸은 [FAST-LIVO2 논문](https://arxiv.org/abs/2408.14035) 1절이 정리한 두 센서의 한계다.
+
+IMU 칸은 이 논문이 다루지 않으며, Ch.2에서 본 측정 원리에서 나온다. IMU는 주변을 관측하지 않으므로 조명·텍스처·구조의 영향을 받지 않지만, 적분 오차가 쌓인다.
 
 ### 8.2.1 R3LIVE / R3LIVE++
 
-R3LIVE (Lin et al., 2022)는 LiDAR-Inertial Odometry(LIO)와 Visual-Inertial Odometry(VIO) 두 서브시스템을 tightly coupled로 결합한 시스템이다.
-
-R3LIVE는 **이중 서브시스템(dual-subsystem)** 아키텍처를 채택한다. LIO 서브시스템이 기하학적 구조(geometry)를, VIO 서브시스템이 텍스처(photometric) 정보를 담당하되, 두 시스템이 **상태를 공유**하여 tightly coupled된다.
+R3LIVE (Lin et al., 2022)는 LiDAR-Inertial Odometry(LIO)와 Visual-Inertial Odometry(VIO) 두 서브시스템(dual-subsystem)을 tightly coupled로 묶었다. LIO 서브시스템은 기하 구조(geometry)를, VIO 서브시스템은 텍스처(photometric) 정보를 맡고, 두 서브시스템이 상태 하나를 함께 갱신한다.
 
 ```
 LiDAR scan ──→ [LIO 서브시스템] ──→ 상태 업데이트 (기하)
@@ -152,27 +146,27 @@ LiDAR scan ──→ [LIO 서브시스템] ──→ 상태 업데이트 (기하
 Camera image ──→ [VIO 서브시스템] ──→ 상태 업데이트 (광도)
 ```
 
-LIO 서브시스템은 FAST-LIO2와 동일한 방식으로, raw LiDAR point를 ikd-Tree 기반 맵에 직접 point-to-plane 정합한다. Iterated EKF로 상태를 업데이트한다.
+LIO 서브시스템은 FAST-LIO2처럼 raw LiDAR 점을 ikd-Tree 맵에 바로 point-to-plane 정합하고, Iterated EKF로 상태를 갱신한다.
 
-VIO 서브시스템이 R3LIVE의 차별점이다. 일반적인 VIO는 특징점(feature point)의 reprojection error를 최소화하지만, R3LIVE는 **photometric error**(광도 오차)를 사용한다. LIO가 구축한 3D 맵의 각 포인트에 RGB 색상을 부여하고, 새 카메라 이미지가 들어올 때 이 맵 포인트들을 이미지에 투영하여 관측된 색상과 맵에 저장된 색상의 차이를 최소화한다:
+VIO 서브시스템은 두 단계로 갱신한다. 먼저 맵 점을 optical flow로 추적해 frame-to-frame PnP reprojection error를 줄이고, 이어 frame-to-map photometric error(광도 오차)를 줄인다. 뒤 단계에서는 LIO가 만든 3D 맵 점마다 RGB 색을 붙여 두고, 새 영상이 들어오면 맵 점을 영상에 투영해 관측한 색과 맵에 저장한 색의 차이를 최소화한다.
 
 $$
 \mathbf{r}^{\text{photo}}_i = \mathbf{I}(\pi(\mathbf{T}_{CW} \mathbf{p}^W_i)) - \mathbf{c}_i^{\text{map}}
 $$
 
-여기서 $\mathbf{I}(\cdot)$는 이미지의 픽셀 강도, $\pi(\cdot)$는 3D→2D 투영 함수, $\mathbf{T}_{CW}$는 월드에서 카메라로의 변환, $\mathbf{p}^W_i$는 맵 포인트의 3D 좌표, $\mathbf{c}_i^{\text{map}}$는 맵에 저장된 해당 포인트의 색상이다.
+여기서 $\mathbf{I}(\cdot)$는 이미지의 픽셀 강도, $\pi(\cdot)$는 3D→2D 투영 함수, $\mathbf{T}_{CW}$는 월드 좌표를 카메라 좌표로 옮기는 변환, $\mathbf{p}^W_i$는 맵 포인트의 3D 좌표, $\mathbf{c}_i^{\text{map}}$는 맵에 저장된 해당 포인트의 색상이다.
 
-R3LIVE의 공유 상태는 한 모달리티에서 사용할 수 있는 잔차의 수가 줄어들 때도 다른 갱신을 계속 사용할 수 있다. 그러나 LiDAR 차단 때 visual update가 유지되는 범위는 기존 colored map의 가시성에, 어두운 영상에서 LIO가 유지되는 범위는 LiDAR 기하와 IMU 품질에 달려 있다. 논문은 이 구조로 online colored 3D mapping을 시연한다.
+R3LIVE는 상태를 함께 쓰므로, 한 센서의 측정이 끊겨도 다른 센서로 갱신을 이어 간다. LiDAR가 가려졌을 때 visual update가 얼마나 버티는지는 이미 만든 colored map이 영상에 얼마나 보이는지에 달려 있다. 영상이 어두울 때 LIO가 얼마나 버티는지는 LiDAR 기하와 IMU 품질에 달려 있다. 논문은 이 구조로 online colored 3D mapping을 시연한다.
 
 ### 8.2.2 LVI-SAM
 
-[LVI-SAM](https://arxiv.org/abs/2104.10831) (Shan et al., 2021)은 LIO-SAM의 확장으로, Visual-Inertial 서브시스템과 LiDAR-Inertial 서브시스템을 **양방향(bidirectional)**으로 결합한다.
+[LVI-SAM](https://arxiv.org/abs/2104.10831) (Shan et al., 2021)은 LIO-SAM을 넓혀, Visual-Inertial 서브시스템(VIS)과 LiDAR-Inertial 서브시스템(LIS)이 서로 정보를 주고받게(bidirectional) 했다.
 
 **양방향 결합**:
 
-- **VIS → LIS 방향**: Visual-Inertial 서브시스템이 추정한 포즈를 LiDAR 스캔 매칭의 초기값으로 사용. 특히 LiDAR만으로는 초기값이 부정확한 경우(고속 회전, featureless 환경)에 VIS가 초기값을 제공하여 LiDAR 정합의 수렴을 돕는다.
+- **VIS → LIS 방향**: Visual-Inertial 서브시스템이 추정한 포즈를 LiDAR 스캔 매칭의 초기값으로 쓴다. LiDAR만으로는 초기값이 부정확할 때(빠른 회전, 기하 특징이 적은 환경) LiDAR 정합이 수렴하도록 돕는다.
 
-- **LIS → VIS 방향**: LiDAR 깊이를 시공간적으로 대응되는 visual 특징점에 부여해 깊이 초기화를 돕는다. 외부 파라미터·시간 동기화·가시성·occlusion 검사가 맞는 점에 한해 삼각측량의 시차를 기다리지 않고 metric depth prior를 줄 수 있다.
+- **LIS → VIS 방향**: LiDAR 깊이를 시간과 위치가 맞는 visual 특징점에 붙여 깊이 초기화를 돕는다. 외부 파라미터·시간 동기화·가시성·occlusion 검사를 통과한 점에는 삼각측량용 시차가 쌓이기 전에 metric depth prior를 줄 수 있다.
 
 ```
          ┌─── VIS 초기 포즈 ───→ LIS 초기값
@@ -180,36 +174,35 @@ R3LIVE의 공유 상태는 한 모달리티에서 사용할 수 있는 잔차의
   [Visual-Inertial]            [LiDAR-Inertial]
          │                            │
          └←── LiDAR 깊이 ────────────┘
-         
+
               ↓ LiDAR·IMU factor ↓
            [Factor Graph (GTSAM/iSAM2)]
                      ↓
               최종 최적화된 포즈
 ```
 
-**Factor Graph 설계**: LVI-SAM은 시각-관성 시스템(VIS)과 LiDAR-관성 시스템(LIS)의 두 하위 시스템으로 이뤄지고, factor graph는 LIO-SAM을 계승한 LIS가 유지한다. 여기에 들어가는 factor는 다음과 같다.
+**Factor Graph 설계**: factor graph는 LIO-SAM에서 이어받은 LIS가 유지한다. 이 그래프의 factor:
 - IMU preintegration factor (연속 키프레임 사이)
 - LiDAR odometry factor (scan matching 결과)
-- GPS factor (가용 시)
 - Loop closure factor (재방문 탐지 시)
 
-VIS는 이 그래프에 자기 odometry를 factor로 넣는 대신, LIS에 초기값을 제공하고 LiDAR 깊이를 받아 자신의 스케일을 잡는 방향으로 결합한다.
+공개 구현에서 VIS는 이 그래프에 자기 odometry를 factor로 넣는 대신, LIS에 초기값을 넘기고 LiDAR 깊이를 받아 자신의 스케일을 잡는 방향으로 결합한다(논문은 visual odometry constraint도 그래프에 넣는다고 쓰지만 공개 코드는 이 factor를 꺼 두었다).
 
 ### 8.2.3 FAST-LIVO / FAST-LIVO2
 
-[FAST-LIVO2](https://arxiv.org/abs/2408.14035) (Zheng et al., 2024)는 FAST-LIO2 팀(HKU MARS Lab)이 개발한 Camera+LiDAR+IMU 직접(direct) 융합 시스템이다. "직접"이란 특징점 추출 없이 raw 데이터를 직접 사용한다는 뜻이다.
+[FAST-LIVO2](https://arxiv.org/abs/2408.14035) (Zheng et al., 2025)는 FAST-LIO2를 만든 HKU MARS Lab의 Camera+LiDAR+IMU 직접(direct) 융합 시스템이다. 여기서 "직접"은 특징점을 뽑지 않고 raw LiDAR 점과 영상 픽셀을 그대로 쓴다는 뜻이다.
 
 **설계 1 — 순차적 업데이트(Sequential Update)**:
 
-이종 센서의 측정은 개수와 성격이 크게 다르다. LiDAR는 점마다 point-to-plane 잔차 하나를, 카메라는 패치 픽셀마다 photometric 잔차 하나를 주는데, 두 측정 집합의 크기·단위·잡음 규모가 달라 원 논문은 이 dimension mismatch를 이유로 순차 갱신을 택했다.
+이종 센서의 측정은 개수와 성격이 크게 다르다. LiDAR는 점마다 point-to-plane 잔차 하나를, 카메라는 패치 픽셀마다 photometric 잔차 하나를 준다. 두 측정 집합은 크기·단위·잡음 규모가 다르고, 원 논문은 이 dimension mismatch를 이유로 순차 갱신을 택했다.
 
-FAST-LIVO2는 이 문제를 **순차적 베이지안 업데이트**로 해결한다:
+한 주기의 갱신 순서는 다음과 같다.
 
 1. IMU로 상태를 예측 (prediction)
 2. LiDAR 측정으로 상태를 업데이트 (1차 업데이트)
 3. 카메라 측정으로 상태를 다시 업데이트 (2차 업데이트)
 
-이론적으로, 측정이 독립이라면 순차적 업데이트는 동시 업데이트와 동일한 결과를 준다:
+상태가 주어졌을 때 두 측정이 조건부 독립이면, 정확한 베이즈 갱신에서는 순차 갱신과 동시 갱신의 결과가 같다.
 
 $$
 p(\mathbf{x} | \mathbf{z}_L, \mathbf{z}_C) = p(\mathbf{x} | \mathbf{z}_C, \mathbf{z}_L) \propto p(\mathbf{z}_C | \mathbf{x}) \cdot p(\mathbf{z}_L | \mathbf{x}) \cdot p(\mathbf{x})
@@ -223,19 +216,19 @@ $$
 \underbrace{p(\mathbf{x} | \mathbf{z}_L, \mathbf{z}_C)}_{\text{카메라 업데이트 후}} \propto p(\mathbf{z}_C | \mathbf{x}) \cdot p(\mathbf{x} | \mathbf{z}_L)
 $$
 
-두 번째 식에서 $p(\mathbf{x} | \mathbf{z}_L)$이 prior 역할을 하며, 최종 결과는 동시 업데이트와 수학적으로 동등하다.
+두 번째 식에서는 $p(\mathbf{x} | \mathbf{z}_L)$이 prior 역할을 한다. 선형·가우시안 모델이면 결과가 동시 갱신과 정확히 같다. 반복 선형화하는 IEKF에서는 두 번째 갱신의 선형화 지점이 첫 갱신 결과로 바뀌므로 근사적으로만 같다.
 
 **설계 2 — 통합 적응형 복셀 맵**:
 
-FAST-LIVO2는 해시 테이블 + 옥트리 기반의 단일 복셀 맵을 사용한다. LiDAR 모듈이 기하학적 구조(3D 좌표, 법선 벡터)를 구축하면, Visual 모듈이 같은 맵 포인트에 이미지 패치를 부착한다. 이렇게 하면 기하와 텍스처가 하나의 맵에서 일관되게 관리된다.
+FAST-LIVO2는 해시 테이블과 옥트리로 만든 복셀 맵 하나를 쓴다. LiDAR 모듈이 기하 구조(3D 좌표, 법선 벡터)를 만들면, Visual 모듈이 같은 맵 점에 이미지 패치를 붙인다. 그래서 기하와 텍스처가 한 맵에 함께 들어 있다.
 
 **설계 3 — LiDAR 법선 활용 어파인 워핑**:
 
-카메라의 direct method에서 이미지 패치를 비교할 때, 표면의 기울기를 고려한 어파인 워핑이 정확도를 높인다. FAST-LIVO2는 LiDAR에서 추출한 평면 법선 벡터를 활용하여, 별도의 법선 추정 없이 정확한 어파인 워핑을 수행한다. 이는 LiDAR-카메라 상호 보완의 구체적 예다.
+카메라의 direct method로 이미지 패치를 비교할 때는 표면 기울기를 반영해 패치를 어파인 워핑해야 시점이 달라도 패치가 맞는다. FAST-LIVO2는 LiDAR 맵의 평면 법선을 그대로 써서, 따로 법선을 추정하지 않고 워핑한다.
 
 **설계 4 — 실시간 노출 보정**:
 
-조명이 빠르게 변하는 환경(터널 진입·탈출)에서, FAST-LIVO2는 노출 시간(exposure time)을 온라인으로 추정해 photometric error를 보정한다.
+조명이 빠르게 바뀌는 곳(터널 진입·탈출)에 대비해, FAST-LIVO2는 노출 시간(exposure time)을 온라인으로 추정해 photometric error에 반영한다.
 
 ```python
 import numpy as np
@@ -243,8 +236,9 @@ import numpy as np
 def sequential_ekf_update(x_pred, P_pred, z_lidar, H_lidar, R_lidar, z_cam, H_cam, R_cam):
     """
     순차적 EKF 업데이트: LiDAR → Camera 순서.
-    동시 업데이트와 수학적으로 동등하지만, 이종 측정의 dimension mismatch를 한 번에 다루지 않아도 된다.
-    
+    선형·가우시안 모델이고 두 측정이 상태에 대해 조건부 독립이면 동시 업데이트와 결과가 같다.
+    이종 측정의 dimension mismatch를 한 번에 다루지 않아도 된다.
+
     Parameters:
         x_pred: 예측 상태 (n,)
         P_pred: 예측 공분산 (n, n)
@@ -254,7 +248,7 @@ def sequential_ekf_update(x_pred, P_pred, z_lidar, H_lidar, R_lidar, z_cam, H_ca
         z_cam: 카메라 측정 (m_C,)
         H_cam: 카메라 관측 자코비안 (m_C, n)
         R_cam: 카메라 측정 노이즈 (m_C, m_C)
-    
+
     Returns:
         x_updated: 최종 업데이트된 상태
         P_updated: 최종 업데이트된 공분산
@@ -265,34 +259,34 @@ def sequential_ekf_update(x_pred, P_pred, z_lidar, H_lidar, R_lidar, z_cam, H_ca
     y_L = z_lidar - H_lidar @ x_pred  # innovation
     x_after_lidar = x_pred + K_L @ y_L
     P_after_lidar = (np.eye(len(x_pred)) - K_L @ H_lidar) @ P_pred
-    
+
     # Step 2: Camera 업데이트 (LiDAR 업데이트 결과를 prior로 사용)
     S_C = H_cam @ P_after_lidar @ H_cam.T + R_cam
     K_C = P_after_lidar @ H_cam.T @ np.linalg.inv(S_C)
     y_C = z_cam - H_cam @ x_after_lidar  # innovation
     x_updated = x_after_lidar + K_C @ y_C
     P_updated = (np.eye(len(x_pred)) - K_C @ H_cam) @ P_after_lidar
-    
+
     return x_updated, P_updated
 ```
 
 ### 8.2.4 Multimodal Factor Graph 설계 비교
 
-세 시스템의 설계를 factor graph 관점에서 비교한다:
+R3LIVE, LVI-SAM, FAST-LIVO2의 설계는 다음과 같이 다르다.
 
 | 측면 | R3LIVE | LVI-SAM | FAST-LIVO2 |
 |------|--------|---------|------------|
 | 백엔드 | IEKF (dual subsystem) | iSAM2 (factor graph) | IEKF (sequential) |
 | LiDAR 처리 | Direct (point-to-plane) | Feature-based (LOAM) | Direct (point-to-plane) |
-| 카메라 처리 | Direct (photometric) | Feature-based (Shi-Tomasi + KLT) | Direct (photometric) |
-| 맵 표현 | ikd-Tree + RGB | Voxel map | Hash+Octree voxel map |
+| 카메라 처리 | PnP reprojection + photometric | Feature-based (Shi-Tomasi + KLT) | Direct (photometric) |
+| 맵 표현 | ikd-Tree + RGB | 키프레임 포인트 클라우드 submap (LIO-SAM 방식) | Hash+Octree voxel map |
 | 특징 추출 | 불필요 | 필요 (LiDAR edge/planar, 시각 코너) | 불필요 |
-| GPS 통합 | 없음 | Factor로 통합 | 없음 |
+| GPS 통합 | 없음 | 없음 (LIO-SAM에서 물려받은 `addGPSFactor()`가 있지만 호출 줄이 주석 처리돼 있음) | 없음 |
 | Loop closure | 없음 | Factor로 통합 | 없음 |
 | 임베디드 검증 | 목표 하드웨어 benchmark 필요 | 목표 하드웨어 benchmark 필요 | ARM 구현 보고; 목표 설정에서 재검증 |
 
 **적용 후보를 좁히는 기준**:
-- Loop closure와 GPS factor의 통합이 필요하면 LVI-SAM을 평가한다. 센서 구성, ROS 의존성, 목표 데이터에서의 재방문 성능을 함께 확인한다.
+- Loop closure 통합이 필요하면 LVI-SAM을 평가한다. 센서 구성, ROS 의존성, 목표 데이터의 재방문 성능을 함께 확인한다.
 - Direct photometric update와 colored mapping이 필요하면 R3LIVE를 평가한다. 목표 장면에서 색상, 궤적, 맵 품질 지표를 비교한다.
 - ARM 배포 후보로는 FAST-LIVO2를 평가하되, 목표 센서 해상도와 설정에서 처리율, 최악 지연, 메모리를 측정한다.
 - 시각 특징점이나 LOAM 특징이 부족한 환경에서는 R3LIVE와 FAST-LIVO2 같은 direct 방식을 후보에 넣고, photometric calibration과 동적 객체 민감도를 검증한다.
@@ -301,11 +295,11 @@ def sequential_ekf_update(x_pred, P_pred, z_lidar, H_lidar, R_lidar, z_cam, H_ca
 
 ## 8.3 GNSS 통합
 
-GNSS(Global Navigation Satellite System)는 전역 좌표계의 절대 위치 참조를 제공한다. 이 장에서 다룬 IMU, LiDAR odometry, visual odometry는 주로 **상대적(relative)** 운동을 제공하므로 장시간 주행하면 드리프트가 누적된다. GNSS는 이 드리프트를 교정하는 앵커가 될 수 있다. 측량 기준점, UWB beacon, motion capture처럼 다른 절대 참조원도 있으므로 GNSS만이 유일한 전역 센서인 것은 아니다.
+GNSS(Global Navigation Satellite System, 위성항법시스템)는 전역 좌표계의 절대 위치를 준다. 앞에서 다룬 IMU, LiDAR odometry, visual odometry는 상대(relative) 운동을 재므로 오래 달리면 드리프트가 쌓인다. GNSS가 이 드리프트를 잡는 기준점이 된다. 측량 기준점, UWB beacon, motion capture도 절대 위치의 기준으로 쓸 수 있다.
 
-### 8.3.1 GNSS Factor in Factor Graph (LIO-SAM 방식)
+### 8.3.1 GNSS Factor in Factor Graph
 
-[LIO-SAM (Shan et al. 2020)](https://arxiv.org/abs/2007.00258)은 GNSS 위치를 factor graph의 포즈 노드에 **unary factor**로 연결한다:
+[LIO-SAM (Shan et al. 2020)](https://arxiv.org/abs/2007.00258)의 GPS factor는 §7.3.1에서 보았다. GNSS factor의 residual은 다음과 같이 쓴다.
 
 $$
 \mathbf{r}^{\text{GPS}}_i = \mathbf{T}_{\text{ENU→map}} \cdot \mathbf{p}^{\text{ENU}}_{\text{GPS}} - \mathbf{p}^{\text{map}}_i - \mathbf{R}^{\text{map}}_i \cdot \mathbf{l}_{\text{antenna}}
@@ -313,23 +307,23 @@ $$
 
 여기서:
 - $\mathbf{p}^{\text{ENU}}_{\text{GPS}}$는 GNSS가 보고한 ENU 좌표
-- $\mathbf{T}_{\text{ENU→map}}$은 ENU 좌표계에서 SLAM 맵 좌표계로의 변환이다. 위 식은 GNSS 위치를 맵 좌표계로 옮겨 비교하므로 이 변환을 그대로 적용해야 하며, $\mathbf{T}^{-1}$ 표기는 반대 방향인 $\mathbf{T}_{\text{map→ENU}}$를 쓸 때의 형태다
+- $\mathbf{T}_{\text{ENU→map}}$은 ENU 좌표계에서 SLAM 맵 좌표계로 옮기는 변환이다
 - $\mathbf{p}^{\text{map}}_i$는 SLAM이 추정한 로봇 위치
 - $\mathbf{l}_{\text{antenna}}$는 GNSS 안테나와 로봇 body frame 사이의 lever arm 벡터
 - $\mathbf{R}^{\text{map}}_i$는 로봇의 회전
 
-**좌표계 정렬 문제**: SLAM의 로컬 맵 좌표계와 GNSS의 글로벌 좌표계(WGS84/ENU)는 다르다. 첫 번째 GNSS 수신 시점에서 ENU 원점을 설정하고, 초기 포즈들을 이용하여 맵↔ENU 변환을 추정해야 한다. 이 변환은 6-DoF (3 translation + 3 rotation)이지만, IMU가 중력 방향을 제공하므로 실제로는 4-DoF (yaw + 3 translation)만 추정하면 된다.
+**좌표계 정렬 문제**: SLAM의 로컬 맵 좌표계와 GNSS의 전역 좌표계(WGS84/ENU)는 다르다. 첫 GNSS 수신 시점을 ENU 원점으로 잡고, 초기 포즈들로 맵↔ENU 변환을 추정한다. 이 변환은 6-DoF (이동 3 + 회전 3)지만, 맵이 IMU로 중력에 맞춰져 있으면 4-DoF (yaw + 이동 3)만 추정하면 된다.
 
 ### 8.3.2 Loosely vs Tightly Coupled GNSS
 
 **Loosely Coupled GNSS-INS**:
-GNSS 수신기가 이미 계산한 위치/속도 해(PVT solution)를 EKF로 IMU 추정치와 결합한다. 대부분의 상용 시스템이 이 방식이다.
+GNSS 수신기가 계산해 둔 위치/속도 해(PVT solution)를 EKF로 IMU 추정치와 합친다.
 
 ```python
 def gnss_loose_coupling_ekf_update(x_ins, P_ins, gnss_position, R_gnss):
     """
     Loosely coupled GNSS-INS: GNSS PVT 솔루션으로 INS 상태 보정.
-    
+
     x_ins: INS 상태 [position(3), velocity(3), attitude(3), biases(6)] = 15차원
     gnss_position: GNSS가 계산한 위치 (3,)
     R_gnss: GNSS 위치의 공분산 (3, 3) — 표준편차의 제곱을 대각에 넣는다.
@@ -340,42 +334,41 @@ def gnss_loose_coupling_ekf_update(x_ins, P_ins, gnss_position, R_gnss):
     # 관측 행렬: GNSS는 위치만 관측
     H = np.zeros((3, n))
     H[0:3, 0:3] = np.eye(3)  # position 부분만 관측
-    
+
     # Innovation
     y = gnss_position - H @ x_ins
-    
+
     # Kalman gain
     S = H @ P_ins @ H.T + R_gnss
     K = P_ins @ H.T @ np.linalg.inv(S)
-    
+
     # Update
     x_updated = x_ins + K @ y
     P_updated = (np.eye(n) - K @ H) @ P_ins
-    
+
     return x_updated, P_updated
 ```
 
 **Tightly Coupled GNSS-INS**:
-GNSS 수신기의 PVT 솔루션이 아니라, 원시 의사거리(pseudorange)와 도플러(Doppler) 측정을 직접 사용한다. 각 위성에 대한 의사거리를 개별 factor로 삽입한다:
+원시 의사거리(pseudorange)와 도플러(Doppler) 측정을 바로 쓴다. 위성마다 의사거리를 factor 하나로 넣는다.
 
 $$
 \rho_i = \| \mathbf{p}_{\text{sat},i} - \mathbf{p}_{\text{rx}} \| + c \cdot \delta t_{\text{rx}} + I_i + T_i + \epsilon_i
 $$
 
-여기서 $\rho_i$는 위성 $i$에 대한 의사거리, $c \cdot \delta t_{\text{rx}}$는 수신기 시계 바이어스, $I_i$와 $T_i$는 전리층/대류권 지연이다.
+여기서 $\rho_i$는 위성 $i$의 의사거리, $c \cdot \delta t_{\text{rx}}$는 수신기 시계 바이어스, $I_i$와 $T_i$는 전리층/대류권 지연이다.
 
-Tightly coupled의 장점은, 위성이 4개 미만이어서 GNSS 자체적으로는 해를 구할 수 없는 상황에서도, 가용한 위성의 의사거리를 여전히 활용할 수 있다는 점이다. 도심 환경에서 건물에 의해 위성이 가려지는 경우가 빈번하므로, 이 장점은 실질적으로 매우 크다.
+Tightly coupled는 위성이 4개 미만이라 GNSS만으로 해를 못 구할 때도 보이는 위성의 의사거리를 쓴다. 건물이 위성을 가려 보이는 위성이 4개 아래로 줄어드는 도심 구간에서 이 차이가 생긴다.
 
 ### 8.3.3 GNSS-Denied → GNSS-Available 전환 처리
 
-실제 로봇 운행에서는 GNSS 신호가 수시로 끊기고 복원된다(터널, 지하주차장, 고가도로 아래). 시스템은 이 전환을 안정적으로 처리해야 한다.
+실제 운행에서는 터널, 지하주차장, 고가도로 아래에서 GNSS 신호가 끊겼다 돌아온다. 이 전환에서 주의할 점은 다음과 같다.
 
-**전환 시 주의점**:
-1. **좌표계 점프(coordinate jump) 방지**: GNSS 복원 직후 GNSS 위치와 IMU/LiDAR 추정 위치 사이에 큰 차이가 있을 수 있다. 이를 갑자기 교정하면 맵에 불연속이 생긴다. 해결책은 GNSS 불확실성을 초기에 크게 설정하고 점진적으로 줄이는 것이다.
+1. **좌표계 점프(coordinate jump) 방지**: GNSS가 돌아온 직후 GNSS 위치와 IMU/LiDAR 추정 위치가 크게 다를 수 있다. 한 번에 맞추면 맵이 끊긴다. 그래서 처음에는 GNSS 불확실성을 크게 두고 차차 줄인다.
 
-2. **GNSS 품질 검증**: GNSS 복원 후 초기 몇 초의 측정은 multipath 등으로 정확도가 떨어질 수 있다. PDOP/HDOP, 위성 수, carrier phase 상태 등을 확인하여 충분히 신뢰할 수 있을 때만 factor에 포함한다.
+2. **GNSS 품질 검증**: 신호가 돌아온 뒤 처음 몇 초는 multipath 등으로 정확도가 낮을 수 있다. PDOP/HDOP, 위성 수, carrier phase 상태를 확인해 믿을 만할 때만 factor로 넣는다.
 
-3. **맵 좌표계 보정**: GNSS 장기 부재 후 드리프트가 누적되었다면, 복원 시 맵 좌표계 자체를 보정해야 할 수 있다. 이는 loop closure와 유사한 포즈 그래프 최적화로 처리한다.
+3. **맵 좌표계 보정**: GNSS가 오래 없어 드리프트가 쌓였다면 맵 좌표계 자체를 고쳐야 할 수 있다. Loop closure처럼 포즈 그래프 최적화로 처리한다.
 
 ---
 
@@ -383,27 +376,27 @@ Tightly coupled의 장점은, 위성이 4개 미만이어서 GNSS 자체적으�
 
 ### 8.4.1 Radar와 4D Imaging
 
-전통적으로 자동차 레이더는 해상도가 낮아 SLAM/odometry 용으로는 적합하지 않다고 여겨졌다. 그러나 **4D imaging radar**의 등장으로 그 평가가 달라지고 있다.
+기존 자동차 레이더는 고도 방향 해상도가 낮아, 높이가 다른 물체가 한 시야 안에서 섞였다([SNAIL Radar 논문](https://arxiv.org/abs/2407.11705) 1절).
 
-**4D Radar란**: 기존 자동차 레이더가 거리(range), 속도(Doppler), 방위각(azimuth) 3가지를 측정했다면, 4D imaging radar는 여기에 **고도각(elevation)**을 추가하여 3D 포인트 클라우드를 생성한다. 점 개수는 LiDAR보다 적지만(수백~수천 점 vs 수십만 점), 다음 세 특성을 갖는다.
+**4D Radar란**: 보통의 자동차 레이더가 거리(range), 속도(Doppler), 방위각(azimuth)을 쟀다면, 4D imaging radar는 고도각(elevation)까지 재서 3D 포인트 클라우드를 만든다. [Han et al. 서베이](https://arxiv.org/abs/2306.04242)는 점 밀도가 저채널 LiDAR에 견줄 만큼 올라왔지만 LiDAR보다 성기고 잡음이 많다고 정리한다. 4D radar에는 다음 특성이 있다.
 
 1. **악천후 내성**: mm-wave radar는 가시광 카메라나 일부 LiDAR보다 안개·비·눈의 영향이 작은 경우가 많다. 그러나 강수 attenuation, 물방울·노면 multipath와 clutter가 남으므로 조건별 검증이 필요하다.
 
-2. **직접 radial velocity 측정**: FMCW radar의 Doppler는 한 frame 안의 여러 chirp에 걸친 위상 변화에서 line-of-sight 상대 속도 성분을 준다. 한 chirp만으로는 거리 정보에 머물고 속도가 분리되지 않는다. 한 점의 완전한 3D 속도나 물체 운동을 직접 주는 것은 아니며, 여러 방향·시간·추적 또는 다른 센서가 필요하다.
+2. **직접 radial velocity 측정**: FMCW radar의 Doppler는 한 frame 안의 여러 chirp에 걸친 위상 변화에서 line-of-sight 상대 속도 성분을 준다. 한 점의 3D 속도나 물체 운동을 구하려면 여러 방향·시간의 측정, 추적, 또는 다른 센서를 결합해야 한다.
 
-3. **다른 비용 구조**: mass-market radar chipset은 저가일 수 있지만 imaging radar와 LiDAR의 모듈 가격은 채널 수, 안테나, 처리 장치, 생산량에 따라 겹친다. 특정 배수 대신 현재 견적과 요구 성능을 함께 비교한다.
+3. **다른 비용 구조**: mass-market radar chipset은 저가일 수 있지만 imaging radar와 LiDAR의 모듈 가격은 채널 수, 안테나, 처리 장치, 생산량에 따라 겹친다. 선정할 때는 현재 견적과 요구 성능을 함께 비교한다.
 
 ### 8.4.2 Radar Odometry
 
-4D radar를 이용한 odometry는 2022년 이후 논문 수가 빠르게 늘고 있는 분야이다. radar의 도플러 측정을 ego-motion 추정에 직접 활용한다.
+4D radar odometry는 radar의 도플러 측정을 ego-motion 추정에 직접 쓴다.
 
-FMCW radar의 각 측정점은 $(r, \theta, \phi, v_d)$ — 거리, 방위각, 고도각, 도플러 속도 — 를 제공한다. 로봇의 선속도 $\mathbf{v}$와 각속도 $\boldsymbol{\omega}$가 주어지면, 특정 방향 $\mathbf{d}_i = [\cos\phi_i \cos\theta_i, \cos\phi_i \sin\theta_i, \sin\phi_i]^T$의 점에서 관측되는 도플러 속도는:
+FMCW radar의 각 측정점은 $(r, \theta, \phi, v_d)$ — 거리, 방위각, 고도각, 도플러 속도 — 를 준다. 로봇의 선속도 $\mathbf{v}$와 각속도 $\boldsymbol{\omega}$가 주어지면, 특정 방향 $\mathbf{d}_i = [\cos\phi_i \cos\theta_i, \cos\phi_i \sin\theta_i, \sin\phi_i]^T$의 점에서 관측되는 도플러 속도는:
 
 $$
 v_{d,i} = -\mathbf{d}_i^T \mathbf{v}_S + n_i
 $$
 
-여기서 $\mathbf{v}_S$는 radar 위상 중심의 선속도다. 정적 반사점이 여러 방향에 충분히 분포하면 이 식들로 $\mathbf{v}_S$를 추정할 수 있다. 단일 monostatic radar의 점별 Doppler만으로 센서 원점의 각속도를 독립 추정할 수는 없으며, body 원점으로 옮길 때는 알려진 lever arm과 IMU 각속도 또는 scan registration을 함께 사용한다.
+여기서 $\mathbf{v}_S$는 radar 위상 중심의 선속도다. 정적 반사점이 여러 방향에 충분히 분포하면 이 식들로 $\mathbf{v}_S$를 추정할 수 있다. 단일 monostatic radar의 점별 Doppler만으로 센서 원점의 각속도를 독립 추정할 수는 없다. 이 속도를 body 원점으로 옮기려면 알려진 lever arm에 더해 IMU 각속도나 scan registration으로 얻은 각속도가 필요하다.
 
 ```python
 import numpy as np
@@ -411,86 +404,86 @@ import numpy as np
 def radar_ego_velocity(radar_points, doppler_velocities):
     """
     Radar 도플러 측정으로부터 ego-velocity 추정.
-    
+
     radar_points: (N, 3) — 각 점의 3D 좌표 (r*d_i)
     doppler_velocities: (N,) — 각 점의 관측 도플러 속도
-    
+
     Returns:
         v_ego: (3,) — ego linear velocity
     """
     # 각 점의 방향 벡터 (단위 벡터)
     norms = np.linalg.norm(radar_points, axis=1, keepdims=True)
     directions = radar_points / (norms + 1e-8)  # (N, 3)
-    
+
     # v_d = -d^T @ v_ego  (간단한 경우: 각속도 무시)
     # => A @ v_ego = b, 여기서 A = -directions, b = doppler_velocities
     A = -directions
     b = doppler_velocities
-    
+
     # RANSAC으로 동적 물체 제거 후 최소자승
     # 간단한 버전: 전체 데이터로 최소자승
     v_ego, residuals, _, _ = np.linalg.lstsq(A, b, rcond=None)
-    
+
     return v_ego
 ```
 
 ### 8.4.3 4D Radar + Camera Fusion
 
-4D radar와 카메라를 결합하면 "LiDAR-free" 자율주행 시스템을 구성할 수 있다. 두 센서의 상보성은 다음과 같다.
+4D radar와 카메라를 함께 쓰면 LiDAR 없는 자율주행 센서 구성을 만들 수 있다. 두 센서가 서로 메우는 부분은 다음과 같다.
 
 | 특성 | 카메라 | 4D Radar |
 |------|--------|----------|
 | 해상도 | 매우 높음 | 낮음 |
-| 악천후 | 취약 | 강건 |
+| 악천후 | 저하됨 | 상대적으로 강함 (강수 영향은 받음) |
 | 직접 깊이 측정 | ✗ | ✓ |
 | radial velocity 측정 | ✗ | ✓ |
 | 시맨틱 이해 | 강함 | 약함 |
 | 비용 | 렌즈·카메라 수·연산에 의존 | 안테나·채널·연산에 의존 |
 
-Fusion에는 세 접근법이 있다.
-- **Early fusion**: Radar 포인트를 이미지에 투영하여 sparse depth cue로 활용. Mono depth estimation의 스케일 앵커로 사용.
-- **Mid-level fusion**: 카메라 특징과 radar 특징을 네트워크 내부에서 결합. BEV (Bird's Eye View) 공간에서의 융합이 일반적.
-- **Late fusion**: 각 센서로 독립적으로 물체 검출 후 결과를 결합.
+융합 방식은 단계에 따라 나뉜다.
+- **Early fusion**: Radar 점을 영상에 투영해 희소 깊이 단서로 쓴다. 단안 깊이 추정의 스케일 기준으로도 쓴다.
+- **Mid-level fusion**: 카메라 특징과 radar 특징을 네트워크 안에서 합친다. BEV (Bird's Eye View, 조감도) 공간에서 합치는 방식이 한 예다.
+- **Late fusion**: 센서마다 따로 물체를 검출한 뒤 결과를 합친다.
 
 ### 8.4.4 Boreas 벤치마크
 
-[Boreas](https://arxiv.org/abs/2203.10168) (Burnett et al., 2023)는 맑음·비·눈과 여러 계절에 반복 수집된 다중 센서 데이터셋이다. 카메라, Velodyne Alpha Prime LiDAR, Navtech CIR304-H **평면 scanning radar** 등을 동기화한다. 이 Navtech 장비는 elevation을 포함한 automotive 4D imaging radar가 아니므로, Boreas 결과를 4D radar 성능으로 해석하면 안 된다.
+[Boreas](https://arxiv.org/abs/2203.10168) (Burnett et al., 2023)는 맑음·비·눈과 여러 계절에 반복 수집된 다중 센서 데이터셋이다. 카메라, Velodyne Alpha Prime LiDAR, Navtech CIR304-H 평면 scanning radar 등을 동기화한다. 이 Navtech 장비는 elevation을 포함한 automotive 4D imaging radar가 아니므로, Boreas 결과를 4D radar 성능으로 해석하면 안 된다.
 
 ---
 
 ## 8.5 Multi-Robot / Decentralized Fusion
 
-**여러 로봇이 협력적으로 환경을 인식**하려면 통신 제약, 공통 참조 프레임의 부재, 데이터 연관(data association) 문제를 함께 다뤄야 한다.
+**여러 로봇이 함께 환경을 인식**하려면 통신 제약, 공통 참조 프레임의 부재, 데이터 연관(data association) 문제를 함께 다뤄야 한다.
 
 ### 8.5.1 Multi-Robot SLAM의 과제
 
-1. **상대 포즈 추정(Inter-Robot Relative Pose)**: 각 로봇은 자기만의 로컬 좌표계에서 SLAM을 수행한다. 두 로봇의 맵을 병합하려면 먼저 이들의 상대 좌표 변환을 알아야 한다. 이는 cross-robot place recognition + geometric verification으로 해결한다.
+1. **상대 포즈 추정(Inter-Robot Relative Pose)**: 로봇마다 자기 로컬 좌표계에서 SLAM을 돌린다. 두 로봇의 맵을 합치려면 먼저 두 좌표계 사이의 변환을 알아야 한다. 로봇 사이의 장소 인식(cross-robot place recognition)과 기하 검증으로 구한다.
 
-2. **통신 제약(Communication Constraint)**: 전체 맵이나 raw 센서 데이터를 전송하는 것은 대역폭 문제로 불가능한 경우가 많다. **어떤 정보를 압축하여 공유할 것인가**를 설계 단계에서 정해야 한다.
+2. **통신 제약(Communication Constraint)**: 대역폭이 좁으면 전체 맵이나 raw 센서 데이터를 보낼 수 없다. 무엇을 얼마나 줄여 나눌지를 설계 단계에서 정한다.
 
-3. **분산 최적화(Distributed Optimization)**: 중앙 서버에 모든 데이터를 모아 최적화하면 통신 병목과 단일 실패점(single point of failure) 문제가 생긴다. 각 로봇이 로컬 최적화를 하면서 이웃 로봇과 제한된 정보만 교환하는 분산 방식이 낫다.
+3. **분산 최적화(Distributed Optimization)**: 중앙 서버에 모든 데이터를 모아 최적화하면 통신 병목과 단일 실패점(single point of failure)이 생긴다. 로봇마다 로컬 최적화를 하며 이웃과 일부 정보만 주고받는 분산 방식은 이 문제를 피하는 대신 수렴이 느리고 구현이 복잡하다.
 
 ### 8.5.2 Kimera-Multi
 
-[Kimera-Multi](https://arxiv.org/abs/2106.14386) (Tian et al., 2021)는 MIT의 SPARK Lab에서 개발한 분산 멀티로봇 SLAM 시스템이다.
+[Kimera-Multi](https://doi.org/10.1109/TRO.2021.3137751) (Tian et al., T-RO 2022; [arXiv 2106.14386](https://arxiv.org/abs/2106.14386))는 MIT SPARK Lab의 분산 멀티로봇 SLAM 시스템이다.
 
 **아키텍처**:
-- 각 로봇이 Kimera를 실행하여 로컬 metric-semantic SLAM 수행
-- 로봇 간 조우(rendezvous) 시, **DBoW2** 기반 inter-robot place recognition으로 공통 장소를 탐지
-- 탐지된 inter-robot loop closure를 분산 포즈 그래프 최적화에 반영
+- 로봇마다 Kimera로 로컬 metric-semantic SLAM을 돌린다.
+- 로봇끼리 통신 범위에서 만나면(rendezvous) DBoW2 기반 inter-robot place recognition으로 공통 장소를 찾는다.
+- 찾은 inter-robot loop closure를 분산 포즈 그래프 최적화에 넣는다.
 - **GNC (Graduated Non-Convexity)** 솔버로 이상치 loop closure를 걸러낸다
 
-**분산 최적화**: 각 로봇이 자신의 포즈 그래프를 유지한다. 루프가 검출되면 inter-robot factor를 공유하고, 이후 Riemannian block-coordinate descent 같은 분산 최적화가 반복마다 이웃과 맞닿은 경계(separator) 포즈의 현재 추정치를 주고받으며 수렴한다. 제약을 한 번 공유하는 것과 최적화 변수를 반복 교환하는 것은 다른 통신이다.
+**분산 최적화**: 로봇마다 자기 포즈 그래프를 둔다. 루프가 검출되면 inter-robot factor를 공유하고, 이후 Riemannian block-coordinate descent 같은 분산 최적화가 반복마다 이웃과 맞닿은 경계(separator) 포즈의 현재 추정치를 주고받으며 수렴한다. 제약을 한 번 공유하는 것과 최적화 변수를 반복 교환하는 것은 다른 통신이다.
 
 ### 8.5.3 Swarm-SLAM
 
 [Swarm-SLAM](https://arxiv.org/abs/2301.06230) (Lajoie et al., 2024)은 대규모 로봇 군집(swarm)을 위한 분산 SLAM으로, 통신 효율에 집중한다.
 
 **설계**:
-- **Place Recognition Descriptor 교환**: 전체 맵이 아니라 장소 인식 디스크립터(NetVLAD, Scan Context 등)만 교환하여 대역폭을 최소화
-- **Inter-Robot Loop Closure**: 디스크립터 매칭으로 후보를 찾고, 최소한의 기하학적 정보(특징점 or 포인트 클라우드)만 교환하여 검증
-- **인접 로봇 간 피어투피어 통신**: 중앙 서버 없이 인접 로봇 간 직접 통신
-- **LiDAR/Visual/Multimodal 지원**: 카메라만, LiDAR만, 또는 혼합 센서 구성의 로봇들이 동시에 참여 가능
+- **Place Recognition Descriptor 교환**: 먼저 장소 인식 디스크립터(NetVLAD, Scan Context 등)만 주고받아 대역폭을 줄인다.
+- **Inter-Robot Loop Closure**: 디스크립터 매칭으로 후보를 찾고, 검증에 필요한 기하 정보(특징점이나 포인트 클라우드)만 주고받는다.
+- **인접 로봇 간 피어투피어 통신**: 중앙 서버 없이 가까운 로봇끼리 바로 통신한다.
+- **LiDAR/Visual/Multimodal 지원**: 카메라만, LiDAR만, 또는 두 센서를 섞어 단 로봇들이 함께 참여한다.
 
 ```python
 # 분산 포즈 그래프 최적화의 개념적 구현
@@ -508,7 +501,7 @@ class DistributedPoseGraphNode:
         self.local_factors = []          # 로컬 odometry factor
         self.inter_robot_factors = []    # 다른 로봇과의 loop closure factor
         self.neighbor_info = {}          # 이웃 로봇으로부터 받은 경계 정보
-    
+
     def add_odometry(self, delta_pose, covariance):
         """로컬 odometry factor 추가"""
         self.local_factors.append({
@@ -519,8 +512,8 @@ class DistributedPoseGraphNode:
             'covariance': covariance
         })
         self.local_poses.append(self.local_poses[-1] @ delta_pose)
-    
-    def add_inter_robot_factor(self, other_robot_id, other_pose_idx, 
+
+    def add_inter_robot_factor(self, other_robot_id, other_pose_idx,
                                 relative_pose, covariance):
         """다른 로봇과의 loop closure factor 추가"""
         self.inter_robot_factors.append({
@@ -531,7 +524,7 @@ class DistributedPoseGraphNode:
             'measurement': relative_pose,
             'covariance': covariance
         })
-    
+
     def exchange_boundary_info(self, neighbor_node):
         """
         이웃 노드와 경계 정보(boundary variable의 추정치와 공분산)를 교환.
@@ -552,11 +545,9 @@ class DistributedPoseGraphNode:
 
 ## 8.6 시스템 설계 실전
 
-실제 멀티센서 퓨전 시스템을 설계·배포할 때는 이론과 알고리즘 밖의 문제도 생긴다.
-
 ### 8.6.1 Sensor Suite 선정 가이드
 
-다음 표는 센서 스위트 검토의 출발점이다. 최종 구성은 **운용 환경**, 안전 요구, 가용 거리, 전력·질량, 실패 시나리오로 결정한다:
+다음 표는 센서 구성을 검토할 때의 출발점일 뿐이다. 최종 구성은 운용 환경, 안전 요구, 가용 거리, 전력·질량, 실패 시나리오를 보고 정한다.
 
 | 환경 | 권장 최소 구성 | 선택 추가 센서 |
 |------|---------------|---------------|
@@ -568,29 +559,29 @@ class DistributedPoseGraphNode:
 | 항공/드론 | Camera + IMU + GNSS | LiDAR (매핑 시) |
 | 악천후 (비/눈) | Radar + IMU | Camera, LiDAR |
 
-**비용 검토 순서**: 센서 본체 가격은 시점·지역·수량에 따라 바뀐다. 먼저 필요한 측정량과 정확도·rate·FoV를 정하고, 센서 가격에 케이블·동기화 장치·GNSS 보정 서비스·연산 장치·마운트·예비 부품·통합 시간을 더한 총비용을 현재 견적으로 계산한다. 저비용 prototype은 camera+IMU에서 시작할 수 있고, 2D/3D LiDAR, RTK GNSS, radar, sensor redundancy는 검증된 실패 모드와 오차 예산에 따라 추가한다.
+**비용 검토 순서**: 센서 본체 가격은 시점·지역·수량에 따라 바뀐다. 먼저 필요한 측정량과 정확도·rate·FoV를 정하고, 센서 가격에 케이블·동기화 장치·GNSS 보정 서비스·연산 장치·마운트·예비 부품·통합 시간을 더한 총비용을 현재 견적으로 계산한다. 저비용 prototype은 camera+IMU에서 시작한다. 2D/3D LiDAR, RTK GNSS, radar, sensor redundancy는 검증된 실패 모드와 오차 예산에 따라 추가한다.
 
 ### 8.6.2 Timing Architecture (시간 동기화 설계)
 
-멀티센서 시스템에서 **시간 동기화**는 정확도를 좌우한다. 100km/h로 이동하는 차량에서 1ms의 시간 오차는 약 2.8cm의 위치 오차에 해당한다.
+멀티센서 시스템에서는 시간 동기화 오차가 곧 위치 오차가 된다. 100km/h로 달리는 차량에서 1ms 시간 오차는 약 2.8cm 위치 오차다(27.8 m/s × 0.001 s).
 
 **하드웨어 동기화 (Hardware Sync)**:
 
-공유 clock이나 trigger를 구성할 수 있으면 software 수신 시각보다 지연 경로를 명확히 만들 수 있다. 다만 pulse의 정확도와 실제 측정 timestamp의 정확도는 다르므로 end-to-end로 검증한다:
+공유 clock이나 trigger를 구성할 수 있으면 software 수신 시각을 쓸 때보다 지연 경로가 분명해진다. 다만 pulse의 정확도와 실제 측정 timestamp의 정확도는 다르므로 end-to-end로 검증한다:
 
-- **PPS (Pulse Per Second)**: GNSS 수신기의 초 경계 pulse를 장치 clock의 공통 기준으로 사용한다. receiver time-pulse 사양, cable·input delay, timestamp 기준점을 확인한다.
+- **PPS (Pulse Per Second)**: GNSS 수신기의 초 경계 pulse를 장치 clock의 공통 기준으로 쓴다. receiver time-pulse 사양, cable·input delay, timestamp 기준점을 확인한다.
 - **PTP (Precision Time Protocol, IEEE 1588)**: 이더넷 clock을 동기화한다. 실제 오차는 hardware timestamp 지원, switch, PTP profile, 경로 비대칭과 lock 상태에 좌우된다.
-- **외부 트리거**: 마이크로컨트롤러가 카메라 셔터 트리거와 IMU 타임스탬프 캡처를 동시에 수행.
+- **외부 트리거**: 마이크로컨트롤러가 카메라 셔터 트리거와 IMU 타임스탬프 캡처를 동시에 한다.
 
 **소프트웨어 동기화 (Software Sync)**:
 
-하드웨어 동기화가 불가능한 경우, 소프트웨어적으로 시간 오프셋을 추정한다:
+하드웨어로 동기화할 수 없으면 소프트웨어로 시간 오프셋을 추정한다.
 
-- **Kalibr 방식**: B-spline 궤적으로 연속 시간 궤적을 표현하고, 센서 간 시간 오프셋을 최적화 변수로 포함하여 동시 추정.
-- **상관 기반**: 두 센서가 같은 운동을 관측한 신호 사이의 상호상관(cross-correlation)으로 시간 지연을 추정한다. 가속도를 쓰려면 IMU 측정에서 중력을 제거하고 두 신호를 같은 좌표계로 옮겨야 하며, 단안 카메라에서는 속도의 스케일이 미정이다. 그래서 실무에서는 이 세 조건이 필요 없는 자이로 각속도와 카메라 회전율의 비교를 주로 쓴다.
+- **Kalibr 방식**: 궤적을 B-spline 연속 시간 궤적으로 두고, 센서 사이의 시간 오프셋을 최적화 변수에 넣어 함께 추정한다.
+- **상관 기반**: 두 센서가 같은 운동을 관측한 신호 사이의 상호상관(cross-correlation)으로 시간 지연을 추정한다. 가속도를 쓰려면 IMU 측정에서 중력을 제거하고 두 신호를 같은 좌표계로 옮겨야 하며, 단안 카메라로는 속도의 스케일을 알 수 없다. 그래서 이런 전처리가 필요 없는 자이로 각속도와 카메라 회전율의 크기(노름)를 비교하는 편이 간단하다. 각속도 벡터를 성분끼리 비교하려면 카메라-IMU 회전 외부 파라미터로 한쪽을 옮겨야 한다. 노름은 회전에 불변이므로 이 단계를 건너뛴다.
 
 $$
-\hat{\tau} = \arg\max_{\tau} \int \boldsymbol{\omega}_{\text{IMU}}(t) \cdot \boldsymbol{\omega}_{\text{camera}}(t + \tau) \, dt
+\hat{\tau} = \arg\max_{\tau} \int \left\| \boldsymbol{\omega}_{\text{IMU}}(t) \right\| \, \left\| \boldsymbol{\omega}_{\text{camera}}(t + \tau) \right\| \, dt
 $$
 
 ```python
@@ -600,7 +591,7 @@ from scipy.signal import correlate
 def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_offset_ms=100):
     """
     두 센서 신호의 상호상관으로 시간 오프셋 추정.
-    
+
     예: IMU 각속도 vs 카메라 프레임 간 회전률
     """
     # 공통 타임라인에 리샘플링 (1kHz)
@@ -612,23 +603,23 @@ def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_off
     )
     sig_a = np.interp(t_common, timestamps_a, signal_a)
     sig_b = np.interp(t_common, timestamps_b, signal_b)
-    
+
     # 평균 제거
     sig_a -= np.mean(sig_a)
     sig_b -= np.mean(sig_b)
-    
+
     # 상호상관
     correlation = correlate(sig_a, sig_b, mode='full')
     lags = np.arange(-len(sig_b) + 1, len(sig_a)) * dt
-    
+
     # max_offset 범위 내에서 최대 상관 찾기
     mask = np.abs(lags) <= max_offset_ms / 1000
     valid_corr = correlation[mask]
     valid_lags = lags[mask]
-    
+
     best_idx = np.argmax(valid_corr)
     estimated_offset = valid_lags[best_idx]
-    
+
     return estimated_offset  # 초 단위
 
 # 예시: IMU gyro Z축 vs Camera rotation rate
@@ -637,27 +628,27 @@ def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_off
 
 ### 8.6.3 Failure Mode와 Degradation Handling
 
-실제 시스템에서 센서는 반드시 실패한다. 강건한 시스템은 **graceful degradation**(즉, 한 센서가 실패해도 성능이 다소 저하되면서 나머지 센서로 계속 동작하는 것)을 달성해야 한다.
+센서는 언젠가 고장 난다. 그래서 한 센서가 실패해도 성능이 조금 떨어진 채 나머지 센서로 계속 도는 성질(graceful degradation, 점진적 성능 저하)이 필요하다.
 
 **주요 실패 모드와 대응**:
 
 | 실패 모드 | 증상 | 탐지 방법 | 대응 |
 |-----------|------|-----------|------|
 | 카메라 과노출/저노출 | 이미지 전체가 밝거나 어두움 | 히스토그램 분석 | 카메라 factor 비활성화, LIO만으로 동작 |
-| LiDAR 기하 퇴화 (degenerate) | 긴 복도, 넓은 평지 | 정보 행렬의 고유값 분석 | 해당 DoF의 LiDAR 구속 완화, VIO로 보완 |
+| LiDAR 기하 퇴화 (degenerate) | 긴 복도, 넓은 평지 | 정보 행렬의 고유값 분석 | 해당 DoF의 LiDAR 제약 완화, VIO로 보완 |
 | IMU 포화 | 고속 충격 시 측정 범위 초과 | ADC 최댓값 탐지 | 해당 시간대 IMU preintegration 불확실성 증가 |
 | GNSS multipath | 건물 반사로 인한 큰 오차 | RAIM, 잔차 검사 | 해당 GNSS factor의 공분산 증가 또는 제거 |
 | 센서 완전 단절 | 데이터 수신 없음 | Watchdog timer | 새 factor 추가 중단. 실패 시각이 불확실하면 의심 구간 이후만 가중 하향 또는 제거 |
 
 **LiDAR 기하 퇴화 탐지**:
 
-LiDAR scan matching에서 정보 행렬(Hessian) $\mathbf{H} = \mathbf{J}^T \mathbf{J}$의 고유값 분석으로 기하 퇴화를 탐지할 수 있다. 만약 한 방향의 고유값이 다른 방향들에 비해 현저히 작으면, 그 방향으로의 구속이 약하다는 뜻이다.
+LiDAR scan matching의 정보 행렬(근사 Hessian) $\mathbf{H} = \mathbf{J}^T \mathbf{J}$의 고유값으로 기하 퇴화를 찾는다. 한 방향의 고유값이 다른 방향보다 훨씬 작으면 그 방향의 제약이 약하다.
 
 $$
 \mathbf{H} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^T, \quad \lambda_{\min} / \lambda_{\max} < \epsilon \Rightarrow \text{degenerate}
 $$
 
-예를 들어, 긴 복도에서 복도 축 방향의 구속이 약해지므로, 그 방향의 LiDAR 구속을 완화하고 카메라의 optical flow로 보완한다.
+예를 들어 긴 복도에서는 복도 축 방향의 제약이 약해지므로, 그 방향의 LiDAR 제약을 약하게 하고 카메라의 optical flow로 메운다.
 
 ```python
 import numpy as np
@@ -665,10 +656,10 @@ import numpy as np
 def check_lidar_degeneracy(jacobian, threshold=0.01):
     """
     LiDAR scan matching의 Hessian 고유값으로 기하 퇴화 검사.
-    
+
     jacobian: (m, 6) — m개 point-to-plane 잔차의 6-DoF 자코비안
     threshold: 최소/최대 고유값 비의 임계값
-    
+
     Returns:
         is_degenerate: bool
         degenerate_directions: (k, 6) — 퇴화된 방향의 고유벡터
@@ -676,32 +667,32 @@ def check_lidar_degeneracy(jacobian, threshold=0.01):
     """
     # 정보 행렬 (근사 Hessian)
     H = jacobian.T @ jacobian
-    
+
     # 고유값 분해
     eigenvalues, eigenvectors = np.linalg.eigh(H)
-    
+
     # 고유값 비율 검사
     ratio = eigenvalues / (eigenvalues.max() + 1e-10)
     degenerate_mask = ratio < threshold
-    
+
     is_degenerate = np.any(degenerate_mask)
     degenerate_directions = eigenvectors[:, degenerate_mask].T
-    
+
     if is_degenerate:
         print(f"[경고] 기하 퇴화 감지!")
         print(f"  고유값: {eigenvalues}")
         print(f"  퇴화 방향 수: {degenerate_mask.sum()}")
-    
+
     return is_degenerate, degenerate_directions, eigenvalues
 
 
-def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality, 
+def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality,
                             lidar_min_eig_threshold=100.0):
     """
     LiDAR 퇴화 정도에 따라 카메라 가중치를 적응적으로 조절.
     """
     min_eig = lidar_eigenvalues.min()
-    
+
     if min_eig > lidar_min_eig_threshold:
         # LiDAR 충분히 구속됨 → 기본 가중치
         lidar_weight = 1.0
@@ -711,18 +702,18 @@ def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality,
         decay = min_eig / lidar_min_eig_threshold
         lidar_weight = decay
         camera_weight = 1.0
-    
+
     return lidar_weight, camera_weight
 ```
 
-### 8.6.4 최근 시스템과 연구 (2024-2025)
+### 8.6.4 최근 시스템과 연구 (2025)
 
-- **[Gaussian-LIC (Lang et al., ICRA 2025)](https://arxiv.org/abs/2404.06926)**: 3D Gaussian Splatting을 LiDAR-Inertial-Camera tightly-coupled SLAM에 통합한 시스템. LiDAR의 정밀한 기하 정보와 카메라의 텍스처를 Gaussian 표현으로 융합하여, SLAM과 동시에 photo-realistic한 장면 복원을 달성한다.
-- **[Snail-Radar (Huai et al., IJRR 2025)](https://arxiv.org/abs/2407.11705)**: 4D radar SLAM 평가를 위한 대규모 다양성 벤치마크. 다양한 환경(실내·실외, 도심·교외)과 플랫폼에서 4D radar 기반 odometry/SLAM 알고리즘을 체계적으로 비교한다.
+- **[Gaussian-LIC (Lang et al., ICRA 2025)](https://arxiv.org/abs/2404.06926)**: 3D Gaussian Splatting을 LiDAR-Inertial-Camera tightly-coupled SLAM에 넣은 시스템. LiDAR의 정밀한 기하 정보와 카메라의 텍스처를 Gaussian 표현으로 융합해, SLAM과 함께 photo-realistic 장면을 복원한다.
+- **[SNAIL Radar (Huai et al., IJRR 2025)](https://arxiv.org/abs/2407.11705)**: 4D radar 기반 위치 추정·지도 작성용 대규모 데이터셋. handheld 장비, e-bike, SUV로 맑은 날·야간·폭우 조건에서 나무가 많은 캠퍼스 도로부터 고속도로 터널까지 모았고, 기존 radar odometry와 place recognition 방법 몇 가지를 평가했다.
 
 ### 8.6.5 시스템 설계 체크리스트
 
-실제 멀티센서 퓨전 시스템을 설계할 때 반드시 확인해야 할 항목들:
+실제 멀티센서 퓨전 시스템을 설계할 때 확인할 항목은 다음과 같다.
 
 **캘리브레이션**:
 - [ ] 모든 센서 쌍의 extrinsic calibration 완료
@@ -747,14 +738,3 @@ def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality,
 - [ ] 메모리 사용량 (장시간 운행 시 누적)
 - [ ] CPU/GPU 점유율
 
----
-
-## 8장 요약
-
-멀티센서 퓨전의 아키텍처는 크게 loosely/tightly/ultra-tightly coupled로 분류되며, 현대 로보틱스에서는 **tightly coupled**가 주류이다. Camera+LiDAR+IMU 삼중 융합을 구현한 R3LIVE, LVI-SAM, FAST-LIVO2는 각각 dual subsystem, factor graph, sequential update를 사용한다.
-
-GNSS 통합은 전역 좌표 관측을 제공하여 장거리 주행 시 누적 드리프트를 억제한다. 4D radar의 경우 안개나 눈비 같은 악천후에서도 도플러 기반 반경 방향 속도(radial velocity)를 측정하는 데 도움이 될 수 있지만, 오차는 조건별로 확인해야 한다. Kimera-Multi와 Swarm-SLAM 같은 multi-robot 시스템은 통신 제약 아래에서 분산 추정과 cross-robot place recognition을 결합한다.
-
-실전 시스템의 배포 결과는 알고리즘뿐 아니라 센서 선정, 시간 동기화, failure mode 대응에도 좌우된다.
-
-Ch.6-8의 odometry·fusion 시스템은 로컬 정밀도가 높지만, 장시간 운행하면 드리프트가 쌓인다. 이 드리프트를 loop closure로 교정하려면 과거에 방문했던 장소를 다시 인식하는 **Place Recognition**이 필요하다.

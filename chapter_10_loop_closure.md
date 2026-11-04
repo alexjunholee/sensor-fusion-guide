@@ -1,35 +1,33 @@
 # Ch.10 — Loop Closure & Global Optimization
 
-Ch.9에서 Place Recognition—과거 방문 장소의 인식—을 보았다. 그 인식 결과를 SLAM 시스템에 넣어야 누적 드리프트가 실제로 줄어든다.
+Ch.9의 Place Recognition은 로봇이 전에 지나간 장소를 알아본다. 그 결과를 SLAM 시스템에 넣어야 쌓인 드리프트가 실제로 줄어든다.
 
-SLAM 시스템에서 odometry는 필연적으로 드리프트(drift)를 누적한다. 아무리 정밀한 센서를 쓰더라도, 상대 pose 추정의 작은 오차들이 시간에 따라 쌓여 전역 일관성을 무너뜨린다. Loop closure는 이전에 거쳐 갔던 지점으로의 재방문을 식별하여, 그 기하학적 구속조건으로 누적 드리프트를 상쇄하는 핵심 메커니즘이다.
-
-Loop closure 파이프라인은 detection → verification → correction으로 이어지고, 보정의 중심에는 pose graph optimization이 있다. 같은 틀은 global relocalization과 multi-session SLAM까지 확장된다.
+Odometry는 상대 포즈를 이어 붙여 추정하므로, 센서가 아무리 정밀해도 작은 오차가 시간에 따라 쌓인다. 쌓인 오차 때문에 같은 장소가 지도 위 서로 다른 곳에 그려진다. Loop closure는 로봇이 전에 지나간 곳에 다시 왔음을 알아내고, 두 시점 사이의 기하 제약을 더해 이 드리프트를 줄인다.
 
 ---
 
 ## 10.1 Loop Closure Pipeline
 
-Loop closure는 Detection(후보 탐지), Verification(기하학적 검증), Correction(그래프 보정)의 세 단계로 이어진다. 후보를 놓치면 보정 기회를 잃고, 잘못된 루프를 받아들이면 전체 시스템의 일관성이 깨질 수 있다.
+Loop closure는 Detection(후보 탐지), Verification(기하학적 검증), Correction(그래프 보정) 세 단계를 차례로 거친다. 보정의 중심은 pose graph optimization이다. 후보를 놓치면 드리프트를 줄일 기회를 잃는다. 잘못된 루프를 받아들이면 지도 전체가 뒤틀린다.
 
 ### 10.1.1 Detection: 후보 탐지
 
-Loop closure detection은 "현재 센서 관측이 과거의 어떤 관측과 유사한가?"를 묻는 문제다. Ch.9에서 다룬 place recognition 문제와 같다.
+Loop closure detection은 "현재 관측이 과거의 어떤 관측과 비슷한가?"를 묻는다. Ch.9의 place recognition과 같은 문제다.
 
-**Visual loop closure detection**에서는 현재 이미지의 글로벌 디스크립터를 과거 키프레임들의 디스크립터 데이터베이스와 비교한다:
+**Visual loop closure detection**은 현재 이미지의 디스크립터를 과거 키프레임 디스크립터 데이터베이스와 비교한다:
 
-1. **BoW(Bag of Words) 기반**: DBoW2를 사용하여 ORB 특징점의 visual word histogram을 비교한다. ORB-SLAM3는 이 방식을 사용한다. 각 키프레임을 BoW 벡터 $\mathbf{v}_i$로 표현하고, 현재 프레임 $\mathbf{v}_q$와의 유사도를 $s(\mathbf{v}_q, \mathbf{v}_i) = 1 - \frac{1}{2} \left| \frac{\mathbf{v}_q}{\|\mathbf{v}_q\|} - \frac{\mathbf{v}_i}{\|\mathbf{v}_i\|} \right|$ (L1-score)로 계산한다.
+1. **BoW(Bag of Words) 기반**: DBoW2로 ORB 특징점의 visual word histogram을 비교한다. ORB-SLAM3가 이 방식이다. 키프레임마다 BoW 벡터 $\mathbf{v}_i$를 만들고, 현재 프레임 $\mathbf{v}_q$와의 유사도를 $s(\mathbf{v}_q, \mathbf{v}_i) = 1 - \frac{1}{2} \left| \frac{\mathbf{v}_q}{\|\mathbf{v}_q\|} - \frac{\mathbf{v}_i}{\|\mathbf{v}_i\|} \right|$ (L1-score, 노름은 L1)로 계산한다.
 
-2. **학습 기반**: [NetVLAD](https://arxiv.org/abs/1511.07247), [AnyLoc](https://arxiv.org/abs/2308.00688) 등의 global descriptor를 사용한다. AnyLoc은 [DINOv2](https://arxiv.org/abs/2304.07193) dense feature를 VLAD로 집계해 place-specific label 학습 없이 여러 domain에 적용하지만, 새 sensor·환경에서 recall을 검증해야 한다. 코사인 유사도로 후보를 랭킹한다:
+2. **학습 기반**: [NetVLAD](https://arxiv.org/abs/1511.07247), [AnyLoc](https://arxiv.org/abs/2308.00688) 같은 global descriptor를 쓴다. AnyLoc은 [DINOv2](https://arxiv.org/abs/2304.07193) dense feature를 VLAD로 모아 장소 label로 학습하지 않고도 여러 domain에 쓴다. 그래도 새 센서나 환경에서는 recall을 직접 확인해야 한다. 후보 순위는 코사인 유사도로 매긴다:
 
 $$s(\mathbf{d}_q, \mathbf{d}_i) = \frac{\mathbf{d}_q^\top \mathbf{d}_i}{\|\mathbf{d}_q\| \|\mathbf{d}_i\|}$$
 
-**LiDAR loop closure detection**에서는 3D 포인트 클라우드 기반 디스크립터를 사용한다:
+**LiDAR loop closure detection**은 3D 포인트 클라우드 디스크립터를 쓴다:
 
-- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: 센서 중심의 극좌표계에서 bin/sector별 최대 높이를 기록하여 공간 구조를 직접 보존하는 디스크립터다. ring key 기반 kd-tree 검색으로 후보를 좁히고 섹터 이동 정렬로 재순위를 매기는 2단계 검색으로 효율적 후보 탐색이 가능하며, 역방향 재방문에도 강건하다.
-- **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: 학습 기반 3D place recognition이다. Scan Context와의 recall 순위는 데이터셋, sensor pattern, 학습 domain에 따라 달라진다.
+- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: 센서 중심 극좌표 격자의 칸마다 최대 높이를 기록해 공간 배치를 그대로 남긴다. ring key로 kd-tree 검색해 후보를 좁히고, 섹터를 돌려 맞춰 순위를 다시 매긴다. 섹터를 돌려 맞추므로 yaw가 달라도 비교할 수 있다. 반대 방향 재방문에서 함께 생기는 횡방향 이동은 원 논문이 root shifting으로 따로 다룬다(§9.3.1).
+- **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: 학습 기반 3D place recognition이다. Scan Context보다 recall이 높은지는 데이터셋, 센서 스캔 패턴, 학습 domain에 따라 다르다.
 
-**시간적 필터링**: 최근 frame과의 matching은 보통 연속 tracking이므로 인접 keyframe을 후보에서 제외한다. 시간이나 이동거리 간격은 platform 속도, keyframe rate, 재방문 형태로 조정한다. 아래 30초는 동작을 보여 주는 예시값이다.
+**시간적 필터링**: 방금 지나온 frame과 맞는 것은 연속 tracking의 결과이므로, 시간상 가까운 키프레임은 후보에서 뺀다. 얼마나 떨어져야 후보로 볼지는 플랫폼 속도, 키프레임 생성 빈도, 재방문 형태에 맞춰 정한다. 아래 코드의 30초는 예시값이다.
 
 ```python
 import numpy as np
@@ -82,21 +80,19 @@ def detect_loop_candidates(query_descriptor, database_descriptors,
 
 ### 10.1.2 Verification: 기하학적 검증
 
-Detection 단계는 appearance similarity만으로 후보를 걸러내므로, false positive(실제로는 다른 장소인데 비슷하게 보이는 경우)가 섞인다. Perceptual aliasing — 시각적으로 유사하지만 실제로 다른 장소 — 은 특히 실내 환경(비슷한 복도, 반복적 구조)에서 빈번하다.
+Detection은 겉모습이 비슷한지만 보고 후보를 고르므로, 실제로는 다른 장소인데 비슷해 보이는 false positive가 섞인다. 서로 다른 장소가 비슷하게 보이는 현상을 perceptual aliasing이라 한다. 비슷한 복도와 반복 구조가 있는 실내가 그 예다.
 
-잘못된 loop closure 하나가 전체 맵을 뒤틀어버릴 수 있다. verification을 보수적으로 수행해야 한다. recall을 희생하더라도 precision을 극대화한다.
+verification은 보수적으로 한다. recall을 좀 잃더라도 precision을 최대한 높인다.
 
-기하학적 검증은 다음 방법을 쓴다.
-
-1. **2D-2D: Essential matrix 검증**: 현재 frame과 후보 keyframe 사이에서 특징점을 matching하고 RANSAC으로 essential matrix를 추정한다. 인라이어 수·비율뿐 아니라 공간 분포, pose plausibility, 반복 검출을 확인한다. 아래 20개·50%는 예시이며 detector와 scene에 맞춰 검증한다.
+1. **2D-2D: Essential matrix 검증**: 현재 frame과 후보 키프레임의 특징점을 맞추고 RANSAC으로 essential matrix를 추정한다. 인라이어의 수와 비율, 인라이어가 이미지에 고르게 퍼져 있는지, 추정한 포즈가 그럴듯한지, 같은 결과가 반복해서 나오는지를 본다. 아래 코드의 20개·50%는 예시값이고, detector와 장면에 맞춰 정해야 한다.
 
 $$\mathbf{p}_2^\top \mathbf{E} \mathbf{p}_1 = 0, \quad \mathbf{E} = [\mathbf{t}]_\times \mathbf{R}$$
 
-2. **3D-3D: Point cloud registration**: LiDAR 기반 시스템에서는 ICP나 GeoTransformer로 두 스캔 간의 상대 변환 $\mathbf{T}_{ij} \in SE(3)$를 추정한다. Fitness score(정합된 포인트 비율)와 RMSE로 검증한다.
+2. **3D-3D: Point cloud registration**: LiDAR 시스템은 ICP나 GeoTransformer로 두 스캔 사이의 상대 변환 $\tilde{\mathbf{T}}_{ij} \in SE(3)$를 추정한다. fitness score(정합된 점의 비율)와 RMSE로 판정한다.
 
-3. **2D-3D: PnP**: 현재 2D 특징점과 후보 키프레임이 보유한 3D 맵 포인트 사이의 PnP 문제를 푼다. 3D 점을 후보 키프레임 좌표계로 두면 결과가 곧 loop edge에 필요한 상대 변환 $\mathbf{T}_{ij}$이고, 맵 좌표계로 두면 질의 프레임의 절대 pose가 나오므로 후보의 pose와 합성해야 한다.
+3. **2D-3D: PnP**: 현재 2D 특징점과 후보 키프레임에 딸린 3D 맵 포인트로 PnP 문제를 푼다. 3D 점을 후보 키프레임 좌표계로 두면 결과가 곧 loop edge에 필요한 상대 변환 $\tilde{\mathbf{T}}_{ij}$이고, 맵 좌표계로 두면 질의 프레임의 절대 포즈가 나오므로 후보의 포즈와 합성해야 한다.
 
-4. **Temporal consistency**: 단일 매칭이 아니라, 연속된 여러 프레임에서 동일 장소와의 매칭이 일관되게 나타나는지 확인한다. ORB-SLAM2는 세 번 연속 동일 장소가 검출되어야 수용했다. ORB-SLAM3는 이 시간 조건을 local window 기반 기하 검증으로 바꿨다. 질의 키프레임과 covisible한 키프레임 둘, 총 셋에서 변환이 지지되면 수용하는데, 그 셋이 대개 이미 맵에 있어 새 키프레임을 기다리지 않아도 되므로 루프를 더 이르게 잡는다.
+4. **Temporal consistency**: 이어지는 여러 프레임에서 같은 장소가 계속 검출되는지 본다. ORB-SLAM2까지는 DBoW2가 연속한 키프레임 세 개에서 같은 장소를 검출해야 루프로 받아들였다. ORB-SLAM3는 이 조건을 맵 안의 기하 검증으로 바꿨다. 쿼리 키프레임과 covisible한(같은 맵 포인트를 함께 보는) 키프레임 두 개를 맵에서 찾아 셋 모두에서 변환이 맞으면 받아들인다. 검증에 필요한 정보가 대개 맵에 이미 있어서 새 키프레임을 기다릴 필요가 없고, 그만큼 루프를 일찍 잡는다. 맵에서 찾지 못하면 새로 들어오는 키프레임으로 검증을 이어 간다.
 
 ```python
 import numpy as np
@@ -200,73 +196,71 @@ def sampson_error(E, pts1, pts2):
 
 ### 10.1.3 False Positive의 위험과 방지
 
-False positive loop closure의 위험은 복도 예시로 확인할 수 있다.
+로봇이 비슷하게 생긴 복도 두 개를 지나간다고 하자. 복도 A의 키프레임 $i$와 복도 B의 키프레임 $j$ 사이에 잘못된 loop closure가 들어가면, pose graph optimizer는 이 두 포즈를 가깝게 끌어당긴다. 그 사이의 포즈가 모두 끌려가 맵이 접히거나 뒤틀린다.
 
-로봇이 두 개의 비슷하게 생긴 복도를 지나간다고 하자. 복도 A의 키프레임 $i$와 복도 B의 키프레임 $j$ 사이에 잘못된 loop closure가 발생하면, pose graph optimizer는 이 두 pose를 가깝게 끌어당긴다. 두 복도 사이의 모든 pose가 왜곡되어, 맵 전체가 접히거나 뒤틀린다.
+이를 막는 방법은 다음과 같다.
 
-방지 전략은 여러 계층으로 이어진다.
+1. **다단계 검증**: 겉모습 유사도, 기하 일관성, 시간 일관성 검사를 차례로 모두 통과해야 받아들인다.
 
-1. **다단계 검증**: appearance similarity → geometric consistency → temporal consistency 순으로 통과해야 한다.
+2. **Robust kernel 사용** (§10.2에서 상세): 잘못된 제약이 들어와도 optimizer가 덜 흔들리게 한다.
 
-2. **Robust kernel 사용** (§10.2에서 상세): optimizer 자체를 이상치 제약에 덜 민감하게 만든다.
+3. **[Switchable constraints (Sünderhauf & Protzel, 2012)](https://doi.org/10.1109/IROS.2012.6385590)** (§10.2에서 상세): 다른 제약과 맞지 않는 loop closure를 optimizer가 스스로 끄게 한다.
 
-3. **[Switchable constraints (Sünderhauf & Protzel, 2012)](https://doi.org/10.1109/IROS.2012.6385590)**: 각 loop closure factor에 on/off 스위치 변수를 추가하여, optimizer가 일관성이 떨어지는 loop closure를 자동으로 비활성화한다.
+4. **[DCS (Dynamic Covariance Scaling) (Agarwal et al., 2013)](https://doi.org/10.1109/ICRA.2013.6630557)** (§10.2에서 상세): 잔차가 큰 loop closure의 영향을 줄인다.
 
-4. **[DCS (Dynamic Covariance Scaling) (Agarwal et al., 2013)](https://doi.org/10.1109/ICRA.2013.6630733)**: loop closure의 공분산(uncertainty)을 동적으로 조절하여, 이상치의 영향을 자동 감쇠시킨다.
-
-5. **[PCM (Pairwise Consistency Maximization) (Mangelson et al., 2018)](https://doi.org/10.1109/ICRA.2018.8460217)**: 여러 loop closure 후보들 간의 pairwise consistency를 검사하여, 일관된 최대 집합만 수용한다.
+5. **[PCM (Pairwise Consistency Maximization) (Mangelson et al., 2018)](https://doi.org/10.1109/ICRA.2018.8460217)**: loop closure 후보를 둘씩 짝지어 서로 맞는지(pairwise consistency) 검사하고, 서로 모두 맞는 가장 큰 집합만 받아들인다.
 
 ### 10.1.4 Correction: 그래프 보정
 
-검증을 통과한 loop closure는 pose graph에 새로운 제약으로 들어간다. Loop closure edge는 두 pose 사이의 상대 변환 $\mathbf{T}_{ij}$와 그 불확실성 $\boldsymbol{\Sigma}_{ij}$를 인코딩한다:
+검증을 통과한 loop closure는 pose graph에 새 제약으로 들어간다. Loop closure edge에는 두 포즈 사이의 측정된 상대 변환 $\tilde{\mathbf{T}}_{ij}$와 그 불확실성 $\boldsymbol{\Sigma}_{ij}$가 담긴다:
 
-$$e_{ij} = \text{Log}(\mathbf{T}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j)$$
+$$\mathbf{e}_{ij} = \text{Log}(\tilde{\mathbf{T}}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j)$$
 
-이 edge가 추가되면 pose graph optimizer(§10.2)가 전체 그래프를 재최적화하여 드리프트를 보정한다. 조정되는 것은 측정값인 edge가 아니라 pose 변수이며, 그 결과 각 edge의 잔차가 재분배된다. 분배는 균등하지 않고 각 edge의 정보 행렬 $\boldsymbol{\Omega}_{ij}$와 그래프 위상이 정하므로, 정보가 큰 odometry 구간은 보정을 덜 받는다.
+이 엣지가 들어오면 pose graph optimizer(§10.2)가 그래프 전체를 다시 최적화해 드리프트를 줄인다. 최적화가 포즈를 옮기면 오차가 여러 엣지에 나뉘어 실린다. 어느 엣지가 오차를 얼마나 떠안을지는 엣지별 정보 행렬 $\boldsymbol{\Omega}_{ij} = \boldsymbol{\Sigma}_{ij}^{-1}$와 그래프 연결 구조가 정한다. 정보 행렬이 큰(더 믿을 만한) odometry 구간은 덜 움직인다.
 
 ---
 
 ## 10.2 Pose Graph Optimization
 
-Pose graph optimization은 프론트엔드(odometry, loop closure)가 만든 상대 제약들을 만족시키며 전체 pose trajectory의 전역 일관성을 최적화한다.
+Pose graph optimization은 프론트엔드(odometry, loop closure)가 만든 상대 제약을 최대한 함께 만족하도록 전체 포즈 궤적을 조정한다.
 
 ### 10.2.1 SE(3) Pose Graph
 
-Pose graph는 그래프 $\mathcal{G} = (\mathcal{V}, \mathcal{E})$로 표현된다:
+Pose graph는 그래프 $\mathcal{G} = (\mathcal{V}, \mathcal{E})$다:
 
-- **노드** $\mathcal{V} = \{\mathbf{T}_1, \mathbf{T}_2, \ldots, \mathbf{T}_n\}$: 각 키프레임의 pose, $\mathbf{T}_i \in SE(3)$.
-- **에지** $\mathcal{E}$: 두 노드 사이의 상대적 제약. odometry edge와 loop closure edge로 이루어진다.
+- **노드** $\mathcal{V} = \{\mathbf{T}_1, \mathbf{T}_2, \ldots, \mathbf{T}_n\}$: 각 키프레임의 포즈, $\mathbf{T}_i \in SE(3)$.
+- **엣지** $\mathcal{E}$: 두 노드 사이의 상대 제약. odometry edge와 loop closure edge가 있다.
 
-각 에지 $(i, j) \in \mathcal{E}$는 측정된 상대 변환 $\tilde{\mathbf{T}}_{ij}$와 정보 행렬(information matrix) $\boldsymbol{\Omega}_{ij}$를 갖는다.
+각 엣지 $(i, j) \in \mathcal{E}$에는 측정된 상대 변환 $\tilde{\mathbf{T}}_{ij}$와 정보 행렬(information matrix) $\boldsymbol{\Omega}_{ij}$가 딸린다.
 
-**SE(3)에서의 오차 정의**: pose graph의 오차는 평탄한 유클리드 벡터 공간 대신 Lie group SE(3) 매니폴드 위에서 엄밀히 정의한다.
+**SE(3) 위의 오차**: 포즈는 유클리드 벡터가 아니므로, 오차를 Lie group SE(3) 위에서 정의한다.
 
 $$\mathbf{e}_{ij} = \text{Log}(\tilde{\mathbf{T}}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j) \in \mathbb{R}^6$$
 
-여기서 $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$은 행렬 로그(matrix logarithm)로 Lie algebra에 매핑한다. 이 6차원 벡터는 회전 3차원과 병진 3차원의 오차를 인코딩한다.
+여기서 $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$은 SE(3)의 원소를 Lie algebra로 옮기는 행렬 로그(matrix logarithm)다. 결과인 6차원 벡터에는 회전 오차 3개와 병진 오차 3개가 들어 있다.
 
-**최적화 목표**: 모든 에지 오차의 가중 제곱합을 최소화한다:
+**최적화 목표**: 모든 엣지 오차의 가중 제곱합을 최소화한다:
 
 $$\mathbf{T}^* = \arg\min_{\mathbf{T}_1, \ldots, \mathbf{T}_n} \sum_{(i,j) \in \mathcal{E}} \mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}$$
 
-nonlinear least squares 문제이며, Gauss-Newton 또는 Levenberg-Marquardt로 푼다.
+이 nonlinear least squares 문제는 Gauss-Newton이나 Levenberg-Marquardt로 푼다.
 
-**Gauss-Newton on manifold**: SE(3)는 유클리드 공간이 아니므로, 직접 더하기(+) 연산을 사용할 수 없다. Lie algebra에서 증분(increment) $\boldsymbol{\delta}$를 계산하고, exponential map으로 manifold 위에 적용한다:
+**Gauss-Newton on manifold**: SE(3)는 매니폴드라 덧셈으로 갱신할 수 없다. Lie algebra에서 증분(increment) $\boldsymbol{\delta}$를 계산하고 exponential map으로 포즈에 곱한다:
 
 $$\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$$
 
-한 반복(iteration)에서의 업데이트:
+한 번 반복(iteration)할 때의 순서:
 
-1. 현재 추정치에서 각 에지의 오차 $\mathbf{e}_{ij}$와 Jacobian $\mathbf{J}_{ij}$를 계산한다.
-2. Normal equation을 구성한다: $\mathbf{H} \boldsymbol{\delta} = -\mathbf{b}$, 여기서
+1. 현재 추정치에서 각 엣지의 오차 $\mathbf{e}_{ij}$와 Jacobian $\mathbf{J}_{ij}$를 계산한다.
+2. Normal equation을 세운다: $\mathbf{H} \boldsymbol{\delta} = -\mathbf{b}$, 여기서
 
 $$\mathbf{H} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{J}_{ij}, \quad \mathbf{b} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}$$
 
-3. $\mathbf{H}$는 sparse하므로 sparse Cholesky 분해로 효율적으로 풀 수 있다. 단 상대 제약만 있으면 목적식이 전역 SE(3) 변환에 불변이라 $\mathbf{H}$가 6차원 영공간을 갖는다. 기준 pose 하나를 고정하거나 prior factor를 넣어야 정부호가 되어 분해가 성립한다.
+3. $\mathbf{H}$는 sparse하므로 sparse Cholesky 분해로 빨리 푼다. 단, 상대 제약만 있으면 그래프 전체를 같은 SE(3) 변환으로 옮겨도 목적식이 그대로라서 $\mathbf{H}$에 6차원 영공간이 생긴다. 기준 포즈 하나를 고정하거나 prior factor를 넣어야 $\mathbf{H}$가 양의 정부호가 되어 Cholesky 분해를 할 수 있다.
 4. 증분을 적용한다: $\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$.
 5. 수렴할 때까지 반복한다.
 
-**[g2o (General Graph Optimization)](https://doi.org/10.1109/ICRA.2011.5979949)**: Kümmerle et al. (2011)이 개발한 프레임워크로, 위 과정을 일반적인 그래프 최적화 문제에 적용한다. 사용자는 vertex(노드) 타입과 edge(제약) 타입만 정의하면, sparse 최적화 엔진이 자동으로 돌아간다.
+**[g2o (General Graph Optimization)](https://doi.org/10.1109/ICRA.2011.5979949)**: Kümmerle et al.(ICRA 2011)이 만든 프레임워크로, 위 과정을 일반 그래프 최적화 문제에 쓸 수 있게 했다. 사용자가 vertex(노드) 타입과 edge(제약) 타입을 정의하면 나머지 sparse 최적화는 라이브러리가 한다. ORB-SLAM3도 g2o로 비선형 최적화를 한다.
 
 ```python
 import numpy as np
@@ -342,7 +336,7 @@ def pose_graph_cost(poses, edges, measurements, information_matrices):
     
     Args:
         poses: [T_0, T_1, ..., T_n] SE(3) 행렬 리스트
-        edges: [(i, j), ...] 에지 인덱스 리스트
+        edges: [(i, j), ...] 엣지 인덱스 리스트
         measurements: [T_ij, ...] 측정된 상대 변환 리스트
         information_matrices: [Omega_ij, ...] 정보 행렬 리스트
         
@@ -360,9 +354,9 @@ def pose_graph_cost(poses, edges, measurements, information_matrices):
 
 ### 10.2.2 Robust Kernel
 
-실제 SLAM 시스템에서는 이상치(outlier) 측정이 불가피하다. 잘못된 loop closure, 센서 오류, 동적 객체가 원인이다. 표준 least squares 비용 함수 $\rho(x) = x^2$는 이상치에 극도로 민감하다 — 큰 오차가 비용을 지배하여 전체 해를 왜곡한다.
+실제 SLAM 시스템에는 잘못된 loop closure, 센서 오류, 움직이는 물체 때문에 이상치(outlier) 측정이 들어온다. 표준 least squares 비용 $\rho(s) = s$에서는 큰 오차 하나가 비용을 거의 다 차지해 해 전체를 끌고 간다.
 
-**Robust kernel**(M-estimator)은 큰 잔차의 영향을 제한하여 이상치에 대한 민감도를 줄인다.
+**Robust kernel**(M-estimator)은 큰 잔차의 영향을 제한해 이상치에 덜 흔들리게 한다.
 
 | Kernel | $\rho(s)$ ($s = e^2$) | 특성 |
 |--------|----------------------|------|
@@ -371,23 +365,23 @@ def pose_graph_cost(poses, edges, measurements, information_matrices):
 | Cauchy | $k^2 \log(1 + s/k^2)$ | 부드러운 감쇠 |
 | Geman-McClure | $\frac{s}{k^2 + s}$ | 강한 이상치 억제 |
 
-Robust kernel을 적용하면 비용 함수가 다음과 같이 바뀐다.
+Robust kernel을 적용한 비용 함수:
 
 $$\sum_{(i,j)} \rho\left(\mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}\right)$$
 
-**IRLS (Iteratively Reweighted Least Squares)** 방식으로 푼다. 각 반복에서 잔차 크기에 따라 가중치를 재계산하고, 가중 least squares를 풀면 된다.
+이 비용은 **IRLS(Iteratively Reweighted Least Squares)**로 푼다. 반복할 때마다 잔차 크기로 가중치를 다시 계산하고 가중 least squares를 푼다.
 
 $$w_i = \rho'(s_i), \quad s_i = \mathbf{e}_i^\top \boldsymbol{\Omega}_i \mathbf{e}_i$$
 
-여기서 $\rho'$은 위 테이블에 정의된 $\rho(s)$의 $s$에 대한 도함수이다. 이상치 에지는 작은 가중치를 받아 그 영향이 자동으로 줄어든다.
+여기서 $\rho'$은 위 표의 $\rho(s)$를 $s$로 미분한 값이다. 잔차가 큰 엣지는 가중치가 작아져 영향이 줄어든다.
 
-**[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel (2012)은 각 loop closure factor에 연속 스위치 변수 $s_{ij} \in [0, 1]$을 도입하여, optimizer가 일관성이 없는 loop closure를 비활성화($s_{ij} \to 0$)할 수 있게 했다.
+**[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel(IROS 2012)은 loop closure factor마다 연속 스위치 변수 $s_{ij} \in [0, 1]$을 두어, 다른 제약과 맞지 않는 loop closure를 optimizer가 끌 수 있게($s_{ij} \to 0$) 했다.
 
 $$\rho_{\text{switch}}(\mathbf{e}_{ij}, s_{ij}) = s_{ij}^2 \mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij} + \lambda (1 - s_{ij})^2$$
 
-첫째 항은 스위치가 켜져 있을 때 오차를 최소화하고, 둘째 항은 스위치를 끄는 것에 대한 페널티다. Optimizer가 이 둘을 자동으로 균형 잡는다.
+첫째 항은 스위치가 켜진 만큼 루프 오차를 비용에 넣고, 둘째 항은 스위치를 끌수록 벌점을 준다. 그래서 optimizer는 오차가 아주 큰 루프만 끈다.
 
-**[DCS](https://doi.org/10.1109/ICRA.2013.6630733)** (Agarwal et al., 2013): 각 loop closure의 공분산을 잔차 크기에 따라 동적으로 조정한다. 이상치의 공분산이 자동으로 커져(= 불확실성 증가) 그 영향이 줄어든다.
+**[DCS](https://doi.org/10.1109/ICRA.2013.6630557)** (Agarwal et al., ICRA 2013): loop closure마다 잔차 크기에 따라 공분산을 조정한다. 잔차가 큰 루프는 공분산이 커져 영향이 줄어든다.
 
 ```python
 def huber_kernel(s, k=1.345):
@@ -427,35 +421,25 @@ def robust_pose_graph_cost(poses, edges, measurements, info_matrices,
 
 ### 10.2.3 iSAM2: Incremental Smoothing and Mapping
 
-새 키프레임이 추가될 때마다 전체 그래프를 재최적화하는 batch 방식은 대규모 환경에서 곧 한계를 드러낸다. 현대 SLAM의 대부분은 영향받는 부분만 선택적으로 업데이트하는 incremental 방식을 택한다. [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419)는 이 incremental optimization을 구현한다.
+새 키프레임이 들어올 때마다 그래프 전체를 다시 최적화하는 batch 방식은 그래프가 커질수록 느려진다. [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419)는 새 변수나 측정이 들어오면 영향을 받는 부분만 찾아 다시 계산한다(§4.5.6).
 
-새 변수나 측정이 추가되면, 영향이 파급되는 범위를 파악하고 그 부분만 재계산한다.
+**Bayes tree**: iSAM2가 쓰는 자료구조로, clique tree와 비슷하지만 방향이 있다.
 
-**Bayes tree**: iSAM2는 이 자료구조를 사용한다. Factor graph를 variable elimination하면 clique tree가 되는데, Bayes tree는 이 clique tree에 방향성을 부여한 것이다.
-
-Factor graph에서 MAP 추정에 사용하는 사후분포는 다음과 같이 분해된다.
+MAP 추정에 쓰는 사후분포는 factor graph에서 이렇게 인수분해된다:
 
 $$p(\mathbf{x} | \mathbf{z}) \propto \prod_k f_k(\mathbf{x}_k)$$
 
 여기서 $f_k$는 각 factor(odometry, loop closure 등)이고, $\mathbf{x}_k$는 해당 factor에 관련된 변수들이다.
 
-Variable elimination을 수행하면:
+변수를 차례로 소거하면 사후분포는 조건부 분포의 곱(Bayes net)이 된다:
 
 $$p(\mathbf{x} | \mathbf{z}) = \prod_i p(x_i | \text{Sep}(x_i))$$
 
-여기서 $\text{Sep}(x_i)$는 clique tree에서 $x_i$의 separator — 즉, 이 변수를 제거할 때 남는 조건부 변수들이다. 이 조건부 분포 구조가 Bayes tree를 형성한다.
+여기서 $\text{Sep}(x_i)$는 $x_i$의 separator로, $x_i$를 소거하는 시점에 $x_i$와 factor로 바로 이어져 있던 변수들이다. Bayes tree는 이 조건부 분포들을 clique 단위로 묶은 것이다. Clique $C_k$마다 frontal 변수 $F_k$와 separator $S_k$(부모 clique와 겹치는 변수)가 있고, 전체 분포는 clique별 조건부의 곱이 된다([Kaess et al., 2012](https://doi.org/10.1177/0278364911430419), 식 (13)):
 
-**Incremental update 과정**:
+$$p(\mathbf{x} | \mathbf{z}) = \prod_k p(F_k | S_k)$$
 
-1. 새 factor가 추가되면 영향받는 clique만 식별한다.
-2. 해당 clique와 그 조상(ancestor)만 QR 분해를 재수행한다.
-3. 나머지 tree는 그대로 유지한다.
-
-**Fluid relinearization**: 선형화 지점이 현재 추정치와 임계값 이상 달라진 변수를 선택적으로 재선형화한다. iSAM v1처럼 정해진 주기의 full-batch 재선형화를 요구하지 않지만, 큰 loop closure는 영향 범위를 넓힐 수 있다.
-
-**변수 재정렬(variable reordering)**: 새 변수 추가 시 전체 elimination order를 재계산하지 않고, 영향받는 부분만 incremental하게 재정렬한다.
-
-GTSAM 라이브러리는 iSAM2를 제공하며 [LIO-SAM](https://arxiv.org/abs/2007.00258)이 이를 백엔드에 사용한다. 한편 ORB-SLAM3의 경우 자체 커스텀 g2o 엔진을 기반으로 비선형 최적화를 수행한다. iSAM2는 새 factor의 영향을 받는 Bayes-tree 부분을 갱신해 매번 전체 batch 문제를 다시 푸는 비용을 줄인다.
+**Incremental update**: 새 factor가 들어오면 영향받는 clique에서 root까지만 다시 분해하고 나머지 tree는 그대로 둔다. 소거 순서도 다시 분해하는 부분만 새로 정한다. 선형화 지점이 현재 추정치에서 기준보다 멀어진 변수만 골라 다시 선형화한다(fluid relinearization). 다만 큰 loop closure가 들어오면 다시 선형화할 범위도 넓어진다.
 
 ```python
 class SimpleIncrementalOptimizer:
@@ -476,7 +460,7 @@ class SimpleIncrementalOptimizer:
         self.affected.add(pose_id)
         
     def add_edge(self, i, j, T_ij, Omega_ij):
-        """새 에지(제약) 추가. 연결된 변수를 affected로 표시."""
+        """새 엣지(제약) 추가. 연결된 변수를 affected로 표시."""
         self.edges.append((i, j, T_ij, Omega_ij))
         self.affected.add(i)
         self.affected.add(j)
@@ -485,8 +469,8 @@ class SimpleIncrementalOptimizer:
         
     def add_loop_closure(self, i, j, T_ij, Omega_ij):
         """
-        Loop closure 에지 추가.
-        일반 에지와 동일하지만, loop closure는 먼 과거의 노드와
+        Loop closure 엣지 추가.
+        일반 엣지와 동일하지만, loop closure는 먼 과거의 노드와
         현재 노드를 연결하므로 더 많은 변수가 affected된다.
         """
         self.add_edge(i, j, T_ij, Omega_ij)
@@ -508,14 +492,14 @@ class SimpleIncrementalOptimizer:
         # 여기서는 간략화를 위해 전체 Gauss-Newton을 수행하되,
         # affected 변수만 업데이트한다.
         for iteration in range(max_iter):
-            # 1. 관련 에지만 선별
+            # 1. 관련 엣지만 선별
             relevant_edges = [
                 (i, j, T_ij, Omega) 
                 for (i, j, T_ij, Omega) in self.edges
                 if i in self.affected or j in self.affected
             ]
             
-            # 2. 각 에지에 대해 오차와 Jacobian 계산
+            # 2. 각 엣지에 대해 오차와 Jacobian 계산
             # 3. Normal equation 구성 및 풀기
             # 4. Affected 변수에만 increment 적용
             
@@ -529,40 +513,38 @@ class SimpleIncrementalOptimizer:
 
 ## 10.3 Global Relocalization
 
-Global relocalization은 로봇이 사전에 구축된 맵(prior map) 위에서 자신의 위치를 찾는 문제다. loop closure가 "이전에 내가 방문했던 곳"을 인식한다면, relocalization은 "사전에 구축된 맵에서 나는 어디인가"를 묻는다.
+Global relocalization은 로봇이 미리 만든 맵(prior map)에서 자기 위치를 찾는 문제다. 로봇이 tracking을 놓쳤거나 어디서 출발했는지 모를 때 쓴다.
 
 ### 10.3.1 Map-Based Localization
 
-이미 구축된 맵이 있을 때, 새로운 센서 관측을 이 맵에 정합하여 현재 pose를 추정한다.
+이미 만든 맵에 새 센서 관측을 맞춰 현재 포즈를 추정한다.
 
-**Visual relocalization 파이프라인**: 현재 이미지에서 특징점을 추출하고, 맵의 3D 포인트들과 2D-3D 대응을 찾은 뒤(visual word 기반 또는 직접 매칭), PnP + RANSAC으로 pose를 추정한다. 그 pose에서 tracking을 재개한다.
+**Visual relocalization**: 현재 이미지에서 특징점을 뽑고, visual word나 직접 매칭으로 맵의 3D 포인트와 2D-3D 대응을 찾은 뒤, PnP + RANSAC으로 포즈를 추정한다. 그 포즈에서 tracking을 다시 시작한다.
 
-ORB-SLAM3의 relocalization은 DBoW2로 후보 키프레임을 검색하고, ORB 매칭으로 2D-3D 대응을 확보한 뒤, MLPnP + RANSAC으로 pose를 추정한다(EPnP는 ORB-SLAM2까지의 방식이고 ORB-SLAM3는 카메라 모델에 독립적인 MLPnP로 바꿨다). 이후 guided search로 추가 매칭을 얻어 정확도를 높인다.
+ORB-SLAM3는 DBoW2로 후보 키프레임을 찾고, ORB 매칭으로 2D-3D 대응을 얻은 뒤, MLPnP + RANSAC으로 포즈를 추정한다. ORB-SLAM2까지는 EPnP를 썼는데, EPnP는 calibrated pinhole 카메라를 가정하므로 ORB-SLAM3는 카메라 모델과 무관한 MLPnP로 바꿨다. 그다음 guided search로 매칭을 더 찾아 정확도를 높인다.
 
-**LiDAR relocalization**: 현재 LiDAR 스캔을 사전 맵(point cloud map)에 정합한다. Scan Context나 PointNetVLAD 같은 global descriptor로 근접 영역을 먼저 탐색하고, FPFH + RANSAC 또는 GeoTransformer로 coarse registration을 수행한 뒤, ICP/GICP로 정밀 정합한다.
+**LiDAR relocalization**: 현재 LiDAR 스캔을 미리 만든 point cloud map에 맞춘다. Scan Context나 PointNetVLAD 같은 global descriptor로 가까운 영역을 먼저 찾고, FPFH + RANSAC이나 GeoTransformer로 대략 맞춘 뒤(coarse registration), ICP/GICP로 정밀하게 맞춘다.
 
 ### 10.3.2 Prior Map + Online Sensor
 
-자율주행에서는 사전에 구축한 HD map(고정밀 지도) 위에서 실시간 센서 데이터로 localization하는 것이 일반적이다. 이때 세 과제를 다뤄야 한다.
+자율주행차는 미리 만든 HD map(고정밀 지도)에 실시간 센서 데이터를 맞춰 위치를 찾기도 한다. 이때 다음 문제를 풀어야 한다.
 
-- **맵과 환경의 불일치**: 시간이 지나면 건물이 바뀌고, 나뭇잎이 자란다. Prior map과 현재 관측 사이의 차이를 처리해야 한다.
-- **Cross-modal matching**: HD map이 LiDAR로 만들어졌는데 현재 센서는 카메라뿐일 수 있다. 이종 센서 간 정합이 필요하다.
-- **Initial pose 없음**: 로봇이 맵의 어디서 시작하는지 모를 때, 전체 맵에 대한 place recognition으로 시작 위치를 찾을 수 있다.
+- **맵과 환경의 불일치**: 시간이 지나면 건물이 바뀌고 나뭇잎이 자란다. prior map과 지금 관측이 다른 부분을 감당해야 한다.
+- **Cross-modal matching**: HD map은 LiDAR로 만들었는데 지금 차에는 카메라만 있을 수도 있다. 그러면 서로 다른 센서의 데이터를 맞춰야 한다.
+- **초기 포즈 없음**: 로봇이 맵의 어디서 출발하는지 모르면, 맵 전체를 대상으로 place recognition을 돌려 시작 위치를 찾는다.
 
 ### 10.3.3 Monte Carlo Localization (MCL)
 
-MCL은 particle filter 기반의 global localization 방법이다. 로봇의 가능한 pose를 particle들로 표현하고, 센서 관측에 따라 particle 가중치를 갱신한다.
+MCL은 particle filter로 하는 global localization이다. 로봇이 있을 법한 포즈를 particle(표본) 여러 개로 나타내고, 센서 관측에 따라 particle마다 가중치를 고친다. 초기화한 뒤에는 Prediction, Update, Resampling을 되풀이한다.
 
-MCL은 초기화 뒤 Prediction·Update·Resampling의 세 단계를 반복한다.
-
-1. **초기화**: 맵 전체에 particle을 균일하게 분포시킨다(global uncertainty).
-2. **Prediction**: 로봇 모션 모델에 따라 particle들을 이동시킨다:
+1. **초기화**: 위치를 전혀 모르므로 맵 전체에 particle을 고르게 뿌린다.
+2. **Prediction**: 로봇 모션 모델에 따라 particle을 옮긴다:
 $$x_t^{[k]} \sim p(x_t | u_t, x_{t-1}^{[k]})$$
-3. **Update**: 현재 센서 관측과 맵에서의 예상 관측을 비교하여 각 particle의 가중치를 계산한다:
+3. **Update**: 실제 센서 관측과, 그 particle 위치에서 맵으로 예측한 관측을 비교해 가중치를 계산한다:
 $$w_t^{[k]} = p(z_t | x_t^{[k]}, m)$$
-4. **Resampling**: 가중치에 비례하여 particle을 재샘플링한다. 가중치가 높은 particle은 복제되고, 낮은 particle은 제거된다.
+4. **Resampling**: 가중치에 비례하게 particle을 다시 뽑는다. 가중치가 큰 particle은 여러 개로 복제되고 작은 particle은 사라진다.
 
-MCL은 multi-modal 분포를 표현할 수 있다. 로봇이 여러 장소 중 어디에 있을지 모를 때 여러 가설을 동시에 유지한다. 관측이 장소를 구별해 주고 정답 근방의 입자가 남아 있으면 가설이 하나로 줄어든다. 대칭 복도처럼 관측이 장소를 가르지 못하면 다중 모드가 계속 남고, 입자가 부족하거나 가능도가 지나치게 뾰족하면 정답 모드가 고갈되어 잘못된 위치로 굳는다.
+MCL은 봉우리가 여러 개인(multi-modal) 분포도 나타낸다. 로봇이 여러 장소 중 어디에 있는지 모르면 여러 가설을 함께 들고 간다. 관측이 장소를 구별해 주고 정답 근방의 particle이 남아 있으면 가설이 하나로 줄어든다. 대칭 복도처럼 관측이 비슷한 장소에서는 다중 모드가 계속 남는다. 또 particle이 너무 적거나 가능도가 지나치게 뾰족하면 정답 근처 particle이 모두 사라져 잘못된 위치로 굳는다.
 
 LiDAR 기반 MCL 예시:
 
@@ -702,7 +684,8 @@ class MonteCarloLocalization:
 
         실수 좌표에 방향 벡터를 더하며 셀을 조회하므로 셀을 건너뛰거나
         중복 조회할 수 있다. 직선이 지나는 셀을 빠짐없이 순회해야 하면
-        Bresenham이나 Amanatides-Woo DDA를 쓴다.
+        Amanatides-Woo DDA를 쓴다. Bresenham은 셀을 한 번씩만 조회하지만
+        8-연결 래스터화라 직선이 지나는 셀 일부를 여전히 빠뜨린다.
         """
         dx = np.cos(angle) * self.resolution
         dy = np.sin(angle) * self.resolution
@@ -730,43 +713,43 @@ class MonteCarloLocalization:
 
 ## 10.4 Multi-Session SLAM & Map Merging
 
-실제 환경에서 SLAM은 한 번에 끝나지 않는 경우가 많다. 같은 건물을 여러 날에 걸쳐 매핑하거나, 여러 로봇이 동시에 다른 영역을 탐사하거나, tracking이 실패한 후 다른 지점에서 재시작하기도 한다. Multi-session SLAM은 개별 세션의 맵들을 하나의 일관된 전역 맵으로 통합한다.
+SLAM을 한 번에 끝내지 못할 때도 있다. 같은 건물을 며칠에 나눠 매핑하기도 하고, 로봇 여러 대가 서로 다른 영역을 동시에 탐사하기도 하고, tracking을 놓친 뒤 다른 곳에서 다시 시작하기도 한다. Multi-session SLAM은 이렇게 따로 만든 맵들을 하나의 맵으로 합친다.
 
 ### 10.4.1 Map Anchoring
 
-여러 세션의 맵을 통합하려면, 각 맵의 좌표계(coordinate frame)를 정렬해야 한다. 이를 **map anchoring**이라 한다.
+여러 세션의 맵을 합치려면 먼저 맵마다 다른 좌표계(coordinate frame)를 맞춰야 한다. 이를 map anchoring이라 한다.
 
-**방법 1 — 공유 랜드마크 기반**: 두 세션이 겹치는 영역에서 같은 3D 포인트나 특징점을 관측했다면, 이를 기반으로 두 맵 사이의 상대 변환 ${}^{A}\mathbf{T}_{B}$를 추정한다.
+**방법 1 — 공유 랜드마크 기반**: 두 세션이 겹치는 영역에서 같은 3D 포인트나 특징점을 보았다면, 그 점들로 두 맵 사이의 상대 변환 ${}^{A}\mathbf{T}_{B}$를 추정한다.
 
 $${}^{A}\mathbf{T}_{B} = \arg\min_{\mathbf{T}} \sum_k \| \mathbf{p}_k^A - \mathbf{T} \cdot \mathbf{p}_k^B \|^2$$
 
-**방법 2 — Place recognition 기반**: 공유 랜드마크가 없더라도, place recognition으로 두 세션에서 같은 장소를 방문한 키프레임 쌍을 찾아 정렬한다.
+**방법 2 — Place recognition 기반**: 공유 랜드마크가 없으면 place recognition으로 두 세션에서 같은 장소를 지난 키프레임 쌍을 찾아 맞춘다.
 
-**방법 3 — GNSS 기반**: 두 세션 모두 GNSS 정보가 있다면, 이를 공유 좌표계로 사용하여 직접 정렬한다.
+**방법 3 — GNSS 기반**: 두 세션 모두 GNSS 위치가 있으면 GNSS 좌표계를 기준으로 바로 맞춘다.
 
 ### 10.4.2 Inter-Session Loop Closure
 
-Map anchoring이 초기 정렬을 제공하면, inter-session loop closure가 정밀한 정합을 수행한다. 원리는 일반 loop closure와 같지만 두 가지 도전이 더 있다.
+map anchoring으로 대략 맞춘 다음 inter-session loop closure로 정밀하게 맞춘다. 원리는 일반 loop closure와 같지만 어려운 점이 더 있다.
 
-1. **외관 변화**: 시간이 지나면 조명과 계절이 변한다. AnyLoc 같은 foundation model 기반 디스크립터가 이 문제에 강하다.
+1. **외관 변화**: 세션 사이에 조명과 계절이 바뀐다. AnyLoc 같은 foundation model 기반 디스크립터가 이런 변화에서 기존 방법보다 recall이 높았다(§9.2.4).
 
-2. **좌표계 불일치**: 초기 정렬이 부정확할 수 있으므로 후보 탐색 범위를 넓힌다. pose prior의 게이트를 키우고 후보 수와 RANSAC 반복을 늘리며 정합 초기값의 허용 영역을 넓히는 쪽이다. 기하 검증의 잔차 수용 기준은 풀지 않는다. 그쪽을 완화하면 잘못된 루프가 그대로 들어와 맵이 깨진다.
+2. **좌표계 불일치**: 처음 맞춘 결과가 부정확할 수 있으므로 후보를 넓게 찾는다. pose prior로 거르는 범위를 넓히고, 후보 수와 RANSAC 반복 횟수를 늘리고, 정합 초기값으로 받아들이는 범위도 넓힌다. 기하 검증에서 잔차를 받아들이는 기준은 그대로 둔다. 이 기준까지 느슨하게 하면 잘못된 루프가 들어와 맵이 깨진다.
 
 ### 10.4.3 ORB-SLAM3 Multi-Map System
 
-ORB-SLAM3의 Atlas 시스템은 multi-session SLAM의 대표적 구현이다. 다음과 같이 동작한다.
+ORB-SLAM3의 Atlas는 여러 맵을 한꺼번에 관리하는 구조로, 다음처럼 동작한다.
 
-1. **Active map**: 현재 tracking 중인 맵. 정상적으로 동작할 때는 이 맵에서 키프레임과 맵 포인트를 추가한다.
+1. **Active map**: 지금 tracking에 쓰는 맵이다. 평소에는 이 맵에 키프레임과 맵 포인트를 더한다.
 
-2. **Map creation**: tracking이 실패하면(예: 시야가 가려지거나, textureless 환경), 새 맵을 만들고 active map으로 설정한다. 이전 맵은 Atlas에 비활성 상태로 남는다.
+2. **Map creation**: 시야가 가려져 tracking을 놓치면 새 맵을 만들어 active map으로 삼는다. 이전 맵은 Atlas에 비활성 맵으로 남는다.
 
-3. **Map merging**: place recognition으로 현재 active map과 Atlas의 비활성 맵 사이에서 공통 장소가 검출되면, 두 맵을 병합한다:
-   - 공통 키프레임 쌍에서 상대 변환 $\mathbf{T}_{merge}$를 추정한다.
-   - 비활성 맵의 모든 키프레임과 맵 포인트를 $\mathbf{T}_{merge}$로 변환한다.
-   - 공통 맵 포인트를 fusion한다.
-   - Welding bundle adjustment로 병합 영역의 일관성을 확보한다.
+3. **Map merging**: place recognition이 active map과 Atlas의 비활성 맵에서 같은 장소를 찾으면 두 맵을 합친다:
+   - 같은 장소를 본 키프레임 쌍에서 두 맵 사이의 변환 $\mathbf{T}_{merge}$를 추정한다.
+   - 두 키프레임과 각각의 covisible 키프레임, 이들이 본 맵 포인트로 welding window를 만든다. 이때 active map 쪽 요소를 $\mathbf{T}_{merge}$로 변환해 비활성 맵 좌표계에 맞춘다.
+   - 두 맵을 하나로 합쳐 새 active map으로 삼고, 중복된 맵 포인트를 합친다.
+   - welding window 안에서 welding bundle adjustment를 하고, 그 보정을 pose graph optimization으로 맵의 나머지 부분에 퍼뜨린다.
 
-4. **Multi-session 활용**: 이전 세션의 맵을 로드하고, 현재 세션에서 같은 장소를 방문하면 자동으로 병합된다. 여러 세션에 걸쳐 점진적으로 맵을 확장할 수 있다.
+4. **Multi-session 활용**: 이전 세션의 맵을 불러온 상태에서 같은 장소를 다시 지나가면 맵이 자동으로 합쳐진다. 이렇게 세션을 거듭하며 맵을 넓혀 간다.
 
 ```python
 class MultiMapAtlas:
@@ -836,6 +819,7 @@ class MultiMapAtlas:
         """
         merge_id 맵을 active_id 맵으로 병합.
         merge_id의 모든 키프레임/맵포인트를 T_merge로 변환.
+        (단순화: ORB-SLAM3는 반대로 active map 쪽을 비활성 맵 좌표계로 옮긴다. §10.4.3)
         """
         merge_map = self.maps[merge_id]
         active_map = self.maps[active_id]
@@ -867,28 +851,25 @@ class MultiMapAtlas:
 
 ### 10.4.4 Multi-Robot Map Merging
 
-여러 로봇이 동시에 탐사하는 경우, 각 로봇의 맵을 실시간으로 통합해야 한다. 이때 추가 제약이 붙는다:
+로봇 여러 대가 동시에 탐사하면 각 로봇의 맵을 실시간으로 합쳐야 한다. 이때는 제약이 더 붙는다:
 
-- **통신 대역폭**: 전체 포인트 클라우드를 전송할 수 없으므로 후보 검색에는 압축된 디스크립터(Scan Context, compact visual descriptor)만 교환한다. 이후 기하 검증에는 희소 특징이나 부분 표본 점군이, 분산 최적화에는 경계 pose 추정치와 불확실성이 추가로 오간다.
-- **분산 최적화**: 중앙 서버 없이 로봇들이 자율적으로 맵을 병합할 수 있어야 한다. Kimera-Multi와 Swarm-SLAM이 이 문제를 본다.
-- **Relative pose 불확실성**: 로봇 간 초기 상대 pose가 알려져 있지 않으므로, inter-robot loop closure로 정렬해야 한다.
+- **통신 대역폭**: 포인트 클라우드를 통째로 보낼 수 없으므로 후보를 찾을 때는 Scan Context나 compact visual descriptor 같은 압축 디스크립터만 주고받는다. 기하 검증에는 희소 특징이나 일부만 뽑은 포인트 클라우드를 보내고, 분산 최적화에는 다른 로봇과 이어진 포즈의 추정치와 불확실성을 보낸다.
+- **분산 최적화**: 중앙 서버 없이 로봇끼리 맵을 합쳐야 할 때가 있다. Kimera-Multi와 Swarm-SLAM이 이 문제를 다룬다.
+- **상대 포즈 불확실성**: 로봇 사이의 처음 상대 포즈를 모르므로 inter-robot loop closure로 맞춰야 한다.
 
-분산 pose graph optimization은 다음과 같이 쓸 수 있다.
+분산 pose graph optimization은 아래 식으로 쓸 수 있다.
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-각 로봇은 자신의 에지 $\mathcal{E}_r$에 대한 최적화를 로컬에서 수행하고, inter-robot 에지 $\mathcal{E}_{\text{inter}}$가 걸린 경계 상태에 대해 정보를 교환한다. ADMM이나 Gauss-Seidel 계열 블록 좌표 하강을 분산으로 돌린다. 다만 회전이 들어간 pose graph 목적식은 비볼록이므로 ADMM의 볼록 수렴 보장을 그대로 적용할 수 없다. 1차 임계점으로의 수렴도 선택한 알고리즘의 가정을 확인해야 한다. 예를 들어 [비볼록 ADMM의 수렴 결과](https://arxiv.org/abs/1410.1390)는 특정 문제 구조와 충분히 큰 페널티 계수 같은 조건을 요구한다. ADMM이나 Gauss-Seidel을 썼다는 사실만으로 이 목적식의 수렴이 보장되지는 않는다. 초기값과 통신 그래프는 수렴 과정과 얻어지는 해에 영향을 준다. [DC2-PGO 같은 certifiably correct 방법](https://arxiv.org/abs/1911.03721)은 자신이 다루는 문제와 조건 아래에서 해를 구하고, 사후 검증으로 그 해의 전역 최적성을 확인한다.
+로봇마다 자기 엣지 $\mathcal{E}_r$로 최적화를 돌리고, inter-robot 엣지 $\mathcal{E}_{\text{inter}}$에 걸린 포즈의 정보만 주고받는다. 분산 계산에는 ADMM이나 Gauss-Seidel 방식의 블록 좌표 하강을 쓴다. 회전이 들어간 pose graph 목적식은 비볼록이므로 볼록 문제에 대한 ADMM 수렴 보장은 여기에 그대로 적용되지 않는다. 비볼록 ADMM이 정류점으로 수렴한다는 [Hong et al.의 결과](https://arxiv.org/abs/1410.1390)도 특정 consensus·sharing 문제 구조와 충분히 큰 페널티 계수를 조건으로 한다. 초기값과 통신 그래프에 따라서도 수렴 과정과 얻는 해가 달라진다. [DC2-PGO](https://arxiv.org/abs/1911.03721)는 semidefinite relaxation으로 분산 PGO를 풀고, 측정 잡음이 적당한 범위에 있으면 얻은 해가 전역 최적인지 분산 방식으로 검증한다(T-RO).
 
 ---
 
 ## 10.5 최근 연구
 
-**[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)**: iSAM2에 [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605)를 통합한 incremental robust backend다. 저자들은 논문의 합성·실험 설정에서 90%를 넘는 outlier 비율과 offline baseline 비교 결과를 보고한다. 이 수치는 outlier 구조와 초기값이 다른 문제의 보장이 아니다.
+**[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)**: iSAM2에 [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605)(GNC)를 합친 incremental robust backend다(ICRA 2023). 논문은 MIT CSAIL과 Intel Research Lab 데이터셋에 전체 loop closure의 10%에서 90%까지 잘못된 loop closure를 섞어 실험했고, 온라인 방법 가운데 가장 좋았으며 offline 방법과 비슷하거나 더 나았다고 보고한다. outlier 구조나 초기값이 다른 문제에서도 그렇다는 보장은 없다.
 
-**[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)**: Kimera SLAM 라이브러리의 차세대 버전으로, 백엔드의 outlier rejection을 기존 PCM에서 GNC로 교체하여 강건성을 높였다. 드론과 자율주행 차량을 포함한 다양한 플랫폼에서 실증했으며, metric-semantic SLAM의 실전 배포를 위한 종합적인 개선을 담았다.
+**[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)**: Kimera를 개선한 버전이다(ISER 2023). pose graph 백엔드 Kimera-RPGO는 그동안 PCM으로 잘못된 loop closure를 걸렀는데, 여기에 GNC를 선택지로 더했다. Kimera-VIO의 feature tracking과 키프레임 선택도 고쳤다. 드론, 사족 보행 로봇, 바퀴 로봇, 시뮬레이션 자율주행차에서 평가했다.
 
-**[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)**: PCM의 pairwise consistency를 group-k consistency로 확장하여 이상치를 더 엄격하게 탐지한다. Multi-robot map merging에서 PCM보다 false positive를 더 억제한다.
+**[Group-k Consistent Measurement Set Maximization (Forsgren et al., 2022)](https://arxiv.org/abs/2209.02658)**: 측정 둘만으로는 서로 맞는지 판단하기 어려운 경우가 있어서, PCM의 pairwise consistency를 측정 k개 묶음의 일관성(group-k consistency)으로 넓혔다. 저자들은 시뮬레이션 데이터로 PCM과 비교했다.
 
----
-
-Loop closure와 전역 최적화로 SLAM 시스템은 전역적으로 일관된 궤적과 맵을 만든다. 그런데 이 "맵"은 어떤 형태인가? 점군일 수도, 신경망 가중치일 수도 있다. 여기서 센서 퓨전의 최종 결과물인 공간 표현(spatial representation) 문제가 열린다.

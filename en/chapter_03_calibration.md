@@ -820,7 +820,7 @@ Accurate IMU noise parameters affect Kalibr calibration and the performance of I
 For a time series $\{x_k\}$, the Allan variance at cluster time $\tau = n \cdot \tau_0$ ($\tau_0$: sampling period):
 
 $$
-\sigma^2(\tau) = \frac{1}{2(N-2n)} \sum_{k=1}^{N-2n} \left[\bar{x}_{k+n} - \bar{x}_k\right]^2
+\sigma^2(\tau) = \frac{1}{2(N-2n+1)} \sum_{k=1}^{N-2n+1} \left[\bar{x}_{k+n} - \bar{x}_k\right]^2
 $$
 
 Here $\bar{x}_k = \frac{1}{n}\sum_{j=0}^{n-1} x_{k+j}$ is the cluster mean.
@@ -1235,7 +1235,7 @@ Recently, [CalibRefine (2025)](https://arxiv.org/abs/2502.17648) proposed an aut
 
 ### 3.8.3 OpenCalib: An Integrated Calibration Framework for Autonomous Driving
 
-[OpenCalib (Yan et al., 2023)](https://arxiv.org/abs/2205.14087) is an open-source tool that integrates the various calibrations needed by autonomous-driving systems into a single framework.
+[OpenCalib (Yan et al., 2022)](https://arxiv.org/abs/2205.14087) is an open-source tool that integrates the various calibrations needed by autonomous-driving systems into a single framework.
 
 **Calibration types supported**:
 
@@ -1253,7 +1253,7 @@ Recently, [CalibRefine (2025)](https://arxiv.org/abs/2502.17648) proposed an aut
 - **Unified interface**: a ROS-based unified interface handles diverse sensor inputs
 - **Visualization**: calibration results are visualized in real time so quality can be assessed intuitively
 
-Calibration in an autonomous-driving system must remain consistent across the entire **sensor chain**. For example, a vehicle with six cameras and one LiDAR may calibrate each camera-LiDAR pair independently, but the relative poses among the cameras must still agree. OpenCalib includes these consistency constraints in a global optimization.
+Calibration in an autonomous-driving system must remain consistent across the entire **sensor chain**. For example, a vehicle with six cameras and one LiDAR may calibrate each camera-LiDAR pair independently, but the relative poses among the cameras must still agree. OpenCalib's tools, however, operate on single sensors or sensor pairs, so chain consistency must be checked separately by composing the individual results.
 
 ---
 
@@ -1408,7 +1408,7 @@ Example of indirect computation: the camera-LiDAR transform can be obtained as $
 - [Tsai & Lenz (1989)](https://ieeexplore.ieee.org/document/34770): hand-eye — the original AX=XB
 - [Koide et al. (2023)](https://arxiv.org/abs/2302.05094): camera-LiDAR targetless — automatic calibration based on NID + SuperGlue
 - [Li & Mourikis (2014)](https://arxiv.org/abs/1310.7863): temporal — online estimation of the time offset
-- [OpenCalib (2023)](https://arxiv.org/abs/2205.14087): an integrated calibration framework for autonomous driving
+- [OpenCalib (2022)](https://arxiv.org/abs/2205.14087): an integrated calibration framework for autonomous driving
 - [GRIL-Calib (Kim et al., 2024)](https://arxiv.org/abs/2312.14035): targetless IMU-LiDAR calibration in ground-robot settings using planar-motion constraints. 6-DoF estimation is possible even from constrained motion.
 - [MFCalib (2024)](https://arxiv.org/abs/2409.00992): single-shot targetless LiDAR-camera calibration that leverages multi-feature edges (depth continuity/discontinuity, intensity discontinuity). The edge inflation problem is solved with a LiDAR beam model.
 - [iKalibr (Chen et al., 2024)](https://arxiv.org/abs/2407.11420): temporal — unified spatio-temporal calibration of heterogeneous multi-sensors (LiDAR, camera, IMU, radar) based on B-spline continuous time (IEEE T-RO 2025).

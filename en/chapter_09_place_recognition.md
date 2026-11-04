@@ -374,7 +374,7 @@ def anyloc_pipeline(images, dino_model, n_clusters=64, desc_dim=512):
 
 ### 9.2.5 EigenPlaces
 
-**[EigenPlaces (Berton et al., 2023)](https://arxiv.org/abs/2308.10832)** is the follow-up to [CosPlace (Berton et al., 2022)](https://arxiv.org/abs/2204.02287), and it learns descriptors that are robust to viewpoint change. Building on CosPlace — which replaced the cumbersome hard-negative mining of triplet loss with classification-based training — EigenPlaces goes further and applies PCA to the distribution of camera viewpoints within each class to find the dominant direction of the scene, then composes the training views around a focal point along that direction. PCA is applied to the viewpoint geometry of the training data, not to the descriptor feature space.
+**[EigenPlaces (Berton et al., 2023)](https://arxiv.org/abs/2308.10832)** is the follow-up to [CosPlace (Berton et al., 2022)](https://arxiv.org/abs/2204.02287), and it learns descriptors that are robust to viewpoint change. Building on CosPlace — which replaced the cumbersome hard-negative mining of triplet loss with classification-based training — EigenPlaces goes further and applies PCA to the distribution of camera viewpoints within each class to find the first principal component, which roughly follows the road, and builds each class from views that look, from different positions, at a focal point placed perpendicular to it (toward the facades beside the road); a frontal class with its focal point along the first principal component is added for front-facing datasets. PCA is applied to the viewpoint geometry of the training data, not to the descriptor feature space.
 
 ### 9.2.6 Expanding the Use of Foundation Models
 

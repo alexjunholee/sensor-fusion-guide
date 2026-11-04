@@ -1,8 +1,6 @@
 # Ch.5 — Feature Matching & Correspondence: 기술 계보
 
-Ch.4에서 상태 추정의 수학적 프레임워크를 세웠다. 하지만 칼만 필터든 팩터 그래프든, "어떤 관측이 어떤 랜드마크에 대응하는가"라는 **데이터 연관(data association)** 문제가 먼저 풀려야 한다. 이 챕터는 그 핵심인 특징점 매칭(feature matching)과 대응점 탐색(correspondence search)의 기술 계보를 추적한다.
-
-> **이 챕터의 목적**: 센서 퓨전의 거의 모든 컴포넌트—Visual Odometry, calibration, loop closure, point cloud registration—가 **correspondence**(대응점)에 의존한다. 이 챕터는 mutual information에서 출발하여 RoMa까지 이어지는 기술적 흐름을 추적하며, 각 방법이 이전 세대의 어떤 한계를 해결했는지 살핀다.
+Ch.4의 칼만 필터와 factor graph는 어떤 관측이 어떤 랜드마크에서 왔는지, 곧 데이터 연관(data association)을 이미 안다고 놓고 계산한다. 이 대응은 특징점 매칭(feature matching)과 대응점 탐색(correspondence search)으로 구한다.
 
 ---
 
@@ -10,26 +8,26 @@ Ch.4에서 상태 추정의 수학적 프레임워크를 세웠다. 하지만 �
 
 ### 5.1.1 "같은 것"을 찾는 문제
 
-Correspondence 문제는 두 개 이상의 관측(observation)에서 **물리적으로 동일한 점, 영역, 또는 구조물**을 식별하는 문제다. 센서 퓨전 파이프라인의 거의 모든 단계가 correspondence를 전제로 한다.
+Correspondence 문제는 둘 이상의 관측(observation)에서 물리적으로 같은 점, 영역, 구조물을 찾아내는 문제다. 센서 퓨전 파이프라인은 거의 모든 단계에서 대응점을 쓴다.
 
 - **Visual Odometry**: 연속된 프레임에서 같은 3D 점의 2D 투영을 찾아야 카메라 모션을 추정할 수 있다.
 - **Calibration**: 카메라-LiDAR 외부 파라미터를 추정하려면 두 센서 관측 사이의 대응을 찾아야 한다. target을 쓰는 방법은 같은 물리적 점을 대응으로 삼고, targetless MI 기반 방법(§5.4)은 겹치는 영역의 통계적 의존성을 대응으로 삼는다.
 - **Loop Closure**: 이전에 방문한 장소를 재인식하려면 현재 관측과 과거 관측 사이의 대응을 확인해야 한다.
-- **Point Cloud Registration**: 두 스캔의 정합(alignment)은 대응점 쌍을 기반으로 강체 변환을 추정하는 과정이다.
+- **Point Cloud Registration**: 두 스캔을 맞추려면(alignment) 대응점 쌍으로 강체 변환을 추정한다.
 
-### 5.1.2 Correspondence의 세 가지 유형
+### 5.1.2 Correspondence의 유형
 
 #### 2D-2D Correspondence
 
-두 이미지 사이에서 같은 3D 점의 투영을 찾는 문제다. Visual Odometry, Stereo Matching, Image Stitching의 기초가 된다.
+두 이미지에서 같은 3D 점이 투영된 위치를 찾는 문제다. Visual Odometry, Stereo Matching, Image Stitching이 이 대응을 쓴다.
 
-이미지 $I_1$의 점 $\mathbf{p}_1 = (u_1, v_1)$과 이미지 $I_2$의 점 $\mathbf{p}_2 = (u_2, v_2)$가 같은 3D 점 $\mathbf{X}$의 투영일 때, 이 쌍 $(\mathbf{p}_1, \mathbf{p}_2)$를 대응점(correspondence)이라 한다. 아래 기하 식에서는 이 점을 동차 좌표 $(u, v, 1)^\top$로 쓴다. $3 \times 3$ 행렬과의 곱과 $\mathbf{K}^{-1}$ 적용이 모두 동차 좌표에서 정의되기 때문이다.
+이미지 $I_1$의 점 $\mathbf{p}_1 = (u_1, v_1)$과 이미지 $I_2$의 점 $\mathbf{p}_2 = (u_2, v_2)$가 같은 3D 점 $\mathbf{X}$의 투영일 때, 이 쌍 $(\mathbf{p}_1, \mathbf{p}_2)$를 대응점(correspondence)이라 한다. $3 \times 3$ 행렬을 곱하고 $\mathbf{K}^{-1}$을 적용하려면 점이 동차 좌표여야 하므로, 아래 식에서는 점을 $(u, v, 1)^\top$로 쓴다.
 
-두 이미지 사이의 기하학적 관계는 **epipolar constraint**로 표현된다:
+두 이미지 사이의 기하 관계는 epipolar constraint로 쓴다.
 
 $$\mathbf{p}_2^\top \mathbf{F} \mathbf{p}_1 = 0$$
 
-여기서 $\mathbf{F}$는 Fundamental matrix (3×3, rank 2)이다. 내부 파라미터를 알면 Essential matrix $\mathbf{E} = \mathbf{K}_2^\top \mathbf{F} \mathbf{K}_1$를 사용한다:
+여기서 $\mathbf{F}$는 Fundamental matrix (3×3, rank 2)이다. 내부 파라미터를 알면 Essential matrix $\mathbf{E} = \mathbf{K}_2^\top \mathbf{F} \mathbf{K}_1$를 쓴다.
 
 $$\hat{\mathbf{p}}_2^\top \mathbf{E} \hat{\mathbf{p}}_1 = 0$$
 
@@ -37,65 +35,65 @@ $$\hat{\mathbf{p}}_2^\top \mathbf{E} \hat{\mathbf{p}}_1 = 0$$
 
 #### 2D-3D Correspondence
 
-이미지의 2D 점과 3D 맵 포인트 사이의 대응. **PnP(Perspective-n-Point)** 문제의 기초이며, Visual Localization과 SLAM의 map-based tracking에서 핵심적이다.
+이미지의 2D 점과 3D 맵 포인트 사이의 대응이다. PnP(Perspective-n-Point) 문제의 입력이며, Visual Localization과 SLAM의 map-based tracking에 쓰인다.
 
-3D 점 $\mathbf{X} = (X, Y, Z)^\top$과 그 2D 투영 $\mathbf{p} = (u, v)^\top$의 관계:
+3D 점 $\mathbf{X} = (X, Y, Z)^\top$과 그 2D 투영 $\mathbf{p} = (u, v)^\top$의 관계는 다음과 같다.
 
 $$s \begin{bmatrix} u \\ v \\ 1 \end{bmatrix} = \mathbf{K} [\mathbf{R} | \mathbf{t}] \begin{bmatrix} X \\ Y \\ Z \\ 1 \end{bmatrix}$$
 
-최소 6개(DLT), 4개(P3P+1), 또는 3개(P3P) 대응점으로 카메라 포즈 $(\mathbf{R}, \mathbf{t})$를 추정한다.
+카메라 포즈 $(\mathbf{R}, \mathbf{t})$는 DLT로는 대응점 6개, P3P로는 3개(해를 하나로 고르려면 1개 더)로 추정한다.
 
 #### 3D-3D Correspondence
 
-두 점군(point cloud) 사이에서 같은 물리적 점을 찾는 문제. LiDAR scan-to-scan 정합, multi-LiDAR calibration, loop closure 시 point cloud registration에 쓰인다.
+두 포인트 클라우드(point cloud)에서 같은 물리적 점을 찾는 문제다. LiDAR scan-to-scan 정합, multi-LiDAR calibration, loop closure의 point cloud registration에 쓰인다.
 
-두 점군 $\mathcal{P} = \{\mathbf{p}_i\}$와 $\mathcal{Q} = \{\mathbf{q}_i\}$ 사이의 강체 변환 $(\mathbf{R}, \mathbf{t})$를 추정:
+두 포인트 클라우드 $\mathcal{P} = \{\mathbf{p}_i\}$와 $\mathcal{Q} = \{\mathbf{q}_i\}$ 사이의 강체 변환 $(\mathbf{R}, \mathbf{t})$를 다음 식으로 추정한다.
 
 $$\min_{\mathbf{R}, \mathbf{t}} \sum_{i} \| \mathbf{q}_i - (\mathbf{R} \mathbf{p}_i + \mathbf{t}) \|^2$$
 
-이 최적화 문제의 closed-form 해는 SVD를 이용하여 구할 수 있다 (ICP, Ch.7 참조).
+대응을 알면 이 문제의 closed-form 해를 SVD로 구한다(ICP, Ch.7).
 
-### 5.1.3 센서 퓨전에서의 역할
+### 5.1.3 센서 퓨전과 correspondence
 
-센서 퓨전의 정확도는 correspondence 품질에 크게 좌우된다. 잘못된 대응점(outlier)이 섞이면 포즈 추정의 오차가 급격히 커진다. 또한 텍스처가 결여된 환경에서는 유효 대응점의 수가 부족해 포즈 계산 자체가 불가능해지기도 한다. 이를 해결하는 방법은 전통적 특징점 검출·기술에서 학습 기반 정합으로 발전해 왔다.
+잘못된 대응점(outlier)이 섞이면 포즈 추정 오차가 크게 늘어난다. 텍스처가 없는 환경에서는 쓸 만한 대응점이 모자라 포즈를 아예 계산하지 못하기도 한다.
 
 ---
 
 ## 5.2 전통적 Feature Detection & Description
 
-전통적 correspondence 파이프라인은 **detect → describe → match**의 3단계로 구성된다. 처음 두 단계는 어디에서 특징점을 찾고(detection), 그 특징점을 어떻게 표현하는가(description)다.
+전통적 correspondence 파이프라인은 검출(detect), 기술(describe), 매칭(match) 세 단계를 차례로 거친다. 검출은 특징점을 어디서 찾을지, 기술은 그 점을 어떤 숫자로 나타낼지 정한다.
 
 ### 5.2.1 Corner Detection: Harris → FAST → ORB
 
 #### Harris Corner Detector (1988)
 
-Harris corner detector는 **이미지 패치를 이동시켰을 때 밝기 변화가 모든 방향으로 크게 일어나는 점**을 코너로 정의한다.
+Harris corner detector는 이미지 패치를 어느 방향으로 옮겨도 밝기가 크게 변하는 점을 코너로 본다.
 
-이미지 $I$에서 점 $(x, y)$ 주변의 윈도우를 $(\Delta u, \Delta v)$만큼 이동시킬 때의 밝기 변화:
+이미지 $I$에서 점 $(x, y)$ 주변의 윈도우를 $(\Delta u, \Delta v)$만큼 옮길 때의 밝기 변화는 다음과 같다.
 
 $$E(\Delta u, \Delta v) = \sum_{x, y} w(x, y) [I(x + \Delta u, y + \Delta v) - I(x, y)]^2$$
 
-$w(x, y)$는 가우시안 윈도우. Taylor 1차 전개를 적용하면:
+$w(x, y)$는 가우시안 윈도우다. 1차 Taylor 전개를 적용하면 다음과 같다.
 
 $$E(\Delta u, \Delta v) \approx \begin{bmatrix} \Delta u & \Delta v \end{bmatrix} \mathbf{M} \begin{bmatrix} \Delta u \\ \Delta v \end{bmatrix}$$
 
-여기서 **structure tensor**(또는 second moment matrix) $\mathbf{M}$은:
+여기서 $\mathbf{M}$은 structure tensor(또는 second moment matrix)다.
 
 $$\mathbf{M} = \sum_{x, y} w(x, y) \begin{bmatrix} I_x^2 & I_x I_y \\ I_x I_y & I_y^2 \end{bmatrix}$$
 
-$I_x, I_y$는 이미지의 x, y 방향 그래디언트. $\mathbf{M}$의 고유값 $(\lambda_1, \lambda_2)$에 따라:
+$I_x, I_y$는 이미지의 x, y 방향 그래디언트다. $\mathbf{M}$의 고유값 $(\lambda_1, \lambda_2)$로 점을 다음처럼 나눈다.
 
 - $\lambda_1 \approx 0, \lambda_2 \approx 0$: 평탄한 영역 (밝기 변화 없음)
-- $\lambda_1 \gg \lambda_2 \approx 0$: 엣지 (한 방향으로만 변화)
+- $\lambda_1 \gg \lambda_2 \approx 0$: 에지 (한 방향으로만 변화)
 - $\lambda_1, \lambda_2$ 모두 큼: 코너 (모든 방향으로 변화)
 
-Harris는 고유값을 직접 계산하는 대신 **corner response function**을 정의:
+Harris는 고유값을 직접 계산하지 않고 corner response function을 쓴다.
 
 $$R = \det(\mathbf{M}) - k \cdot \text{tr}(\mathbf{M})^2 = \lambda_1 \lambda_2 - k(\lambda_1 + \lambda_2)^2$$
 
-여기서 $k$는 보통 0.04~0.06. $R > \text{threshold}$인 점을 코너로 선택하고, non-maximum suppression을 적용한다.
+$k$는 보통 0.04~0.06이다. $R$이 임계값보다 큰 점을 코너로 고르고 non-maximum suppression을 적용한다.
 
-**Harris의 한계**: 회전 불변(rotation invariant)이지만 **스케일 불변이 아니다**. 카메라가 가까이 다가가면 코너가 엣지로 보일 수 있다. 이 한계가 SIFT의 scale-space 접근법의 동기가 되었다.
+**Harris의 한계**: 회전에는 불변(rotation invariant)이고 스케일에는 불변이 아니다. 카메라가 다가가면 같은 코너가 윈도우 안에서 에지처럼 보일 수 있다. SIFT는 scale-space로 이 문제를 다룬다.
 
 ```python
 import cv2
@@ -114,21 +112,21 @@ corners = harris_response > 0.01 * harris_response.max()
 
 #### FAST (Features from Accelerated Segment Test, 2006)
 
-FAST는 Harris의 정확성보다 **속도를 극한으로 추구**한 검출기다. 로봇 비전에서 수십 FPS로 특징점을 검출해야 하는 실시간 요구를 해결하기 위해 [Rosten & Drummond (ECCV 2006; 링크는 Rosten, Porter & Drummond의 확장판, TPAMI 2010)](https://arxiv.org/abs/0810.2434)가 제안했다.
+FAST는 속도를 우선한 코너 검출기다. Rosten과 Drummond가 ICCV 2005에서 segment test 검출기를 처음 내놓았고, ECCV 2006에서 여기에 결정 트리 학습을 더했다. 확장판인 [Rosten, Porter & Drummond (TPAMI 2010)](https://arxiv.org/abs/0810.2434)에 따르면 PAL 실시간 영상을 처리하는 데 가용 처리 시간의 5% 미만이 들었고, 같은 조건에서 Harris는 115%, SIFT는 195%였다.
 
-알고리즘은 단순하다:
+알고리즘은 다음과 같다.
 
-1. 후보 픽셀 $p$를 중심으로 반지름 3의 원 위에 16개 픽셀을 배치 (Bresenham circle).
-2. 원 위의 연속된 $N$개 픽셀(보통 $N=12$)이 모두 $p$보다 밝거나 모두 어두우면 $p$는 코너.
-3. 고속 reject: 1, 5, 9, 13번 위치의 4개 픽셀만 먼저 확인 — 이 중 3개 이상이 모두 밝거나 모두 어두운 조건을 만족하지 못하면 즉시 기각. 이 단축 검사는 $N=12$에서 성립하고 $N=9$ 같은 변형에는 그대로 쓸 수 없어서, 아래의 결정 트리 학습이 그 자리를 대신한다.
+1. 후보 픽셀 $p$를 중심으로 반지름 3인 원(Bresenham circle) 위의 픽셀 16개를 본다.
+2. 원 위에서 연속한 $N$개 픽셀(2005년 원래 검출기는 $N=12$, OpenCV 기본값은 $N=9$)이 모두 $p$보다 밝거나 모두 어두우면 $p$를 코너로 본다.
+3. 빠른 기각(high-speed test): 1, 5, 9, 13번 픽셀 넷만 먼저 본다. 이 중 셋 이상이 모두 밝거나 모두 어두울 때만 전체 검사로 넘어간다. 이 단축 검사는 $N=12$ 전용이므로, $N=9$ 같은 변형에는 아래의 결정 트리 학습을 쓴다.
 
 $$\text{FAST condition: } \exists \text{ contiguous arc of } N \text{ pixels on circle, all } > I_p + t \text{ or all } < I_p - t$$
 
-여기서 $t$는 밝기 임계값.
+여기서 $t$는 밝기 임계값이다.
 
-**Decision tree 학습**: FAST는 추가로 머신러닝(ID3 decision tree)을 활용하여 검사 순서를 최적화한다. 어떤 픽셀을 먼저 검사해야 가장 빠르게 비-코너를 기각할 수 있는지를 학습한다.
+**Decision tree 학습**: FAST는 ID3 decision tree로 픽셀 검사 순서를 학습한다. 어느 픽셀부터 봐야 코너가 아닌 점을 가장 빨리 기각하는지를 데이터에서 찾는다.
 
-**FAST의 한계**: 방향(orientation)과 스케일(scale) 정보가 없고, 디스크립터를 생성하지 않는다. 이를 보완한 것이 ORB다.
+**FAST의 한계**: FAST는 코너 위치만 준다. 방향(orientation), 스케일(scale), 디스크립터는 뒤에 ORB가 덧붙였다.
 
 ```python
 # FAST Corner Detection
@@ -139,11 +137,11 @@ print(f"Detected {len(keypoints)} keypoints")
 
 #### ORB (Oriented FAST and Rotated BRIEF, 2011)
 
-ORB는 [Rublee et al. (2011)](https://ieeexplore.ieee.org/document/6126544)이 SIFT/SURF의 특허 문제와 속도 문제를 동시에 해결하기 위해 제안한 방법이다. **FAST 검출기에 방향성을 부여하고, BRIEF 디스크립터에 회전 불변성을 추가**한 조합이다.
+ORB는 [Rublee et al. (2011)](https://ieeexplore.ieee.org/document/6126544)이 특허 제약이 없고 SIFT보다 빠른 대안으로 제안했다. FAST 검출기에 방향을 붙이고, BRIEF 디스크립터를 그 방향으로 회전시킨다.
 
 **oFAST (Oriented FAST)**:
-- FAST로 검출한 키포인트에 **intensity centroid** 방법으로 방향을 할당.
-- 키포인트 주변 패치의 이미지 모멘트를 계산:
+- FAST로 찾은 키포인트에 intensity centroid 방법으로 방향을 정한다.
+- 키포인트 주변 패치의 이미지 모멘트를 계산한다.
 
 $$m_{pq} = \sum_{x, y} x^p y^q I(x, y)$$
 
@@ -151,17 +149,17 @@ $$m_{pq} = \sum_{x, y} x^p y^q I(x, y)$$
 - 방향: $\theta = \text{atan2}(m_{01}, m_{10})$
 
 **rBRIEF (Rotated BRIEF)**:
-- BRIEF는 패치 내의 랜덤 점 쌍 $(x_i, y_i)$의 밝기를 비교하여 이진 디스크립터를 생성:
+- BRIEF는 패치 안의 무작위 점 쌍 $(x_i, y_i)$의 밝기를 비교해 이진 디스크립터를 만든다.
 
 $$\tau(\mathbf{p}; x_i, y_i) = \begin{cases} 1 & \text{if } I(\mathbf{p}, x_i) < I(\mathbf{p}, y_i) \\ 0 & \text{otherwise} \end{cases}$$
 
-- 256개 비교 → 256-bit 이진 디스크립터.
-- ORB는 키포인트 방향 $\theta$에 따라 비교 점 쌍을 회전시켜 **회전 불변성**을 확보.
-- 추가로, 비교 점 쌍의 상관관계를 최소화하도록 그리디하게 선택하여 분별력(discriminability)을 높인다.
+- 비교 256번으로 256비트 디스크립터를 얻는다.
+- ORB는 키포인트 방향 $\theta$만큼 비교 점 쌍을 돌려 회전 불변성을 얻는다.
+- 또 서로 상관이 낮은 점 쌍을 탐욕적(greedy)으로 골라 분별력(discriminability)을 높인다.
 
-**멀티 스케일**: 이미지 피라미드(보통 8단계)를 구성하고 각 레벨에서 FAST를 수행하여 스케일 불변성을 근사한다.
+**멀티 스케일**: 이미지 피라미드(OpenCV 구현의 기본값은 8단계)의 각 레벨에서 FAST를 돌려 스케일 변화에 대응한다.
 
-ORB는 **ORB-SLAM 시리즈의 핵심 특징점**이며, 이진 디스크립터 덕분에 매칭이 Hamming distance로 수행되어 매우 빠르다.
+ORB-SLAM 시리즈는 ORB 특징점을 쓴다. 이진 디스크립터라서 Hamming distance로 빠르게 매칭한다.
 
 ```python
 # ORB Detection & Description
@@ -174,44 +172,44 @@ keypoints, descriptors = orb.detectAndCompute(img, None)
 
 #### SIFT (Scale-Invariant Feature Transform, 2004)
 
-SIFT는 [Lowe (2004)](https://link.springer.com/article/10.1023/B:VISI.0000029664.99615.94)가 제안한 특징점 검출·기술 알고리즘이다. 스케일과 평면 내 회전에 불변하도록 설계됐고, 정규화된 gradient descriptor 덕분에 일정 범위의 조명 변화와 affine 왜곡에도 강건하다. 오랫동안 특징점 매칭의 대표 기준선으로 쓰였으며 미국 특허는 2020년에 만료됐다.
+SIFT는 [Lowe (2004)](https://link.springer.com/article/10.1023/B:VISI.0000029664.99615.94)가 제안한 특징점 검출·기술 알고리즘이다. 스케일과 평면 내 회전에 불변이고, 그래디언트를 정규화한 디스크립터라서 어느 정도의 조명 변화와 affine 왜곡에도 견딘다. 오랫동안 특징점 매칭의 기준선으로 쓰였고, 미국 특허(US 6,711,293)는 2020년 3월에 만료됐다.
 
 **Stage 1 — Scale-Space Extrema Detection (DoG)**:
 
-이미지를 다양한 스케일의 가우시안으로 블러링한 scale-space를 구성한다:
+이미지를 여러 스케일의 가우시안으로 흐리게 해 scale-space를 만든다.
 
 $$L(x, y, \sigma) = G(x, y, \sigma) * I(x, y)$$
 
 여기서 $G(x, y, \sigma) = \frac{1}{2\pi\sigma^2} \exp\left(-\frac{x^2 + y^2}{2\sigma^2}\right)$.
 
-Laplacian of Gaussian (LoG)의 효율적 근사로 **Difference of Gaussians (DoG)**를 사용한다:
+Laplacian of Gaussian(LoG)을 빠르게 근사하려고 Difference of Gaussians(DoG)를 쓴다.
 
 $$D(x, y, \sigma) = L(x, y, k\sigma) - L(x, y, \sigma) \approx (k-1)\sigma^2 \nabla^2 G$$
 
-DoG 이미지에서 공간적(8개 이웃) + 스케일(상하 각 9개) = 26개 이웃과 비교하여 극값(extrema)을 찾는다.
+DoG 이미지에서 같은 스케일의 이웃 8개와 위아래 스케일의 9개씩, 모두 26개와 비교해 극값(extrema)을 찾는다.
 
 **Stage 2 — Keypoint Localization**:
 
-스케일-공간에서 Taylor 전개를 이용한 서브픽셀/서브스케일 위치 정밀화:
+scale-space에서 Taylor 전개로 극값 위치를 픽셀·스케일 간격보다 정밀하게 구한다.
 
 $$D(\mathbf{x}) = D + \frac{\partial D}{\partial \mathbf{x}}^\top \mathbf{x} + \frac{1}{2} \mathbf{x}^\top \frac{\partial^2 D}{\partial \mathbf{x}^2} \mathbf{x}$$
 
 극값의 정밀 위치: $\hat{\mathbf{x}} = -\frac{\partial^2 D}{\partial \mathbf{x}^2}^{-1} \frac{\partial D}{\partial \mathbf{x}}$
 
-저대비 키포인트 제거: $|D(\hat{\mathbf{x}})| < 0.03$이면 제거.
-엣지 응답 제거: Hessian 행렬의 고유값 비를 이용하여 엣지 위의 불안정한 극값을 제거.
+대비가 낮은 키포인트는 버린다: $|D(\hat{\mathbf{x}})| < 0.03$ (픽셀 값을 [0,1]로 둘 때).
+에지 위의 불안정한 극값은 Hessian 고유값의 비로 가려내 버린다.
 
 **Stage 3 — Orientation Assignment**:
 
-키포인트 주변의 그래디언트 크기와 방향을 계산하고, 36-bin 방향 히스토그램을 생성한다 (가우시안 가중, $\sigma = 1.5 \times$ 키포인트 스케일). 최대 피크의 80% 이상인 피크가 있으면 해당 방향에도 별도 키포인트를 생성하여 **회전 불변성**을 확보한다.
+키포인트 주변의 그래디언트 크기와 방향으로 36-bin 방향 히스토그램을 만든다(가우시안 가중, $\sigma = 1.5 \times$ 키포인트 스케일). 가장 높은 봉우리를 키포인트 방향으로 삼고, 그 80% 이상인 봉우리가 또 있으면 그 방향으로도 키포인트를 하나 더 만든다.
 
 **Stage 4 — Keypoint Descriptor**:
 
-키포인트 주변 $16 \times 16$ 영역을 $4 \times 4$ 블록 16개로 분할. 각 블록에서 8-bin 방향 히스토그램을 생성한다:
+키포인트 주변 $16 \times 16$ 영역을 $4 \times 4$ 블록 16개로 나누고, 블록마다 8-bin 방향 히스토그램을 만든다.
 
 $$\text{Descriptor} = 4 \times 4 \times 8 = 128\text{-dimensional vector}$$
 
-L2 정규화 후 0.2 이상의 값을 클리핑하고 재정규화하여 비선형 조명 변화에 강건하게 만든다.
+L2 정규화한 뒤 0.2를 넘는 값을 0.2로 자르고 다시 정규화한다. 그러면 비선형 조명 변화로 일부 그래디언트만 커져도 영향이 줄어든다.
 
 ```python
 # SIFT Detection & Description
@@ -222,22 +220,22 @@ keypoints, descriptors = sift.detectAndCompute(img, None)
 
 #### SURF (Speeded-Up Robust Features, 2006)
 
-SURF는 [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_32)이 SIFT의 속도 문제를 해결하기 위해 제안했다. 다음 세 가지 선택으로 계산량을 줄인다.
+SURF는 [Bay et al. (2006)](https://link.springer.com/chapter/10.1007/11744023_32)이 SIFT보다 빠른 검출기·디스크립터로 제안했다. 계산량은 다음 방법으로 줄인다.
 
-- **Integral image**를 이용한 박스 필터로 LoG를 근사. 어떤 크기의 박스 필터든 O(1)에 계산.
-- **Hessian determinant**를 검출 기준으로 사용 (DoG 대신):
+- **Integral image**로 박스 필터를 계산해 가우시안 2차 미분을 근사한다. 박스 크기와 상관없이 필터 한 번에 상수 시간이 든다.
+- DoG 대신 **Hessian determinant**로 특징점을 고른다.
 
 $$\det(\mathbf{H}) = D_{xx} D_{yy} - (0.9 \cdot D_{xy})^2$$
 
-- 64차원 디스크립터 (SIFT의 128차원 대비 절반): Haar wavelet 응답의 합과 절댓값 합.
+- 디스크립터는 Haar wavelet 응답의 합과 절댓값 합으로 만든 64차원으로, SIFT(128차원)의 절반이다.
 
-integral image와 box filter로 Hessian 근사를 빠르게 계산하도록 설계됐다. 속도와 정확도 차이는 구현, 영상 크기, 하드웨어에 따라 달라진다.
+SIFT와의 속도·정확도 차이는 구현, 영상 크기, 하드웨어에 따라 다르다.
 
-SURF는 과거 특허 문제로 채택률이 낮아졌다. 현재 실시간성이 중요한 파이프라인에서는 ORB를 주로 쓰고, 정밀한 복원이 필요한 분야에서는 SIFT나 최신 학습 기반 정합 기법을 활용한다.
+SURF는 특허 때문에 OpenCV에서 non-free(`xfeatures2d`) 모듈로 분리되어 있다. 이 가이드에서 다루는 시스템 가운데 ORB-SLAM 계열은 ORB를, COLMAP은 SIFT를 기본 특징점으로 쓴다.
 
 ### 5.2.3 Binary Descriptors: BRIEF, ORB, BRISK
 
-이진 디스크립터는 패치 내 점 쌍의 밝기를 비교하여 0/1 비트열을 만든다. XOR와 popcount로 Hamming distance를 계산할 수 있어 부동소수점 거리보다 낮은 비용으로 구현되는 경우가 많지만, 실제 속도비는 디스크립터 길이와 라이브러리·하드웨어에 따라 달라진다.
+이진 디스크립터는 패치 안 점 쌍의 밝기를 비교해 0/1 비트열을 만든다. Hamming distance는 XOR와 popcount로 계산하므로 부동소수점 거리보다 대개 싸다. 실제로 몇 배 빠른지는 디스크립터 길이, 라이브러리, 하드웨어에 따라 다르다.
 
 | 디스크립터 | 비트 수 | 특징 |
 |-----------|--------|------|
@@ -245,17 +243,17 @@ SURF는 과거 특허 문제로 채택률이 낮아졌다. 현재 실시간성�
 | ORB | 256 | 학습된 점 쌍, 회전 불변 |
 | BRISK | 512 | 동심원 샘플링, 스케일 불변 |
 
-BRIEF의 비교 연산:
+BRIEF의 비교 연산은 다음과 같다.
 
 $$b_i = \begin{cases} 1 & \text{if } I(\mathbf{p}_i) < I(\mathbf{q}_i) \\ 0 & \text{otherwise} \end{cases}, \quad \text{descriptor} = \sum_{1 \le i \le n} 2^{i-1} b_i$$
 
-Hamming distance는 XOR과 popcount로 계산한다. popcount는 워드 단위 명령이므로 256비트 디스크립터는 64비트 워드 4개의 XOR·popcount와 합산으로, 512비트는 그 두 배로 처리된다:
+popcount는 워드 단위 명령이라, 256비트 디스크립터는 64비트 워드 4개를 XOR·popcount해 더하고 512비트는 그 두 배를 한다.
 
 $$d_H(\mathbf{a}, \mathbf{b}) = \text{popcount}(\mathbf{a} \oplus \mathbf{b})$$
 
-### 5.2.4 기술 계보: 정확도 vs 속도 트레이드오프의 역사
+### 5.2.4 전통적 특징점의 계보
 
-전통적 특징점의 역사는 **정확도와 속도의 트레이드오프**를 최적화하려는 시도의 연속이었다:
+아래는 이 절의 방법을 발표 순서대로 늘어놓은 것이다.
 
 ```
 Harris (1988)     — 코너 검출의 수학적 정의
@@ -269,17 +267,15 @@ FAST (2006)       — 극한 속도 검출 (descriptor 없음)
 ORB (2011)        — oFAST + rBRIEF, 256-bit binary (Hamming 매칭)
 ```
 
-이러한 속도와 정확도의 상충 관계는 딥러닝 기반 모델에서도 주요 설계 쟁점이다. 예컨대 SuperPoint는 검출과 기술을 함께 학습해 시점·조명 변화에 강건한 정합을 겨냥했고, 속도는 GPU 환경에서 640×480 기준 약 70 FPS(§5.5.1)로 하드웨어 조건에 묶인다.
-
 ---
 
 ## 5.3 전통적 Matching & Outlier Rejection
 
-특징점을 검출하고 디스크립터를 추출한 뒤, **어떤 특징점 쌍이 실제로 같은 3D 점에 해당하는지**를 결정하는 매칭 단계가 필요하다.
+디스크립터를 구한 뒤에는 어느 특징점 쌍이 같은 3D 점에서 왔는지 정해야 한다.
 
 ### 5.3.1 Brute-Force Matching
 
-가장 단순한 방법. 이미지 A의 모든 디스크립터를 이미지 B의 모든 디스크립터와 비교하여 가장 가까운 것을 매칭한다.
+가장 단순한 방법이다. 이미지 A의 디스크립터 하나하나를 이미지 B의 모든 디스크립터와 비교해 가장 가까운 것과 짝짓는다.
 
 - Float 디스크립터 (SIFT): L2 거리
 - Binary 디스크립터 (ORB): Hamming 거리
@@ -293,11 +289,11 @@ matches = bf.match(desc1, desc2)
 matches = sorted(matches, key=lambda x: x.distance)
 ```
 
-`crossCheck=True`는 **mutual nearest neighbor** 조건을 적용한다: A에서 B로의 최근접과 B에서 A로의 최근접이 일치할 때만 매칭을 수용.
+`crossCheck=True`로 두면 A→B 최근접과 B→A 최근접이 서로 같을 때만 매칭으로 남긴다(mutual nearest neighbor).
 
 ### 5.3.2 FLANN (Fast Library for Approximate Nearest Neighbors)
 
-대규모 디스크립터 집합에서는 brute-force가 비실용적이므로, **근사 최근접 이웃 탐색(ANN)**을 사용한다. FLANN은 kd-tree, randomized kd-tree, hierarchical k-means 등을 자동 선택한다.
+디스크립터가 많으면 brute-force는 너무 느려서 근사 최근접 이웃 탐색(approximate nearest neighbor, ANN)을 쓴다. FLANN은 randomized kd-tree, hierarchical k-means tree 같은 알고리즘 가운데 데이터에 맞는 것과 파라미터를 자동으로 고를 수 있다.
 
 ```python
 # FLANN Matching for SIFT
@@ -311,13 +307,13 @@ matches = flann.knnMatch(desc1, desc2, k=2)  # k=2 for ratio test
 
 ### 5.3.3 Lowe's Ratio Test
 
-Lowe (2004)가 SIFT 논문에서 제안한 매칭 필터링 기법. **최근접 거리와 차근접 거리의 비율**이 임계값 이하일 때만 매칭을 수용한다:
+Lowe(2004)가 SIFT 논문에서 제안한 걸러내기 방법이다. 가장 가까운 디스크립터까지의 거리와 두 번째로 가까운 것까지의 거리 비가 임계값 이하일 때만 매칭으로 남긴다.
 
 $$\frac{d(\mathbf{f}, \mathbf{f}_1)}{d(\mathbf{f}, \mathbf{f}_2)} < \tau$$
 
-여기서 $\mathbf{f}_1, \mathbf{f}_2$는 각각 최근접, 차근접 디스크립터, $\tau$는 보통 0.7~0.8.
+$\mathbf{f}_1, \mathbf{f}_2$는 각각 가장 가까운 디스크립터와 두 번째로 가까운 디스크립터다. $\tau$는 보통 0.7~0.8을 쓴다(Lowe는 0.8).
 
-직관: 올바른 매칭은 최근접이 확실히 가까우므로 $d_1 \ll d_2$. 잘못된 매칭은 여러 유사한 후보가 있으므로 $d_1 \approx d_2$.
+올바른 매칭이면 가장 가까운 후보가 두 번째 후보보다 확연히 가까워 $d_1 \ll d_2$가 된다. 잘못된 매칭이면 비슷한 후보가 여럿이라 $d_1 \approx d_2$가 되기 쉽다.
 
 ```python
 # Ratio test (Lowe's)
@@ -329,27 +325,27 @@ for m, n in matches:  # m: best, n: second best
 
 ### 5.3.4 RANSAC 계열: RANSAC → PROSAC → MAGSAC++
 
-매칭 단계 이후에도 **아웃라이어(잘못된 매칭)**가 존재한다. 기하학적 모델(Fundamental/Essential matrix)을 추정하면서 동시에 아웃라이어를 제거하는 것이 RANSAC 계열의 역할이다.
+매칭을 걸러도 아웃라이어(잘못된 매칭)는 남는다. RANSAC 계열은 Fundamental matrix나 Essential matrix 같은 기하 모델을 추정하면서 아웃라이어를 함께 걸러낸다.
 
 #### RANSAC (Random Sample Consensus, 1981)
 
-[Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692)은 다음 절차로 로버스트 추정을 수행한다.
+[Fischler & Bolles (1981)](https://dl.acm.org/doi/10.1145/358669.358692)의 RANSAC은 다음 절차로 아웃라이어에 강한 추정을 한다.
 
-1. 전체 매칭 중 모델에 필요한 최소 $n$개를 무작위 추출 (예: Fundamental matrix는 8점 또는 7점, Essential matrix는 5점)
-2. 추출한 점으로 모델 추정
-3. 전체 매칭에서 모델과의 오차가 임계값 $t$ 이내인 점(인라이어)의 consensus set 구성
-4. 가장 큰 consensus set을 가진 모델을 최종 선택
-5. 인라이어 전체로 모델 재추정
+1. 매칭 가운데 모델에 필요한 최소 개수 $n$개를 무작위로 뽑는다(Fundamental matrix는 8점 또는 7점, Essential matrix는 5점)
+2. 뽑은 점으로 모델을 추정한다
+3. 모델과의 오차가 임계값 $t$ 이내인 매칭(인라이어)을 모아 consensus set을 만든다
+4. 1~3을 반복해 consensus set이 가장 큰 모델을 고른다
+5. 그 인라이어 전체로 모델을 다시 추정한다
 
 **필요한 반복 횟수**:
 
 $$k = \frac{\log(1 - p)}{\log(1 - w^n)}$$
 
-- $p$: 원하는 성공 확률 (보통 0.99)
+- $p$: 적어도 한 번은 아웃라이어 없는 표본을 뽑을 확률 (보통 0.99)
 - $w$: 인라이어 비율
 - $n$: 모델에 필요한 최소 점 수
 
-예: 인라이어 50%, 8점 모델, 99% 신뢰 → $k \approx 1177$ 반복.
+인라이어가 50%이고 8점 모델에 $p=0.99$이면 $k \approx 1177$번 반복한다.
 
 ```python
 # RANSAC으로 Fundamental matrix 추정
@@ -364,29 +360,29 @@ inlier_matches = [m for m, flag in zip(good_matches, mask.ravel()) if flag]
 
 #### PROSAC (Progressive Sample Consensus, 2005)
 
-Chum & Matas가 제안했다. RANSAC이 균등 무작위 샘플링을 하는 반면, PROSAC은 **매칭 품질(예: 디스크립터 거리)** 순으로 정렬한 뒤 상위 매칭부터 점진적으로 샘플링한다.
+Chum과 Matas가 CVPR 2005에서 제안했다. PROSAC은 매칭을 품질(디스크립터 거리 등) 순으로 정렬하고, 상위 매칭에서 시작해 표본을 뽑는 범위를 점점 넓힌다.
 
-직관: 순위 점수가 인라이어 확률과 상관된다면 상위 매칭부터 모델을 시도해 유효한 가설을 더 일찍 찾을 수 있다. 이점은 점수의 보정과 실제 인라이어 순위에 의존한다.
+품질 순위가 높은 매칭일수록 실제로 인라이어일 확률이 높다면, 맞는 모델을 RANSAC보다 일찍 찾는다. 순위가 인라이어 여부와 무관하면 이 이점도 사라진다.
 
 #### MAGSAC / MAGSAC++ (2019/2020)
 
-Barath et al.이 제안. RANSAC의 핵심 문제 중 하나는 **임계값 $t$의 수동 설정**이다. MAGSAC은 이를 자동화한다:
+Barath 등이 제안했다(MAGSAC은 CVPR 2019, MAGSAC++는 CVPR 2020). RANSAC은 인라이어 임계값 $t$를 사람이 정해야 하는데, MAGSAC은 이 값을 하나로 고르지 않는다.
 
-- 임계값 $\sigma$를 $[0, \sigma_{\max}]$ 구간에서 marginalize하여 모델의 품질을 구한다:
+- 임계값 $\sigma$를 $[0, \sigma_{\max}]$ 구간에서 marginalize해 모델의 품질을 구한다.
 
 $$Q(\theta) = \int_0^{\sigma_{\max}} q(\theta, \sigma) f(\sigma) d\sigma$$
 
-여기서 $q(\theta, \sigma)$는 임계값 $\sigma$에서의 모델 $\theta$의 품질, $f(\sigma)$는 임계값의 사전 분포.
+$q(\theta, \sigma)$는 임계값이 $\sigma$일 때 모델 $\theta$의 품질이고, $f(\sigma)$는 임계값의 사전 분포다.
 
-- MAGSAC++는 이를 더 효율적으로 구현하고, $\sigma$-consensus 기반 가중 최소자승 피팅을 추가.
-- 인라이어/아웃라이어 판정 임계값이 사라지므로 그 선택에 대한 민감도가 크게 줄어든다. 다만 적분 상한 $\sigma_{\max}$는 여전히 지정해야 하며, 아래 코드가 `ransacReprojThreshold`를 넘기는 것도 그 상한에 해당한다.
+- MAGSAC++는 같은 생각을 더 빠르게 계산하는 가중치 함수를 쓰고, 이 가중치로 반복 가중 최소자승(IRLS) 피팅을 한다.
+- 인라이어 판정 임계값을 고르지 않으므로 그 값에 덜 민감하다. 적분 상한 $\sigma_{\max}$는 여전히 정해야 한다. OpenCV의 `USAC_MAGSAC`은 이 상한을 `ransacReprojThreshold`와 모델별 내부 기본값(fundamental matrix는 2.5) 중 큰 값으로 잡고, `ransacReprojThreshold` 자체는 종료 판정과 반환 `mask`의 인라이어 판정에 쓴다.
 
 ```python
 # OpenCV의 USAC (MAGSAC++ 포함)
 F, mask = cv2.findFundamentalMat(
     pts1, pts2,
     cv2.USAC_MAGSAC,           # MAGSAC++ 사용
-    ransacReprojThreshold=1.0,  # 덜 민감
+    ransacReprojThreshold=1.0,  # MAGSAC++는 이 값에 덜 민감하다
     confidence=0.999,
     maxIters=10000
 )
@@ -394,19 +390,19 @@ F, mask = cv2.findFundamentalMat(
 
 ### 5.3.5 Fundamental / Essential Matrix Estimation
 
-2D-2D 매칭으로부터 두 카메라 사이의 기하학적 관계를 추정하는 과정:
+2D-2D 매칭으로 두 카메라 사이의 기하 관계를 추정한다.
 
 **Fundamental Matrix** ($\mathbf{F}$, 7 DOF):
-- 내부 파라미터를 모를 때 사용
-- 8-point algorithm: 최소 8개 대응점으로 선형 시스템을 풀고, rank-2 제약 적용
-- 7-point algorithm: 최소 7개 대응점, 3차 다항식의 근으로 최대 3개 해
+- 내부 파라미터를 모를 때 쓴다
+- 8-point algorithm: 대응점 8개 이상으로 선형 시스템을 풀고 rank-2 제약을 건다
+- 7-point algorithm: 대응점 7개로 3차 다항식을 풀어 해를 최대 3개 얻는다
 
 **Essential Matrix** ($\mathbf{E}$, 5 DOF):
-- 내부 파라미터를 알 때 사용
+- 내부 파라미터를 알 때 쓴다
 - $\mathbf{E} = [\mathbf{t}]_\times \mathbf{R}$, $\mathbf{E} = \mathbf{K}_2^\top \mathbf{F} \mathbf{K}_1$
-- 5-point algorithm (Nistér, 2004): 최소 5개 대응점, 10차 다항식으로 최대 10개 해
+- 5-point algorithm (Nistér, 2004): 대응점 5개로 10차 다항식을 풀어 해를 최대 10개 얻는다
 
-RANSAC과 결합하여 사용:
+실제로는 RANSAC과 함께 쓴다.
 
 ```python
 # Essential matrix 추정 (calibrated camera)
@@ -418,7 +414,7 @@ E, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix=K,
 _, R, t, mask_pose = cv2.recoverPose(E, pts1, pts2, cameraMatrix=K)
 ```
 
-### 5.3.6 기술 계보: 로버스트 추정의 진화
+### 5.3.6 로버스트 추정의 계보
 
 ```
 Least Squares (아웃라이어에 취약)
@@ -426,8 +422,8 @@ Least Squares (아웃라이어에 취약)
 RANSAC (1981)   — 무작위 표본 기반 robust estimation의 대표적 출발점
     ↓ 사전 정보 활용
 PROSAC (2005)   — 매칭 품질 기반 진행적 샘플링
-    ↓ 임계값 자동화
-MAGSAC++ (2020) — 인라이어 임계값을 없앤 로버스트 추정
+    ↓ 임계값 의존 줄이기
+MAGSAC++ (2020) — 임계값 하나를 고르지 않고 여러 σ에 걸쳐 가중하는 로버스트 추정
     ↓ 학습 기반 제거
 GeoTransformer (2022) — RANSAC 없이 직접 변환 추정
 ```
@@ -438,17 +434,17 @@ GeoTransformer (2022) — RANSAC 없이 직접 변환 추정
 
 ### 5.4.1 MI의 정의와 직관
 
-**Mutual Information (MI, 상호 정보량)**은 두 확률 변수가 서로에 대해 얼마나 많은 정보를 공유하는지를 측정하는 정보 이론적 척도다.
+**Mutual Information(MI, 상호 정보량)**은 한 확률 변수를 알면 다른 변수의 불확실성이 얼마나 줄어드는지 재는 정보 이론의 척도다.
 
-두 확률 변수 $X, Y$의 mutual information:
+두 확률 변수 $X, Y$의 mutual information은 다음과 같다.
 
 $$I(X; Y) = \sum_{x \in X} \sum_{y \in Y} p(x, y) \log \frac{p(x, y)}{p(x) p(y)}$$
 
-연속 변수의 경우:
+연속 변수라면 다음과 같다.
 
 $$I(X; Y) = \int \int p(x, y) \log \frac{p(x, y)}{p(x) p(y)} \, dx \, dy$$
 
-엔트로피(entropy)를 이용한 동치 표현:
+엔트로피(entropy)로 쓰면 다음과 같다.
 
 $$I(X; Y) = H(X) + H(Y) - H(X, Y)$$
 
@@ -456,67 +452,67 @@ $$I(X; Y) = H(X) + H(Y) - H(X, Y)$$
 - $H(X) = -\sum_x p(x) \log p(x)$: $X$의 엔트로피
 - $H(X, Y) = -\sum_{x,y} p(x, y) \log p(x, y)$: 결합 엔트로피
 
-**직관**: 두 이미지가 올바르게 정렬(aligned)되었을 때, 한 이미지의 픽셀 값을 알면 같은 위치의 다른 이미지 픽셀 값을 더 잘 예측할 수 있다. 즉 $I(X; Y)$가 최대가 된다. 정렬이 어긋나면 두 이미지의 관계가 약해져서 $I(X; Y)$가 감소한다.
+**직관**: 두 이미지가 제대로 정렬(aligned)되어 있으면 한 이미지의 픽셀 값으로 같은 위치의 다른 이미지 픽셀 값을 더 잘 예측할 수 있고, 이때 $I(X; Y)$가 커진다. 정렬이 어긋나면 이 관계가 흐려져 $I(X; Y)$가 줄어든다.
 
-MI는 두 변수 사이의 **비선형적 통계적 의존성**을 측정하므로, 단순한 상관계수(correlation coefficient)가 포착하지 못하는 관계도 잡아낸다.
+MI는 비선형 의존성까지 재므로 선형 관계만 보는 상관계수(correlation coefficient)가 놓치는 관계도 잡는다.
 
 ### 5.4.2 MI 기반 다중 모달리티 정합
 
-MI는 **서로 다른 모달리티의 센서 데이터를 정합**하는 데 쓸 수 있다. 처음에는 의료 영상(medical imaging)의 CT-MRI 정합에 적용되었다.
+MI로 종류가 다른(multimodal) 센서 데이터를 정합할 수 있다. 1995년 무렵 Viola & Wells와 Collignon·Maes 등이 의료 영상의 CT-MRI 정합에 처음 썼다.
 
-왜 MI가 다중 모달리티에서 작동하는가?
+MI가 서로 다른 모달리티에서도 통하는 이유는 다음과 같다.
 
-- 같은 물체를 촬영한 CT와 MRI는 밝기 값의 분포가 완전히 다르다 (뼈가 CT에서 밝고, MRI에서 어두울 수 있다).
-- 단순한 밝기 차이(SSD)나 상관관계(NCC)는 이러한 비선형 관계를 모델링하지 못한다.
-- MI는 밝기 값 사이의 **통계적 의존성**만 측정하므로, 밝기 값의 단조(monotonic) 또는 비단조 관계에도 작동한다.
+- 같은 물체를 찍어도 CT와 MRI는 밝기 분포가 전혀 다르다. 뼈는 CT에서 밝고 MRI에서는 어두울 수 있다.
+- 밝기 차이(SSD)와 상관관계(NCC)는 선형 밝기 관계를 가정한다.
+- MI는 밝기 값 사이의 통계적 의존성만 보므로, 두 밝기의 관계가 단조(monotonic)든 아니든 쓸 수 있다.
 
-로보틱스에서의 응용: **카메라-LiDAR 정합**. LiDAR intensity 이미지와 카메라 이미지는 완전히 다른 물리적 양을 측정하지만, 같은 장면의 같은 구조물을 반영하므로 MI가 높다.
+로보틱스에서는 카메라-LiDAR 정합에 쓴다. LiDAR intensity와 카메라 밝기는 서로 다른 물리량이지만, 반사가 강한 표지판이나 차선처럼 같은 표면에서 함께 밝아지는 경우가 많아 정렬이 맞으면 MI가 커진다.
 
 ### 5.4.3 MI와 NMI의 실용적 계산
 
-MI를 이미지 정합에 적용할 때, 확률 분포 $p(x), p(y), p(x, y)$는 **결합 히스토그램(joint histogram)**에서 추정한다.
+이미지 정합에서는 확률 분포 $p(x), p(y), p(x, y)$를 결합 히스토그램(joint histogram)으로 추정한다.
 
-이미지 $A$와 $B$가 변환 $T$로 정렬되어 있을 때:
-1. 각 공통 위치 $(u, v)$에서 $A(u, v)$와 $B(T(u, v))$의 밝기 값 쌍을 수집.
-2. 2D 히스토그램으로 결합 분포 $p(a, b)$를 추정.
-3. 주변 분포 $p(a), p(b)$는 히스토그램의 행/열 합.
-4. MI를 계산.
+이미지 $A$와 $B$를 변환 $T$로 맞춘 상태에서 다음 순서로 계산한다.
+1. 겹치는 위치 $(u, v)$마다 $A(u, v)$와 $B(T(u, v))$의 밝기 쌍을 모은다.
+2. 2D 히스토그램으로 결합 분포 $p(a, b)$를 추정한다.
+3. 주변 분포 $p(a), p(b)$는 히스토그램의 행 합과 열 합이다.
+4. MI를 계산한다.
 
-**Normalized Mutual Information (NMI)**는 MI를 정규화하여 오버랩 영역 크기에 대한 민감도를 줄인다:
+**Normalized Mutual Information(NMI)**은 MI를 정규화해 겹치는 영역 크기의 영향을 줄인다.
 
 $$NMI(A, B) = \frac{H(A) + H(B)}{H(A, B)}$$
 
-또는:
+다른 정의는 다음과 같다.
 
 $$NMI(A, B) = \frac{2 \cdot I(A; B)}{H(A) + H(B)}$$
 
-NMI는 오버랩 영역이 변할 때도 안정적이므로 실용적으로 MI보다 선호된다.
+겹치는 영역이 바뀌는 정합에서는 MI보다 NMI를 많이 쓴다(Studholme et al., 1999).
 
 ### 5.4.4 MI Gradient 계산
 
-MI를 정합의 목적 함수로 삼아 그래디언트 기반 최적화를 하려면 변환 파라미터에 대한 그래디언트를 계산해야 한다.
+MI를 목적 함수로 그래디언트 기반 최적화를 하려면 변환 파라미터에 대한 MI의 그래디언트가 필요하다.
 
-변환 $T_\xi$ (파라미터 $\xi$)에 의한 MI의 그래디언트:
+변환 $T_\xi$ (파라미터 $\xi$)에 대한 MI의 그래디언트는 다음과 같다.
 
 $$\frac{\partial I}{\partial \xi} = \sum_{a, b} \frac{\partial p(a, b)}{\partial \xi} \left(1 + \log \frac{p(a, b)}{p(a) p(b)}\right)$$
 
-결합 히스토그램이 이산적이면 그래디언트가 존재하지 않으므로, **Parzen 윈도우(커널 밀도 추정)** 또는 **B-spline** 기반의 미분 가능한 히스토그램 추정 방법을 사용한다.
+보통의 히스토그램은 계단 함수라 미분할 수 없으므로, Parzen 윈도우(커널 밀도 추정)나 B-spline으로 미분 가능한 히스토그램을 만든다.
 
-실용적으로는 그래디언트 기반 최적화보다 **Nelder-Mead simplex** 같은 미분이 필요 없는(gradient-free) 최적화가 자주 사용되기도 한다 (Koide et al., 2023의 캘리브레이션 툴에서 사용).
+그래디언트 없이 푸는(gradient-free) Nelder-Mead simplex도 쓴다. Koide et al.(2023)의 캘리브레이션 툴이 NID(§5.4.5)를 Nelder-Mead로 최소화한다.
 
 ### 5.4.5 왜 Calibration에서 MI가 쓰이는가
 
-Ch.3의 targetless 카메라-LiDAR 캘리브레이션에서 MI(또는 NMI, NID)가 핵심 비용 함수로 사용된다:
+Ch.3의 targetless 카메라-LiDAR 캘리브레이션은 MI나 NMI, NID를 비용 함수로 쓴다. 절차는 다음과 같다.
 
-1. LiDAR 점군을 현재 외부 파라미터 추정치로 카메라 이미지에 투영
-2. 투영된 LiDAR intensity와 카메라 픽셀 밝기의 MI를 계산
-3. 외부 파라미터를 조정하여 MI를 최대화
+1. LiDAR 포인트 클라우드를 현재 외부 파라미터 추정치로 카메라 이미지에 투영한다
+2. 투영한 LiDAR intensity와 카메라 픽셀 밝기의 MI를 계산한다
+3. MI가 커지도록 외부 파라미터를 고친다
 
-**Normalized Information Distance (NID)**는 Koide et al. (2023)의 범용 캘리브레이션 툴에서 사용된 MI 기반 거리 척도:
+**Normalized Information Distance(NID)**는 MI로 정의한 거리 척도다.
 
 $$NID(A, B) = 1 - \frac{I(A; B)}{H(A, B)} = \frac{H(A|B) + H(B|A)}{H(A, B)}$$
 
-NID는 0(완전 의존)에서 1(완전 독립)까지의 값을 가지며, 메트릭 공간의 성질을 만족한다.
+NID는 0(완전 의존)에서 1(완전 독립) 사이 값이고, 거리 함수(metric)의 조건을 만족한다.
 
 ```python
 import numpy as np
@@ -556,52 +552,50 @@ def compute_nid(img_a, img_b, bins=256):
 
 ## 5.5 학습 기반 Feature Detection & Description
 
-전통적 특징점은 밝기 그래디언트, 코너, 블롭 같은 **저수준 시각적 단서**에 의존한다. 이 때문에 조명 변화, 시점 변화, 날씨 변화에 취약하다. 딥러닝은 대량의 데이터로부터 더 강건한 특징 표현을 학습하여 이 한계를 극복했다.
+전통적 특징점은 밝기 그래디언트, 코너, 블롭 같은 저수준 단서를 쓰므로 조명, 시점, 날씨가 크게 바뀌면 잘 맞지 않는다. 학습 기반 방법은 많은 데이터에서 이런 변화에 덜 흔들리는 특징을 학습한다.
 
-### 5.5.1 SuperPoint (2018): 자기지도학습 기반 검출+기술의 통합
+### 5.5.1 SuperPoint (2018): 검출과 기술을 함께 자기지도 학습
 
-[DeTone et al. (2018)](https://arxiv.org/abs/1712.07629)의 SuperPoint는 **키포인트 검출과 디스크립터 추출을 단일 fully convolutional network에서 함께 계산**하고, Homographic Adaptation으로 자기지도 학습한다.
+[DeTone et al. (2018)](https://arxiv.org/abs/1712.07629)의 SuperPoint는 키포인트 검출과 디스크립터 추출을 단일 fully convolutional network에서 함께 계산하고, Homographic Adaptation으로 자기지도 학습한다.
 
 #### Homographic Adaptation 학습 전략
 
-SuperPoint는 **라벨 없이 반복성 높은 키포인트 검출기를 학습**한다.
+SuperPoint는 사람이 단 라벨 없이 키포인트 검출기를 학습한다. 순서는 다음과 같다.
 
-1. 하나의 이미지에 무작위 호모그래피를 100회 이상 적용
-2. 각 변환된 이미지에서 키포인트를 검출
-3. 검출 결과를 원래 좌표계로 역변환하여 집계(aggregate)
-4. 여러 변환에서 **일관되게 검출되는 점**만 pseudo ground-truth로 채택
-
-수작업 라벨 없이도 반복성(repeatability) 높은 키포인트 검출기를 학습하는 방식이다.
+1. 이미지 하나에 무작위 호모그래피를 여러 개(논문은 100개) 적용한다
+2. 변환한 이미지마다 키포인트를 검출한다
+3. 검출 결과를 원래 좌표로 되돌려 모은다(aggregate)
+4. 모은 결과에서 반응이 강한 점을 pseudo ground-truth로 삼는다
 
 #### 2단계 학습: MagicPoint → SuperPoint
 
-- **1단계**: 합성 기하 도형(삼각형, 사각형, 선분 등)으로 구성된 Synthetic Shapes 데이터셋에서 코너/접합점 검출기(**MagicPoint**)를 사전 학습.
-- **2단계**: MagicPoint를 MS-COCO 등 실제 이미지에 Homographic Adaptation과 함께 적용하여, 실제 장면에서의 pseudo ground-truth를 생성하고 SuperPoint를 학습.
+- **1단계**: 삼각형, 사각형, 선분 같은 합성 도형으로 만든 Synthetic Shapes 데이터셋에서 코너·접합점 검출기 MagicPoint를 먼저 학습한다.
+- **2단계**: MS-COCO 실제 이미지에 MagicPoint와 Homographic Adaptation을 적용해 pseudo ground-truth를 만들고, 이것으로 SuperPoint를 학습한다.
 
 #### 아키텍처
 
-VGG 스타일 인코더(공유 백본) → 두 개의 디코더 헤드로 분기:
+VGG 스타일 인코더 하나를 공유하고, 그 뒤에 디코더 헤드가 둘 붙는다.
 
 **Interest Point Decoder**:
-- 입력 이미지를 8×8 셀 그리드로 나눔
-- 각 셀에서 65채널 (64개 위치 + 1 "no interest point") softmax 수행
-- 셀 내 위치를 직접 예측하는 방식으로 픽셀 단위 키포인트 히트맵 생성
+- 입력 이미지를 8×8 픽셀 셀로 나눈다
+- 셀마다 65채널(셀 안의 위치 64개와 '키포인트 없음' 1개)에 softmax를 적용한다
+- 결과를 펼쳐 픽셀 단위 키포인트 히트맵을 만든다
 
 **Descriptor Decoder**:
-- 공유 백본의 feature map에서 256차원 디스크립터 맵을 출력
-- 검출된 키포인트 위치에서 bicubic interpolation으로 샘플링
-- L2 정규화 적용
+- 공유 인코더의 특징 맵에서 256차원 디스크립터 맵(1/8 해상도)을 낸다
+- 키포인트 위치의 값을 bicubic interpolation으로 뽑는다
+- L2 정규화한다
 
 #### 학습 손실
 
 - 키포인트 검출: cross-entropy loss
-- 디스크립터: 호모그래피로 대응점을 알고 있으므로 positive/negative pair에 대한 hinge loss:
+- 디스크립터: 호모그래피로 대응을 알므로 positive/negative 쌍에 hinge loss를 건다.
 
 $$L_{desc} = \sum_{(i,j) \in \text{pos}} \max(0, m_p - \mathbf{d}_i^\top \mathbf{d}_j) + \sum_{(i,j) \in \text{neg}} \max(0, \mathbf{d}_i^\top \mathbf{d}_j - m_n)$$
 
-여기서 $m_p, m_n$은 positive/negative margin.
+$m_p, m_n$은 각각 positive, negative margin이다.
 
-**논문 보고 성능**: 단일 포워드 패스로 검출과 기술을 함께 수행한다. SuperPoint 원 논문에서는 저자들의 GPU 환경에서 640×480 해상도 기준 약 70 FPS의 처리 속도를 제시했다. 실무 적용 시의 실제 처리량은 타깃 하드웨어 스펙과 추출 후보점 수에 맞춰 개별적으로 벤치마크해야 한다.
+**논문 보고 속도**: 한 번의 forward pass로 검출과 기술을 함께 계산한다. 원 논문은 Titan X GPU에서 640×480 영상을 약 70 FPS로 처리했다고 보고했다. 실제 처리량은 쓰는 하드웨어와 키포인트 수로 직접 측정해야 한다.
 
 ```python
 import torch
@@ -617,48 +611,44 @@ with torch.no_grad():
     img_tensor = torch.from_numpy(img).float().unsqueeze(0).unsqueeze(0) / 255.0
     pred = sp({'image': img_tensor})   # 반환 키: keypoints, keypoint_scores, descriptors
     keypoints = pred['keypoints']        # (1, N, 2)
-    descriptors = pred['descriptors']    # (1, 256, N)
+    descriptors = pred['descriptors']    # (1, N, 256)
     scores = pred['keypoint_scores']              # (1, N)
 ```
 
 ### 5.5.2 D2-Net (2019): Detect-and-Describe Jointly
 
-[D2-Net (Dusmanu et al., 2019)](https://arxiv.org/abs/1905.03561)은 검출과 기술을 더 극단적으로 통합한 방법이다. SuperPoint가 여전히 검출 헤드와 기술 헤드를 분리한 반면, D2-Net은 **같은 특징 맵에서 검출과 기술을 동시에 수행**한다.
+[D2-Net (Dusmanu et al., 2019)](https://arxiv.org/abs/1905.03561)은 CNN 하나가 디스크립터 맵이자 검출기 역할을 한다. SuperPoint는 검출 헤드와 기술 헤드를 따로 두었는데, D2-Net은 같은 특징 맵에서 키포인트도 고르고 디스크립터도 뽑는다.
 
-D2-Net은 VGG16의 중간 특징 맵 $\mathbf{F} \in \mathbb{R}^{H \times W \times C}$를 다음 두 작업에 함께 사용한다.
-- **Detection**: 각 위치에서 채널 축 최댓값을 취한 뒤, 공간적 NMS를 적용하여 키포인트 선택
-- **Description**: 같은 위치의 $C$-차원 벡터를 디스크립터로 사용
+VGG16의 중간 특징 맵 $\mathbf{F} \in \mathbb{R}^{H \times W \times C}$를 다음처럼 쓴다.
+- **Detection**: 위치마다 값이 가장 큰 채널을 고르고, 그 채널에서 그 위치의 값이 주변보다 크면(공간 NMS) 키포인트로 고른다
+- **Description**: 같은 위치의 $C$차원 벡터를 디스크립터로 쓴다
 
-장점: 높은 수준의 의미적(semantic) 특징을 사용하므로 큰 외관 변화에 강건.
-단점: 검출 반복성이 SuperPoint보다 낮을 수 있고, 검출 격자가 입력 해상도의 1/4이라 위치 정밀도가 그 간격에 묶인다. 원 논문은 이 격자 위에서 국소 정제를 적용해 서브픽셀 위치를 보완한다.
+깊은 층의 특징을 쓰므로 주야간 같은 큰 외관 변화에서도 매칭이 된다. 원 논문은 Aachen Day-Night와 InLoc localization 벤치마크에서 당시 최고 성능을 보고했다. 특징 맵이 입력의 1/4 해상도라 키포인트 위치 정밀도가 그 간격에 묶이고, 논문은 국소 정제로 서브픽셀 위치를 보완한다.
 
 ### 5.5.3 R2D2 (2019): Reliable and Repeatable Detector-Descriptor
 
-[R2D2 (Revaud et al., 2019)](https://arxiv.org/abs/1906.06195)는 SuperPoint와 D2-Net의 한계를 분석하고, **반복성(repeatability)과 신뢰성(reliability)을 명시적으로 학습**하는 방법을 제안했다.
+[R2D2 (Revaud et al., 2019)](https://arxiv.org/abs/1906.06195)는 반복성(repeatability)과 신뢰성(reliability)을 따로 학습한다.
 
-- **Repeatability**: 다양한 시점에서 같은 점이 검출되는가?
-- **Reliability**: 검출된 점의 디스크립터가 매칭에 유용한가? (텍스처 없는 영역의 키포인트는 반복적이어도 매칭에 쓸모없다)
+- **Repeatability**: 시점이 달라도 같은 점이 검출되는 정도
+- **Reliability**: 그 점의 디스크립터로 매칭을 구별해 낼 수 있는 정도. 하늘처럼 텍스처가 없는 곳은 반복적으로 검출돼도 디스크립터로 구별이 안 된다
 
-R2D2는 두 가지를 별도의 confidence map으로 예측하고, 이들의 곱으로 최종 키포인트 스코어를 결정한다.
+R2D2는 두 값을 각각 confidence map으로 예측하고, 두 맵을 곱한 값으로 키포인트를 고른다.
 
 ### 5.5.4 DISK (2020)
 
-[DISK (Tyszkiewicz et al., 2020)](https://arxiv.org/abs/2006.13566)는 **reinforcement learning** 관점에서 키포인트 검출을 학습한다. 매칭에 성공하면 보상(reward), 실패하면 벌칙(penalty)을 주어 검출기를 학습한다.
+[DISK (Tyszkiewicz et al., 2020)](https://arxiv.org/abs/2006.13566)는 강화학습(reinforcement learning)의 policy gradient로 특징을 학습한다. 매칭이 맞으면 보상(reward), 틀리면 벌점(penalty)을 준다.
 
-DISK는 매칭 정확도를 직접 최적화하여 검출과 매칭을 end-to-end로 학습한다.
+이렇게 맞는 매칭 수를 기준으로 검출과 기술을 end-to-end 학습한다.
 
-### 5.5.5 전통 대비 장점: Illumination/Viewpoint Invariance 향상
+### 5.5.5 학습 기반 특징점이 나은 경우
 
-학습 기반 특징점이 전통적 방법 대비 우위를 가지는 구체적 시나리오:
+학습 기반 특징점이 전통 방법보다 나은 경우는 다음과 같다. 표의 근거는 D2-Net 논문의 Aachen Day-Night 결과(§5.5.2)다. 시점 변화, 반복 패턴, 모션 블러에서 어느 쪽이 나은지는 이 장에서 인용한 논문들이 직접 비교하지 않았다.
 
 | 시나리오 | SIFT/ORB 한계 | SuperPoint/D2-Net 개선 |
 |---------|-------------|---------------------|
-| 극한 조명 변화 (주야간) | DoG/그래디언트 기반 검출 실패 | 학습된 특징은 고수준 구조 포착 |
-| 넓은 시점 변화 | affine 근사의 한계 | 대량의 훈련 데이터로 시점 불변성 학습 |
-| 반복 패턴 | 디스크립터가 유사하여 모호 매칭 | 컨텍스트 정보를 포착하여 분별 |
-| 모션 블러 | 그래디언트 약화 → 검출 실패 | CNN이 블러에 대한 강건성 학습 |
+| 극한 조명 변화 (주야간) | DoG/그래디언트 기반 검출 실패 | 학습된 특징이 고수준 구조를 잡음 |
 
-그러나 학습 기반 방법의 한계도 존재한다: 학습 데이터의 도메인에 의존적이며, 완전히 새로운 환경(예: 수중, 화성)에서는 성능이 저하될 수 있다.
+학습 기반 방법은 학습 데이터의 분포에 영향을 받는다. 수중처럼 학습 데이터에 없던 환경에서는 성능이 떨어질 수 있다.
 
 ---
 
@@ -666,57 +656,57 @@ DISK는 매칭 정확도를 직접 최적화하여 검출과 매칭을 end-to-en
 
 ### 5.6.1 SuperGlue (2020): Attention 기반 매칭
 
-[Sarlin et al. (2020)](https://arxiv.org/abs/1911.11763)의 SuperGlue는 키포인트 매칭과 unmatched point rejection을 **그래프 신경망(GNN), 어텐션, optimal transport**로 함께 푸는 학습 기반 matcher다.
+[Sarlin et al. (2020)](https://arxiv.org/abs/1911.11763)의 SuperGlue는 그래프 신경망(GNN), 어텐션, optimal transport로 키포인트를 짝짓고 짝 없는 점을 걸러내는 학습 기반 matcher다.
 
 #### 문제 정의: 부분 할당(Partial Assignment)
 
-두 이미지에서 추출된 키포인트 집합 $\mathcal{A} = \{(\mathbf{p}_i, \mathbf{d}_i)\}_{i=1}^{N}$과 $\mathcal{B} = \{(\mathbf{p}_j, \mathbf{d}_j)\}_{j=1}^{M}$ 사이의 대응을 찾되, **모든 키포인트가 대응점을 갖는 것은 아니다**. 이를 위해 "매칭 없음(dustbin)"이라는 가상 노드를 추가하여 unmatchable 포인트를 명시적으로 처리한다.
+두 이미지에서 뽑은 키포인트 집합 $\mathcal{A} = \{(\mathbf{p}_i, \mathbf{d}_i)\}_{i=1}^{N}$과 $\mathcal{B} = \{(\mathbf{p}_j, \mathbf{d}_j)\}_{j=1}^{M}$ 사이의 대응을 찾는다. 짝이 없는 키포인트는 '매칭 없음'을 뜻하는 가상 노드(dustbin)에 보낸다.
 
 #### Keypoint Encoder
 
-키포인트 위치 $(x, y)$와 검출 confidence $c$를 MLP로 임베딩하여 디스크립터 벡터에 더한다:
+키포인트 위치 $(x, y)$와 검출 confidence $c$를 MLP로 임베딩해 디스크립터 벡터에 더한다.
 
 $$\mathbf{f}_i^{(0)} = \mathbf{d}_i + \text{MLP}_{\text{enc}}([\mathbf{p}_i, c_i])$$
 
-이로써 기하학적 정보가 특징에 내재된다.
+그러면 특징 벡터에 위치 정보가 들어간다.
 
 #### Attentional Graph Neural Network
 
-키포인트를 그래프의 노드로 표현하고, Self-Attention과 Cross-Attention을 교대로 적용한다:
+키포인트를 그래프의 노드로 두고 Self-Attention과 Cross-Attention을 번갈아 적용한다.
 
-**Self-Attention (intra-image)**: 같은 이미지 내 키포인트들 사이의 관계를 학습. 예를 들어, 건물의 코너들이 직선 위에 정렬되어 있다는 구조적 정보를 포착한다.
+**Self-Attention (intra-image)**: 같은 이미지 안의 키포인트끼리 정보를 주고받는다.
 
 $$\text{message}_i^{\text{self}} = \sum_{j \in \mathcal{A}} \text{softmax}\left(\frac{\mathbf{q}_i^\top \mathbf{k}_j}{\sqrt{d}}\right) \mathbf{v}_j$$
 
-**Cross-Attention (inter-image)**: 두 이미지 간 키포인트 사이의 관계를 학습. "이 키포인트는 상대 이미지의 어떤 키포인트와 유사한가"를 어텐션으로 추론한다.
+**Cross-Attention (inter-image)**: 상대 이미지의 키포인트에서 정보를 받아, 어느 키포인트와 비슷한지를 반영한다.
 
 $$\text{message}_i^{\text{cross}} = \sum_{j \in \mathcal{B}} \text{softmax}\left(\frac{\mathbf{q}_i^\top \mathbf{k}_j}{\sqrt{d}}\right) \mathbf{v}_j$$
 
-이를 $L$번(논문에서는 9회) 교대로 반복하여 점진적으로 매칭 정보를 정제한다.
+이 쌍을 $L$번(논문은 9번) 되풀이한다.
 
 #### Optimal Transport를 이용한 매칭
 
-최종 매칭 점수 행렬을 GNN 출력의 내적으로 계산한 뒤, **Sinkhorn 알고리즘**(soft한 형태의 Hungarian algorithm)을 적용한다.
+GNN 출력끼리의 내적으로 매칭 점수 행렬을 만들고 Sinkhorn 알고리즘을 적용한다. Sinkhorn은 Hungarian algorithm이 푸는 할당 문제를 미분 가능하게 근사한다.
 
-점수 행렬 $\mathbf{S} \in \mathbb{R}^{(N+1) \times (M+1)}$ (dustbin 포함):
+dustbin까지 넣은 점수 행렬 $\mathbf{S} \in \mathbb{R}^{(N+1) \times (M+1)}$은 다음과 같다.
 
 $$S_{ij} = \langle \mathbf{f}_i^{(L)}, \mathbf{f}_j^{(L)} \rangle, \quad S_{i,M+1} = S_{N+1,j} = z$$
 
-여기서 $z$는 학습 가능한 dustbin score.
+$z$는 학습하는 dustbin 점수다.
 
-Sinkhorn 정규화를 반복 적용(약 100회):
+Sinkhorn 정규화를 (논문은 100번) 반복한다.
 
 $$\mathbf{S} \leftarrow \text{row-normalize}(\mathbf{S}), \quad \mathbf{S} \leftarrow \text{col-normalize}(\mathbf{S})$$
 
-수렴 후 soft assignment matrix를 threshold하여 최종 매칭을 결정한다.
+그 결과인 soft assignment 행렬에서 임계값을 넘고 서로 최댓값인 항을 매칭으로 고른다.
 
 #### 학습
 
-Ground-truth 대응점(호모그래피 또는 상대 포즈 + 깊이 맵에서 생성)에 대한 negative log-likelihood 최소화로 end-to-end 학습:
+호모그래피나 상대 포즈·깊이 맵으로 만든 정답 대응의 negative log-likelihood를 최소화해 end-to-end로 학습한다.
 
 $$L = -\sum_{(i,j) \in \mathcal{M}} \log \hat{P}_{ij} - \sum_{i \in \mathcal{U}_A} \log \hat{P}_{i, M+1} - \sum_{j \in \mathcal{U}_B} \log \hat{P}_{N+1, j}$$
 
-여기서 $\mathcal{M}$은 매칭된 쌍, $\mathcal{U}_A, \mathcal{U}_B$는 매칭되지 않는 키포인트.
+$\mathcal{M}$은 정답 매칭 쌍, $\mathcal{U}_A, \mathcal{U}_B$는 짝이 없는 키포인트다.
 
 ```python
 # SuperGlue 사용 예제 (hloc)
@@ -732,42 +722,44 @@ match_conf = match_features.confs['superglue']
 matches_path = match_features.main(match_conf, pairs_path, feature_conf['output'], features_path)
 ```
 
-#### 기술 계보에서의 위치
+#### 계보상의 위치
 
-SuperPoint가 검출+기술을 학습화했다면, SuperGlue는 **매칭 단계를 학습화**했다. 이로써 detect-then-describe-then-match 파이프라인의 **세 단계 모두가 딥러닝으로 대체**되었다. 그러나 여전히 파이프라인의 직렬적 3단계 구조 자체는 유지된다. 이 구조적 한계를 깨뜨린 것이 LoFTR이다.
+SuperPoint로 검출과 기술을, SuperGlue로 매칭을 학습하면 파이프라인의 세 단계가 모두 학습 기반이 된다. 검출, 기술, 매칭을 차례로 거치는 구조는 그대로 남는다. LoFTR(§5.7.2)는 검출 단계를 없앴다.
 
 ### 5.6.2 LightGlue (2023): SuperGlue의 효율화
 
-[Lindenberger et al. (2023)](https://arxiv.org/abs/2306.13643)의 LightGlue는 **적응적 연산량 조절(adaptive computation)**을 사용한다. 논문은 평가 설정의 평균에서 SuperGlue와 비슷한 정확도와 3–5배 속도 향상을 보고했으며, 실제 비율은 키포인트 수와 하드웨어에 따라 달라진다.
+[Lindenberger et al. (2023)](https://arxiv.org/abs/2306.13643)의 LightGlue는 SuperGlue의 설계를 다시 살펴 고친 matcher로, 입력의 난이도에 따라 계산량을 바꾼다(adaptive computation).
 
 #### SuperGlue의 문제점 진단
 
-- 공개 SuperGlue 구성은 고정된 GNN 깊이와 Sinkhorn 반복 수를 사용하므로, 입력 난이도에 따라 계산량을 줄이지 않는다.
-- 키포인트 수 $N$에 대해 $O(N^2)$ attention이 반복되므로, 키포인트가 많을수록 급격히 느려짐.
+- 공개된 SuperGlue는 GNN 층 수와 Sinkhorn 반복 수가 고정이라, 쉬운 입력에도 계산량이 같다.
+- 층마다 키포인트 수 $N$에 대해 $O(N^2)$인 attention을 계산하므로 키포인트가 많으면 빠르게 느려진다.
 
 #### 핵심 개선: Adaptive Depth & Width
 
 **Adaptive Depth (레이어 조기 종료)**:
-- 각 레이어 이후에 경량 classifier(MLP)가 매칭 확신도를 예측.
-- 확신도가 충분히 높으면 네트워크를 조기 종료.
-- 쉬운 이미지 쌍은 2-3 레이어만으로 처리, 어려운 쌍은 전체 9 레이어 사용.
+- 층마다 가벼운 classifier(MLP)가 각 점의 예측이 확정됐는지를 판단한다.
+- 확정된 점의 비율이 기준을 넘으면 거기서 멈춘다.
+- 논문 그림 2의 예에서는 쉬운 쌍이 3층, 어려운 쌍이 8층에서 멈췄다(전체 9층).
 
 **Adaptive Width (키포인트 pruning)**:
-- 매칭 불가능하다고 판단된 키포인트를 중간 레이어에서 제거.
-- Attention의 시퀀스 길이가 점진적으로 줄어들어 후반 레이어의 계산이 가벼워짐.
+- 짝이 없다고 판단한 키포인트는 중간 층에서 뺀다.
+- 그만큼 attention에 들어가는 점이 줄어 뒤쪽 층의 계산이 가벼워진다.
 
 **Sinkhorn 제거**:
-Optimal Transport 대신 **dual-softmax + mutual nearest neighbor**로 매칭해 Sinkhorn 반복을 사용하지 않는다. 정확도 차이는 데이터셋과 설정에 따라 평가한다.
+Optimal Transport 대신 매칭 가능성 점수와 dual-softmax로 할당 행렬을 만들어 Sinkhorn 반복을 없앴다.
 
 $$P_{ij} = \text{softmax}_j(S_{ij}) \cdot \text{softmax}_i(S_{ij})$$
 
+논문의 식에는 여기에 두 점 각각의 매칭 가능성 $\sigma_i \sigma_j$가 곱해진다.
+
 #### 학습 전략
 
-- 학습 시에는 적응적 종료를 사용하지 않고 전체 레이어를 통과시키되, 각 레이어의 출력에 supervision을 적용 (**deep supervision**).
-- 추론 시에만 적응적 종료를 활성화.
-- SuperPoint, DISK, ALIKED 등 다양한 로컬 특징 검출기와 호환되도록 범용 설계.
+- 학습할 때는 모든 층을 통과시키고 층마다 출력에 손실을 건다(deep supervision).
+- 조기 종료는 추론할 때만 쓴다.
+- SuperPoint, DISK, ALIKED 같은 여러 로컬 특징과 함께 쓸 수 있다.
 
-**성능**: LightGlue 논문은 평가 설정에서 SuperGlue와 비슷한 정확도를 유지하면서 평균 **3–5배**, 쉬운 image pair에서는 그보다 큰 속도 향상을 보고한다. 실제 배율은 keypoint 수와 하드웨어에 따라 달라진다.
+**성능**: LightGlue 논문은 SuperGlue와 비슷한 정확도에서 처리량이 2.5배, 효율적인 self-attention 구현을 쓴 변형은 4배라고 보고했다. 쉬운 영상 쌍일수록 더 빨라진다. 실제 배율은 키포인트 수와 하드웨어에 따라 다르다.
 
 ```python
 # LightGlue 사용 예제 (kornia / hloc)
@@ -784,7 +776,7 @@ with torch.no_grad():
     # matches['scores']: (K,) — 매칭 신뢰도
 ```
 
-### 5.6.3 기술 흐름: Detect → Describe → Match 분리 파이프라인의 딥러닝화
+### 5.6.3 Detect → Describe → Match 파이프라인과 학습 기반 방법
 
 ```
 [전통적 파이프라인]
@@ -795,7 +787,7 @@ SuperPoint detect+describe → SuperGlue attention matching → LightGlue 효율
     (2018)                       (2020)                        (2023)
 ```
 
-파이프라인의 각 단계를 하나씩 딥러닝으로 대체하는 동안에도 3단계 직렬 구조 자체는 유지됐다. 이러한 직렬 구조는 각 모듈을 독립적으로 분석하기에 유리하다. 하지만 첫 단계인 키포인트 검출에 실패하면 이후 기술과 매칭 단계까지 연쇄적으로 무너지는 한계를 안고 있다. 다음 절의 detector-free 방법은 이 검출 단계를 없앤다.
+단계를 나누면 모듈마다 따로 분석하고 바꿔 끼우기 쉽다. 첫 단계에서 키포인트를 못 찾으면 기술과 매칭도 할 수 없다. §5.7의 detector-free 방법은 검출 단계를 없앤다.
 
 ---
 
@@ -803,57 +795,56 @@ SuperPoint detect+describe → SuperGlue attention matching → LightGlue 효율
 
 ### 5.7.1 왜 Detector-Free가 필요한가
 
-Detect-then-match 파이프라인에서는 **검출기가 키포인트를 찾지 못하면 매칭도 수행할 수 없다**. 다음과 같은 환경에서 이 문제가 두드러진다.
+Detect-then-match 파이프라인은 검출기가 찾은 키포인트끼리만 매칭한다. 다음 환경에서 이 제약이 문제가 된다.
 
-- **텍스처 없는 영역**: 흰 벽, 콘크리트 바닥, 하늘 — 그래디언트가 약해 코너/블롭 검출 실패
-- **반복 패턴**: 타일, 창문 격자 — 검출은 되지만 디스크립터가 유사하여 모호 매칭
-- **넓은 시점 변화**: 극단적 시점 차이에서 로컬 패치의 외관이 완전히 달라짐
+- **텍스처 없는 영역**: 흰 벽, 콘크리트 바닥, 하늘은 그래디언트가 약해 코너나 블롭이 검출되지 않는다
+- **반복 패턴**: 타일이나 창문 격자는 검출은 되는데 디스크립터가 비슷해 매칭이 모호하다
+- **넓은 시점 변화**: 시점 차이가 크면 같은 곳의 로컬 패치도 전혀 다르게 보인다
 
-Detector-free 접근법은 검출 단계를 없애고, **이미지의 모든 위치를 잠재적 매칭 후보로 취급**하여 이 한계를 극복한다.
+Detector-free 방법은 검출 단계 없이 이미지의 모든 위치를 매칭 후보로 둔다.
 
 ### 5.7.2 LoFTR (2021): Coarse-to-Fine Transformer Matching
 
-[Sun et al. (2021)](https://arxiv.org/abs/2104.00680)의 LoFTR는 **검출기 없이 두 이미지 간 밀집 매칭을 수행하는 트랜스포머 기반 아키텍처**다.
+[Sun et al. (2021)](https://arxiv.org/abs/2104.00680)의 LoFTR는 검출기 없이 두 이미지를 촘촘하게 매칭하는 트랜스포머 기반 방법이다.
 
 #### 아키텍처
 
-**1. Local Feature CNN**: ResNet-18 기반 FPN(Feature Pyramid Network)으로 두 이미지에서 coarse (1/8 해상도) 및 fine (1/2 해상도) 특징 맵을 추출한다.
+**1. Local Feature CNN**: ResNet-18 기반 FPN(Feature Pyramid Network)으로 두 이미지에서 coarse(1/8 해상도)와 fine(1/2 해상도) 특징 맵을 뽑는다.
 
 **2. Coarse-Level Matching (Transformer)**:
 
-1/8 특징 맵을 1D 시퀀스로 평탄화(flatten)하고, Self-Attention + Cross-Attention을 교대로 $N$번(보통 4회) 반복하는 트랜스포머 모듈을 적용한다.
+1/8 특징 맵을 1차원 시퀀스로 펴고(flatten), Self-Attention과 Cross-Attention을 번갈아 $N$번(논문은 4번) 적용한다.
 
-위치 인코딩: sinusoidal positional encoding으로 공간 정보를 보존.
+위치 정보는 2D sinusoidal positional encoding으로 넣는다.
 
-출력 특징들 간의 내적으로 score matrix를 계산하고, **dual-softmax**로 confidence matrix를 생성:
+출력 특징끼리의 내적으로 score matrix를 만들고, dual-softmax로 confidence matrix를 구한다.
 
 $$P_{ij} = \text{softmax}_j(\mathbf{f}_i^A \cdot \mathbf{f}_j^B) \cdot \text{softmax}_i(\mathbf{f}_i^A \cdot \mathbf{f}_j^B)$$
 
-Threshold + mutual nearest neighbor 조건으로 coarse 매칭을 추출한다.
+confidence가 임계값을 넘고 mutual nearest neighbor인 쌍을 coarse 매칭으로 고른다.
 
 **3. Fine-Level Refinement**:
 
-Coarse 매칭 각각에 대해, 1/2 해상도 특징 맵에서 해당 위치 주변 $w \times w$ 윈도우(보통 5×5)를 crop한다.
-윈도우 내에서 다시 cross-attention 기반 correlation을 수행하여 **sub-pixel 정밀도**의 매칭 위치를 회귀(regression)한다.
+coarse 매칭마다 1/2 해상도 특징 맵에서 그 위치 주변 $w \times w$ 윈도우(논문은 5×5)를 잘라 낸다. 윈도우 안에서 다시 상관을 계산해 서브픽셀 매칭 위치를 회귀(regression)한다.
 
 #### Linear Transformer
 
-계산량 절감을 위해 standard softmax attention 대신 **kernel-based linear attention**을 사용:
+계산을 줄이려고 standard softmax attention 대신 kernel 기반 linear attention을 쓴다.
 
 Standard attention: $O(N^2)$, $\text{Attn}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}(\mathbf{Q}\mathbf{K}^\top / \sqrt{d}) \mathbf{V}$
 
 Linear attention: $O(N)$, $\text{Attn}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \phi(\mathbf{Q})(\phi(\mathbf{K})^\top \mathbf{V})$
 
-여기서 $\phi$는 ELU 기반 커널 함수. 행렬 곱의 결합 순서를 바꿔 $O(N)$ 복잡도를 달성한다.
+$\phi(\cdot)$는 커널 함수 $\text{elu}(\cdot)+1$이다. 행렬 곱 순서를 바꾸면 복잡도가 $O(N)$이 된다.
 
-linear attention은 계산을 줄이는 대신 attention의 표현력을 제한한다. 이어지는 QuadTree Attention과 ASpanFormer는 그 제한을 attention의 구조를 바꾸어 풀려는 시도다.
+linear attention은 softmax attention을 근사하므로 표현력이 떨어질 수 있다.
 
 #### 학습
 
-Ground-truth 포즈 + 깊이 맵에서 생성한 대응점을 supervision으로 사용:
+정답 포즈와 깊이 맵으로 만든 대응점으로 학습한다.
 - Coarse level: cross-entropy loss
 - Fine level: L2 regression loss
-- ScanNet(실내) 및 MegaDepth(실외) 데이터셋에서 학습
+- 데이터셋: ScanNet(실내), MegaDepth(실외)
 
 ```python
 # LoFTR 사용 예제 (kornia)
@@ -874,74 +865,69 @@ with torch.no_grad():
     confidence = result['confidence'] # (K,) — 매칭 신뢰도
 ```
 
-#### 기술 계보에서의 위치
+#### 계보상의 위치
 
-LoFTR는 SuperPoint→SuperGlue로 이어진 detect-then-match 파이프라인에서 검출기를 제거했다. 트랜스포머의 어텐션이 검출과 매칭을 동시에 수행한다. 이미지의 모든 위치가 상대 이미지의 모든 위치와 직접 소통(cross-attention)하므로, 별도의 검출 단계 없이도 매칭이 가능해졌다.
+LoFTR는 detect-then-match 파이프라인에서 검출기를 뺐다. coarse 단계에서 한 이미지의 모든 위치가 cross-attention으로 상대 이미지의 모든 위치를 참조하므로, 검출 단계 없이 매칭한다.
 
 ### 5.7.3 QuadTree Attention: LoFTR의 효율화
 
-LoFTR의 coarse-level transformer는 이미지의 모든 위치를 시퀀스로 평탄화하므로, 해상도가 높아지면 시퀀스 길이가 급격히 증가한다. QuadTree Attention (Tang et al., 2022)은 이를 해결한다.
+LoFTR의 coarse 트랜스포머는 이미지의 모든 위치를 시퀀스로 펴므로, 해상도가 높아지면 시퀀스가 빠르게 길어진다. QuadTree Attention(Tang et al., ICLR 2022)은 attention을 계층적으로 계산한다.
 
-어텐션은 다음 순서로 계층화된다.
+순서는 다음과 같다.
 
-1. 가장 거친(coarsest) 해상도에서 전체 어텐션을 수행
-2. 높은 어텐션 점수를 가진 영역만 선택
-3. 선택된 영역에서만 다음 해상도의 어텐션을 수행
-4. 이를 반복하여 관련 영역에만 집중하는 계층적 어텐션 실현
+1. 가장 거친(coarsest) 해상도에서 전체 attention을 계산한다
+2. attention 점수가 높은 영역 몇 개만 고른다
+3. 고른 영역 안에서만 다음 해상도의 attention을 계산한다
+4. 이를 가장 세밀한 해상도까지 반복한다
 
-이를 통해 standard attention의 $O(N^2)$ 비용을 $O(N)$으로 줄이면서 정확도를 유지한다. 비교의 기준은 standard attention이다. LoFTR가 쓰는 linear attention도 이미 $O(N)$이며, 원 논문은 linear attention과 비슷한 연산량으로 정확도를 높였다고 보고한다.
+그러면 standard attention의 $O(N^2)$ 비용이 $O(N)$으로 준다. LoFTR의 linear attention도 이미 $O(N)$이므로, 원 논문은 비슷한 연산량에서 정확도가 더 높다는 점을 내세운다.
 
 ### 5.7.4 ASpanFormer (2022): Adaptive Span Attention
 
-ASpanFormer (Chen et al., 2022)는 LoFTR의 또 다른 한계를 해결한다: **모든 위치가 같은 크기의 어텐션 범위를 가져야 하는가?**
+ASpanFormer(Chen et al., ECCV 2022)는 위치마다 attention 범위(span)를 다르게 정한다.
 
-각 위치의 **어텐션 범위(span)**를 적응적으로 조절한다.
+- 텍스처가 많은 영역: 좁은 범위에서 정밀하게 매칭한다
+- 텍스처가 적은 영역: 넓은 범위의 주변 정보를 쓴다
 
-- 텍스처가 풍부한 영역: 좁은 범위로 정밀한 매칭
-- 텍스처가 부족한 영역: 넓은 범위로 컨텍스트를 활용한 매칭
-
-이를 통해 LoFTR이 텍스처 없는 영역에서 보이던 매칭 정확도 저하를 완화한다.
+논문은 범위를 위치마다 추정한 flow와 그 불확실성으로 정한다.
 
 ### 5.7.5 RoMa (2024): DINOv2 + Dense Matching
 
-[Edstedt et al. (2024)](https://arxiv.org/abs/2305.15404)의 RoMa는 DINOv2 특징과 detector-free dense matching을 결합한다. LoFTR 계열과 구별되는 두 가지 설계를 쓴다.
+[Edstedt et al. (2024)](https://arxiv.org/abs/2305.15404)의 RoMa는 DINOv2 특징으로 dense matching을 한다.
 
 #### Foundation Model 활용
 
-LoFTR가 처음부터(scratch) 학습한 것과 달리, RoMa는 **사전학습된 DINOv2 ViT-Large를 특징 추출기로 사용**한다 (가중치 동결).
+RoMa는 사전학습한 DINOv2 ViT-Large를 가중치를 고정(frozen)한 채 coarse 특징 추출기로 쓴다. LoFTR는 특징 추출기를 처음부터(scratch) 학습했다.
 
-DINOv2는 대규모 자기지도학습으로 학습된 범용 시각 특징으로, 풍부한 의미적(semantic) 정보를 담고 있다. RoMa는 이 특징을 고정한 채 매칭 로직만 학습한다.
+DINOv2는 대규모 이미지로 자기지도 학습한 범용 시각 특징이다. RoMa 논문은 이 특징이 처음부터 학습한 로컬 특징보다 훨씬 강건하지만 해상도가 거칠다고 보고, 세밀한 위치는 별도의 CNN 특징으로 잡는다.
 
 #### 아키텍처
 
-**1. Frozen DINOv2 Backbone**: 사전학습된 DINOv2 ViT-Large에서 1/14 해상도의 patch 특징을 추출한다.
+**1. Frozen DINOv2 Backbone**: 고정한 DINOv2 ViT-Large에서 1/14 해상도의 patch 특징을 뽑는다.
 
 **2. Coarse Matching (Warp Estimation)**:
-- DINOv2 특징에 cross-attention (transformer decoder)을 적용.
-- 이미지 A의 각 위치에 대해, 이미지 B에서의 대응 위치를 **확률 분포**로 예측:
+- DINOv2 특징에 transformer match decoder를 적용한다.
+- 이미지 A의 위치마다 이미지 B의 대응 위치를 anchor 위치들에 대한 확률로 예측한다.
 
 $$p(\mathbf{x}_B | \mathbf{x}_A) = \sum_{k} w_k \mathcal{N}(\mathbf{x}_B; \mu_k, \Sigma_k)$$
 
-단일 점이 아닌 확률 분포로 예측함으로써, 모호한 매칭의 불확실성을 명시적으로 표현한다.
+점 하나 대신 분포를 예측하므로 대응 후보가 여럿인 경우(multimodality)도 나타낼 수 있다.
 
 **3. Fine Matching (Iterative Refinement)**:
-- Coarse warp를 초기값으로, CNN 기반의 fine-level 특징을 사용하여 반복적으로 정밀화.
-- 각 정밀화 단계에서 해상도를 높이며, 이전 단계의 warp를 기반으로 local correlation을 계산하고 잔차를 예측.
-- RAFT와 유사한 iterative refinement 철학이지만, optical flow가 아닌 sparse-to-dense warp에 적용.
+- coarse warp에서 출발해, CNN(VGG19)으로 뽑은 fine 특징으로 warp를 여러 번 다듬는다.
+- 단계마다 해상도를 높이고, 이전 warp 주변에서 local correlation을 계산해 잔차를 예측한다.
 
-**4. Certainty Estimation**: 각 매칭에 대해 신뢰도(certainty)를 함께 예측하여, 후처리 시 고신뢰 매칭만 선택적으로 사용 가능.
+**4. Certainty Estimation**: 매칭마다 신뢰도(certainty)도 함께 예측하므로, 뒤 단계에서 신뢰도가 높은 매칭만 골라 쓸 수 있다.
 
-#### Robust Regression
+#### 손실 함수: regression-by-classification과 robust regression
 
-매칭 위치를 단순히 L2 loss로 회귀하는 대신, 예측된 확률 분포와 ground-truth 간의 **negative log-likelihood**를 최적화한다:
+RoMa는 매칭 위치를 L2 loss로 바로 회귀하지 않는다. coarse 단계에서는 정답 위치가 속한 anchor를 맞히는 분류 손실을 쓰고(regression-by-classification), fine 단계에서는 큰 오차에 덜 민감한 robust regression 손실을 쓴다. coarse 단계의 분류 손실은 다음 꼴이다.
 
 $$L = -\sum_{(\mathbf{x}_A, \mathbf{x}_B^*)} \log p(\mathbf{x}_B^* | \mathbf{x}_A)$$
 
-분포를 예측하면 모호한 매칭에 낮은 확률을 배정해 손실이 한 대응에 지배되지 않게 할 수 있다. 다만 강건성은 분포 계열이 정한다. Gaussian 계열은 꼬리가 가벼워 큰 오차에 제곱 벌점을 주므로, 무거운 꼬리 분포나 명시적 outlier 성분, 또는 회귀를 분류로 바꾸는 설계를 함께 써야 잘못된 ground-truth의 영향이 실제로 줄어든다.
-
 #### 성능
 
-RoMa 원 논문의 relative-pose 실험에서는 MegaDepth·ScanNet에서 비교한 LoFTR·ASpanFormer 계열보다 높은 AUC를 보고했다. 개선 폭은 dataset과 각도 threshold에 따라 다르며, 논문은 큰 viewpoint·appearance 변화가 포함된 WxBS에서도 36% 상대 향상을 강조한다.
+RoMa 논문은 MegaDepth와 ScanNet의 relative pose 실험에서 비교한 LoFTR·ASpanFormer 계열보다 높은 AUC를 보고했다. 시점과 외관 변화가 큰 WxBS 벤치마크에서는 36% 향상을 보고했다.
 
 ```python
 # RoMa 사용 예제
@@ -962,59 +948,48 @@ matches, certainty_scores = roma_model.sample(
 # matches: (K, 4) — [x0, y0, x1, y1] 정규화 좌표
 ```
 
-#### 기술 계보에서의 위치
+### 5.7.6 3D-Aware Dense Matching
 
-RoMa는 두 가지 설계를 결합한다.
+다음 방법들은 3D 기하를 직접 예측하고, 그 결과에서 대응점을 얻는다.
 
-1. **Foundation Model 활용**: 처음부터 학습 → 대규모 사전학습 모델의 특징을 기반으로 매칭 로직만 학습
-2. **확률적 매칭**: 결정론적 점 예측 → 확률 분포 예측, 불확실한 매칭을 명시적으로 다룸
+**DUSt3R (Wang et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132)는 캘리브레이션이나 포즈 정보 없이 이미지 쌍에서 바로 3D pointmap을 회귀한다. 2D 매칭 뒤 3D를 복원하는 대신, 3D 형상을 먼저 회귀하고 3D 공간에서 가까운 점끼리 대응으로 삼는다.
 
-RoMa는 RAFT의 iterative refinement 아이디어와 LoFTR의 detector-free 사고방식을 결합하면서, DINOv2의 사전학습 특징을 도입한 종합적 발전이다.
+**MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756)는 DUSt3R에 dense local feature head를 더했다. 저자들은 Map-free localization 벤치마크에서 VCRE AUC가 기존 최고 방법보다 30%(절댓값) 높았다고 보고했다.
 
-### 5.7.6 최신 동향: 3D-Aware Dense Matching (2024-2025)
-
-2024-2025년에는 2D 매칭을 넘어 **3D 기하학을 직접 예측하면서 매칭을 수행**하는 방법이 등장했다.
-
-**DUSt3R (Wang et al., 2024)**: [DUSt3R](https://arxiv.org/abs/2312.14132)는 캘리브레이션이나 포즈 정보 없이 임의의 이미지 쌍에서 직접 3D pointmap을 회귀하는 방법이다. 기존 매칭 파이프라인은 "2D 매칭 → 3D 복원" 순서로 동작했다. DUSt3R는 이 순서를 바꾸어 **3D 형상 자체를 직접 회귀하고, 대응점은 3D 공간의 근접성에서 자연스럽게 유도되는 결과물**로 취급한다.
-
-**MASt3R (Leroy et al., 2024)**: [MASt3R](https://arxiv.org/abs/2406.09756)는 DUSt3R에 dense local feature head를 추가했다. 저자들은 논문의 map-free localization 설정에서 이전 비교 방법보다 VCRE AUC가 30%p 높았다고 보고한다.
-
-**VGGT (Wang et al., 2025)**: [VGGT](https://arxiv.org/abs/2503.11651) (Visual Geometry Grounded Transformer)는 CVPR 2025 Best Paper로, 하나 이상의 이미지로부터 camera parameter, pointmap, depth map, 3D point track을 **단일 feed-forward pass로 동시에 추론**한다. 원 논문은 자체 평가 설정에서 image reconstruction을 1초 이내에 처리하고, 비교한 geometry-optimization 기반 방법보다 높은 여러 3D task 성능을 보고한다.
-
-이들 방법은 2D 대응점을 먼저 구한 뒤 3D를 복원하던 순서를 바꾸어, 3D 기하학을 직접 추론한 결과에서 대응점을 얻는다.
+**VGGT (Wang et al., 2025)**: [VGGT](https://arxiv.org/abs/2503.11651) (Visual Geometry Grounded Transformer)는 CVPR 2025 Best Paper를 받았다. 이미지 한 장에서 수백 장까지 받아 camera parameter, pointmap, depth map, 3D point track을 한 번의 feed-forward pass로 추론한다. 원 논문은 재구성을 1초 안에 끝내면서 후처리 최적화를 쓰는 방법보다 여러 3D 과제에서 성능이 높았다고 보고했다.
 
 ---
 
 ## 5.8 3D-3D Correspondence
 
-2D 이미지 매칭의 기술 계보와 병렬로, **3D 점군(point cloud) 사이의 대응점을 찾는 연구**도 진화해왔다. LiDAR scan-to-scan 정합, multi-session map merging, loop closure에서 핵심적이다.
+3D 포인트 클라우드 사이의 대응점은 LiDAR scan-to-scan 정합, multi-session map merging, loop closure에 쓰인다.
 
 ### 5.8.1 FPFH (Fast Point Feature Histograms)
 
-[FPFH (Rusu et al., 2009)](https://ieeexplore.ieee.org/document/5152473)는 3D 점군의 **기하학적 특징을 히스토그램으로 인코딩**하는 수작업 디스크립터다.
+[FPFH (Rusu et al., 2009)](https://ieeexplore.ieee.org/document/5152473)는 점 주변의 기하 형태를 히스토그램으로 나타내는 수작업 디스크립터다.
 
 #### SPFH (Simple Point Feature Histogram)
 
-쿼리 점 $\mathbf{p}$와 그 이웃 점 $\mathbf{p}_k$ 사이에서 로컬 좌표계를 설정하고, 세 가지 각도 특성을 계산한다:
+쿼리 점 $\mathbf{p}$와 이웃 점 $\mathbf{p}_k$마다 로컬 좌표계를 세우고 각도 특성 셋을 계산한다.
 
-법선 벡터 $\mathbf{n}_p, \mathbf{n}_k$와 방향 벡터 $\mathbf{d} = \mathbf{p}_k - \mathbf{p}$로부터:
+법선 벡터 $\mathbf{n}_p, \mathbf{n}_k$와 방향 벡터 $\mathbf{d} = \mathbf{p}_k - \mathbf{p}$로 좌표축을 만든다.
 
 $$\mathbf{u} = \mathbf{n}_p$$
 $$\mathbf{v} = \mathbf{u} \times \frac{\mathbf{d}}{\|\mathbf{d}\|}$$
 $$\mathbf{w} = \mathbf{u} \times \mathbf{v}$$
 
-세 가지 각도 특성:
+각도 특성은 다음 셋이다.
 $$\alpha = \mathbf{v} \cdot \mathbf{n}_k, \quad \phi = \mathbf{u} \cdot \frac{\mathbf{d}}{\|\mathbf{d}\|}, \quad \theta = \text{atan2}(\mathbf{w} \cdot \mathbf{n}_k, \mathbf{u} \cdot \mathbf{n}_k)$$
 
-각 특성을 $B$-bin 히스토그램으로 양자화.
+각 특성을 $B$-bin 히스토그램으로 양자화한다.
 
-#### FPFH: PFH의 가속 버전
+#### FPFH: PFH를 빠르게 근사
 
-PFH는 반경 $r$ 내의 이웃 쌍 특성을 계산하므로 포인트당 $O(k^2)$의 계산이 필요하다. FPFH는 query와 각 이웃 사이의 특성으로 SPFH를 구하고 이웃의 SPFH를 가중 결합하여 포인트당 $O(k)$로 근사한다:
+PFH는 반경 $r$ 안의 이웃 쌍 전부에서 특성을 계산하므로 점마다 $O(k^2)$이 든다. FPFH는 쿼리 점과 이웃 사이의 특성만으로 SPFH를 구하고, 이웃들의 SPFH를 가중합해 점마다 $O(k)$로 근사한다.
 
 $$\text{FPFH}(\mathbf{p}) = \text{SPFH}(\mathbf{p}) + \frac{1}{k} \sum_{i=1}^{k} \frac{1}{w_i} \text{SPFH}(\mathbf{p}_i)$$
 
-여기서 $w_i = \|\mathbf{p}_i - \mathbf{p}\|$. 33차원 히스토그램 (각 각도 11-bin × 3).
+$w_i = \|\mathbf{p}_i - \mathbf{p}\|$이다. 결과는 각도마다 11-bin씩, 33차원 히스토그램이다.
 
 ```python
 import open3d as o3d
@@ -1030,72 +1005,73 @@ fpfh = o3d.pipelines.registration.compute_fpfh_feature(
 # fpfh.data.shape: (33, N)
 ```
 
-### 5.8.2 3DMatch (2017): Learned 3D Descriptors의 시작
+### 5.8.2 3DMatch (2017): 초기 학습 기반 3D 디스크립터
 
-[Zeng et al. (2017)](https://arxiv.org/abs/1603.08182)의 3DMatch는 RGB-D reconstruction에서 자동 수집한 correspondence로 local volumetric descriptor를 학습한 초기의 영향력 있는 시스템이다.
+[Zeng et al. (2017)](https://arxiv.org/abs/1603.08182)의 3DMatch는 기존 RGB-D 재구성 데이터에서 자동으로 얻은 대응으로 local volumetric descriptor를 학습한다.
 
-- **학습 데이터**: 62개 실내 장면의 RGB-D 재구성에서 자동 생성한 대응점 쌍
-- **아키텍처**: 3D TDF(Truncated Distance Function) 볼륨을 입력으로 하는 3D CNN
+- **학습 데이터**: 실내 RGB-D 재구성 62개 장면에서 자동 생성한 대응점 쌍
+- **구조**: 3D TDF(Truncated Distance Function) 볼륨을 입력받는 3D CNN
 - **출력**: 512차원 로컬 디스크립터
 
-3DMatch는 학습 기반 3D descriptor 연구를 촉발한 선구적 작업이다. 논문과 함께 공개된 **3DMatch Benchmark**는 후속 연구들의 표준 평가셋으로 자리 잡았다.
+논문과 함께 공개한 3DMatch Benchmark는 FCGF, Predator, GeoTransformer 등 뒤 연구들이 평가에 쓴다.
 
 ### 5.8.3 FCGF (Fully Convolutional Geometric Features, 2019)
 
-[Choy et al. (2019)](https://arxiv.org/abs/1904.09793)의 FCGF는 **sparse convolution**을 이용하여 전체 점군에서 한 번의 포워드 패스로 모든 점의 디스크립터를 추출한다.
+[Choy et al. (2019)](https://doi.org/10.1109/ICCV.2019.00905)의 FCGF는 sparse convolution으로 포인트 클라우드 전체에서 한 번의 forward pass로 모든 점의 디스크립터를 뽑는다.
 
-3DMatch는 각 키포인트 주변의 로컬 볼륨을 개별 처리하는 방식을 썼다. FCGF는 sparse convolution을 도입해 전체 점군의 특징을 단일 패스로 계산한다. FCGF 논문은 해당 구현·하드웨어·벤치마크에서 큰 처리시간 단축과 32차원 디스크립터의 높은 registration 성능을 보고했다.
+3DMatch는 키포인트마다 주변 볼륨을 따로 처리했다. FCGF 논문은 32차원 디스크립터로 3DMatch보다 feature-match recall이 높고 특징 추출은 약 169배 빨랐다고 보고했다. 비교한 3DMatch의 시간은 FCGF와 다른 CPU에서 잰 값이다.
 
 ### 5.8.4 Predator (2021): Overlap-Aware 3D Matching
 
-[Huang et al. (2021)](https://arxiv.org/abs/2011.13005)의 Predator는 두 점군의 **오버랩 영역을 명시적으로 예측**하는 접근법이다.
+[Huang et al. (2021)](https://arxiv.org/abs/2011.13005)의 Predator는 두 포인트 클라우드가 겹치는 영역을 따로 예측한다.
 
-기존 방법들은 두 점군의 모든 영역에서 동일하게 디스크립터를 추출하지만, 실제로는 일부 영역만 겹친다. Predator는:
+실제 두 스캔은 일부만 겹치는데, 그 전 방법들은 겹치지 않는 영역에서도 똑같이 디스크립터를 뽑았다. Predator의 구성은 다음과 같다.
 
-1. **Overlap attention**: cross-attention을 통해 각 점이 상대 점군과 겹치는 정도를 예측
-2. **Matchability score**: 오버랩 영역 내에서 매칭에 유용한 점(독특한 기하학적 구조)을 별도로 스코어링
-3. 오버랩 비율이 낮은(10-30%) 어려운 시나리오에서 큰 성능 향상
+1. **Overlap attention**: cross-attention으로 각 점이 상대 포인트 클라우드와 겹칠 확률을 예측한다
+2. **Matchability score**: 겹치는 영역 안에서도 매칭에 쓸 만한 점(형태가 독특한 점)에 점수를 따로 매긴다
+
+논문은 겹침이 10~30%인 3DLoMatch에서 성능이 크게 올랐다고 보고했다.
 
 ### 5.8.5 GeoTransformer (2022): 기하학적 트랜스포머
 
-[Qin et al. (2022)](https://arxiv.org/abs/2202.06688)의 GeoTransformer는 3D point cloud registration에서 **기하학적 불변 특징 학습과 RANSAC 제거**를 동시에 달성한다.
+[Qin et al. (2022)](https://arxiv.org/abs/2202.06688)의 GeoTransformer는 강체 변환에 불변인 기하 특징을 학습하고, RANSAC 없이 변환을 추정한다.
 
 #### 키포인트-프리 슈퍼포인트 매칭
 
-반복 가능한 키포인트 검출 대신, 다운샘플링된 **슈퍼포인트(superpoint)**에서 대응점을 찾고 이를 밀집 포인트로 전파(propagation)한다.
+키포인트를 검출하지 않고, 다운샘플링한 슈퍼포인트(superpoint)끼리 대응을 찾은 뒤 이를 촘촘한 점들로 넓힌다(propagation).
 
 #### 기하학적 트랜스포머 아키텍처
 
-GeoTransformer는 **rigid transformation에 불변한 기하학적 특징**을 학습하기 위해 두 가지 기하학적 인코딩을 사용한다:
+강체 변환에 불변인 특징을 학습하려고 다음 기하 인코딩을 쓴다.
 
 **1. 쌍별 거리 인코딩(Pairwise Distance)**:
 
-슈퍼포인트 $\mathbf{p}_i, \mathbf{p}_j$ 사이의 유클리드 거리 $d_{ij} = \|\mathbf{p}_i - \mathbf{p}_j\|$는 강체 변환에 불변이다. 이를 positional encoding으로 사용:
+슈퍼포인트 $\mathbf{p}_i, \mathbf{p}_j$ 사이의 유클리드 거리 $d_{ij} = \|\mathbf{p}_i - \mathbf{p}_j\|$는 강체 변환에 불변이다. 이 거리를 positional encoding으로 쓴다.
 
 $$\text{PE}(d_{ij}) = [\sin(\omega_1 d_{ij}), \cos(\omega_1 d_{ij}), \ldots, \sin(\omega_K d_{ij}), \cos(\omega_K d_{ij})]$$
 
 **2. 삼중 각도 인코딩(Triplet Angle)**:
 
-세 점 $\mathbf{p}_i, \mathbf{p}_j, \mathbf{p}_k$가 이루는 각도도 강체 변환에 불변이다. 이 각도 정보를 추가 인코딩으로 사용하여 기하학적 구조를 더 풍부하게 포착한다.
+세 점 $\mathbf{p}_i, \mathbf{p}_j, \mathbf{p}_k$가 이루는 각도도 강체 변환에 불변이라 함께 인코딩한다.
 
-이 기하학적 인코딩은 트랜스포머의 attention bias로 주입된다:
+이 인코딩을 attention 점수 계산에 더한다.
 
 $$\text{Attn}_{ij} = \frac{\mathbf{q}_i^\top \mathbf{k}_j}{\sqrt{d}} + b(\text{PE}(d_{ij}))$$
 
 #### RANSAC-Free 변환 추정
 
-GeoTransformer는 슈퍼포인트 대응을 고른 뒤 local-to-global registration으로 변환 가설을 집계하므로 별도의 외부 RANSAC 단계를 생략할 수 있다. 저자들은 논문의 구현과 비교 설정에서 이 단계의 큰 처리시간 단축을 보고했지만, 대응점이 오염된 다른 데이터에서도 같은 비율이나 성공을 보장하지는 않는다.
+GeoTransformer는 슈퍼포인트 대응마다 변환 가설을 만들고 local-to-global registration으로 가장 나은 것을 고르므로 RANSAC을 따로 돌리지 않는다. 저자들은 RANSAC보다 100배 빠르다고 보고했다. 아웃라이어가 더 많은 데이터에서도 같은 결과가 나오는지는 따로 확인해야 한다.
 
 #### 성능
 
-논문은 3DLoMatch의 비교 설정에서 기준 방법에 따라 인라이어 비율 17–30%p, registration recall 7%p 이상의 향상을 보고했다. 이 수치는 저오버랩으로 정의된 해당 벤치마크와 평가 프로토콜에 한정된다.
+논문은 겹침이 적은 3DLoMatch에서 인라이어 비율이 17~30%p, registration recall이 7%p 넘게 올랐다고 보고했다.
 
 ```python
 # GeoTransformer 사용 예제
 from geotransformer.utils.pointcloud import apply_transform
 import torch
 
-# 두 점군 로드 (N, 3)
+# 두 포인트 클라우드 로드 (N, 3)
 src_points = torch.from_numpy(src_pcd.points).float().cuda()
 ref_points = torch.from_numpy(ref_pcd.points).float().cuda()
 
@@ -1118,7 +1094,7 @@ SHOT (2010)          — 방향 히스토그램
 [Learned 3D Descriptors]
 3DMatch (2017)       — 초기 learned 3D descriptor + benchmark
     ↓ 효율화
-FCGF (2019)          — sparse conv, 전체 점군 한 번에 처리
+FCGF (2019)          — sparse conv, 전체 포인트 클라우드 한 번에 처리
     ↓ 오버랩 인식
 Predator (2021)      — overlap-aware cross-attention
     ↓ RANSAC 제거
@@ -1131,55 +1107,55 @@ GeoTransformer (2022) — 기하학적 불변 트랜스포머, RANSAC-free
 
 ### 5.9.1 2D-3D Matching: 카메라-LiDAR 간
 
-가장 빈번한 cross-modal correspondence 문제는 **2D 이미지와 3D 점군 사이의 매칭**이다. 응용 시나리오:
+이 절에서 다루는 cross-modal correspondence는 2D 이미지와 3D 포인트 클라우드의 매칭이다. 쓰이는 곳은 다음과 같다.
 
-- **카메라-LiDAR 외부 캘리브레이션**: 두 센서가 관측한 같은 물리적 점을 찾아 외부 파라미터 추정
-- **Visual Localization against LiDAR Map**: 카메라 이미지를 LiDAR 맵에 대해 위치 추정
-- **Loop Closure**: 카메라와 LiDAR 관측을 교차 검증
+- **카메라-LiDAR 외부 캘리브레이션**: 두 센서가 본 같은 물리적 점을 찾아 외부 파라미터를 추정한다
+- **LiDAR 맵 기반 Visual Localization**: LiDAR로 만든 지도 안에서 카메라 위치를 찾는다
+- **Loop Closure**: 카메라와 LiDAR 관측으로 서로의 루프 후보를 확인한다
 
 ### 5.9.2 Image-to-Point Cloud 매칭 접근법
 
 #### 투영 기반 접근 (Projection-based)
 
-가장 직접적인 방법은 3D 점군을 2D 이미지 평면에 투영하여 2D-2D 매칭 문제로 환원하는 것이다:
+3D 포인트 클라우드를 2D 이미지 평면에 투영하면 2D-2D 매칭 문제가 된다.
 
-1. LiDAR 점군을 가상 카메라 뷰로 렌더링하여 depth/intensity 이미지 생성
-2. 생성된 2D 이미지와 카메라 이미지 사이에서 2D 매칭 (SuperGlue 등) 수행
-3. 2D 매칭 결과를 3D 좌표로 역투영
+1. LiDAR 포인트 클라우드를 가상 카메라 시점으로 렌더링해 depth 또는 intensity 이미지를 만든다
+2. 이 이미지와 카메라 이미지를 SuperGlue 같은 방법으로 매칭한다
+3. 매칭 결과를 렌더링 때의 깊이로 3D 좌표에 되돌린다
 
-Koide et al. (2023)의 캘리브레이션 툴이 이 접근법을 사용한다: LiDAR 밀집 점군을 가상 카메라로 렌더링하고, SuperGlue로 카메라 이미지와 교차 모달 2D-3D 대응점을 검출한다.
+Koide et al.(2023)의 캘리브레이션 툴이 이 방식이다. 밀집한 LiDAR 포인트 클라우드를 가상 카메라로 렌더링하고, SuperGlue로 카메라 이미지와의 2D-3D 대응을 찾는다(초기값 추정 단계).
 
 #### 학습 기반 직접 매칭
 
-LCD (Learned Cross-Domain Descriptors): 2D 이미지 패치와 3D 점군 패치의 공통 임베딩 공간을 학습한다.
+LCD(Learned Cross-Domain Descriptors, Pham et al., AAAI 2020)는 2D 이미지 패치와 3D 포인트 클라우드 패치를 같은 임베딩 공간에 놓도록 학습한다.
 
-P2-Net (Wang et al., 2021): patch-to-point 매칭을 학습하여 2D 이미지 패치와 3D 점의 직접 대응을 추론한다.
+P2-Net(Wang et al., ICCV 2021)은 이미지 픽셀과 3D 점 사이의 대응을 직접 학습한다.
 
-### 5.9.3 왜 Cross-Modal이 어려운가: Representation Gap
+### 5.9.3 Cross-Modal 매칭이 어려운 이유
 
-다음 네 차이가 2D-3D cross-modal 매칭을 어렵게 만든다.
+2D-3D cross-modal 매칭을 어렵게 하는 차이는 다음과 같다.
 
-1. **표현의 이질성(Representation Heterogeneity)**: 2D 이미지는 정규 격자 위의 밝기/색상, 3D 점군은 불규칙하게 분포된 좌표+강도. 데이터 구조 자체가 다르다.
+1. **표현의 이질성(Representation Heterogeneity)**: 2D 이미지는 규칙적인 격자 위의 밝기·색이고, 3D 포인트 클라우드는 불규칙하게 흩어진 좌표와 강도다.
 
-2. **정보 비대칭(Information Asymmetry)**: 이미지는 풍부한 텍스처 정보를 제공하지만 깊이가 없고, 점군은 정확한 기하학 정보를 제공하지만 텍스처가 희소하다.
+2. **정보 비대칭(Information Asymmetry)**: 이미지에는 텍스처가 많고 깊이가 없다. 포인트 클라우드에는 정확한 기하 정보가 있고 텍스처는 거의 없다.
 
-3. **밀도 차이(Density Gap)**: 카메라 이미지의 해상도(수백만 픽셀)와 LiDAR 점군의 밀도(수만~수십만 점)가 크게 다르며, LiDAR 점군은 거리에 따라 밀도가 급격히 변한다.
+3. **밀도 차이(Density Gap)**: LiDAR 스캔 한 장의 점 수는 카메라 영상 한 장의 픽셀 수보다 훨씬 적다. LiDAR 포인트 클라우드는 거리가 멀수록 성겨진다.
 
-4. **외관 도메인 갭(Appearance Domain Gap)**: 같은 물체를 두 센서가 서로 다른 양으로 잰다. 카메라는 조명과 표면 반사 특성이 함께 결정하는 밝기를 기록하고, LiDAR는 레이저 파장에서 되돌아온 광량(intensity)을 측정한다. 표면 고유의 반사율(albedo)은 어느 쪽에서도 직접 얻어지지 않는다.
+4. **외관 도메인 갭(Appearance Domain Gap)**: 같은 물체를 두 센서가 서로 다른 양으로 잰다. 카메라는 조명과 표면 반사 특성이 함께 결정하는 밝기를 기록한다. LiDAR는 레이저 파장에서 되돌아온 광량(intensity)을 측정한다. 표면 고유의 반사율(albedo)은 두 측정값에 간접적으로만 섞여 있다.
 
-이런 어려움 때문에 cross-modal correspondence는 아직 unimodal (2D-2D 또는 3D-3D) 매칭보다 덜 성숙한 연구 영역이다. MI 기반 접근법 (5.4절)은 이 도메인 갭을 통계적으로 우회하고, 투영 기반 접근법은 두 관측을 같은 2D 영상 형식으로 표현한다.
+MI 기반 방법(§5.4)은 이 차이를 통계적 의존성으로 건너뛰고, 투영 기반 방법은 두 관측을 같은 2D 영상 형식으로 바꾼다.
 
 ---
 
 ## 5.10 Dense Matching & Optical Flow
 
-앞에서는 **sparse correspondence** (희소 대응점)와 일부 밀집 정합 방법을 다뤘다. Dense matching은 이미지의 **모든 픽셀에 대해 대응을 찾는 문제**다.
+Dense matching은 이미지의 모든 픽셀에서 대응을 찾는 문제다.
 
 ### 5.10.1 Classical Optical Flow: Lucas-Kanade, Horn-Schunck
 
 #### Optical Flow의 정의
 
-Optical flow는 이미지 시퀀스에서 **각 픽셀의 겉보기 운동(apparent motion)**을 2D 벡터 필드로 표현한 것이다:
+Optical flow는 이미지 시퀀스에서 픽셀마다 보이는 움직임(apparent motion)을 2D 벡터 필드로 나타낸 것이다.
 
 $$\mathbf{u}(x, y) = (u(x, y), v(x, y))$$
 
@@ -1187,27 +1163,27 @@ $$\mathbf{u}(x, y) = (u(x, y), v(x, y))$$
 
 $$I(x, y, t) = I(x + u, y + v, t + 1)$$
 
-Taylor 1차 전개로 **optical flow constraint equation**을 얻는다:
+1차 Taylor 전개로 optical flow constraint equation을 얻는다.
 
 $$I_x u + I_y v + I_t = 0$$
 
 여기서 $I_x = \frac{\partial I}{\partial x}$, $I_y = \frac{\partial I}{\partial y}$, $I_t = \frac{\partial I}{\partial t}$.
 
-이 하나의 방정식에 두 개의 미지수 $(u, v)$가 있으므로, 추가 제약이 필요하다 (aperture problem).
+식은 하나인데 미지수는 $(u, v)$ 둘이라 제약이 하나 더 있어야 한다(aperture problem).
 
 #### Lucas-Kanade (1981)
 
-**로컬 일관성 가정**: 작은 윈도우 $\Omega$ 내에서 optical flow가 일정하다고 가정한다. 윈도우 내의 모든 픽셀에 대해:
+**로컬 일관성 가정**: 작은 윈도우 $\Omega$ 안에서는 flow가 같다고 둔다. 윈도우 안의 모든 픽셀에 대해 다음이 성립한다.
 
 $$\begin{bmatrix} I_{x_1} & I_{y_1} \\ I_{x_2} & I_{y_2} \\ \vdots & \vdots \\ I_{x_n} & I_{y_n} \end{bmatrix} \begin{bmatrix} u \\ v \end{bmatrix} = -\begin{bmatrix} I_{t_1} \\ I_{t_2} \\ \vdots \\ I_{t_n} \end{bmatrix}$$
 
-즉 $\mathbf{A} \mathbf{u} = -\mathbf{b}$. Overdetermined system이므로 최소자승법으로:
+곧 $\mathbf{A} \mathbf{u} = -\mathbf{b}$이다. 식이 미지수보다 많으므로(overdetermined) 최소자승으로 푼다.
 
 $$\begin{bmatrix} u \\ v \end{bmatrix} = (\mathbf{A}^\top \mathbf{A})^{-1} \mathbf{A}^\top (-\mathbf{b})$$
 
-여기서 $\mathbf{A}^\top \mathbf{A} = \begin{bmatrix} \sum I_x^2 & \sum I_x I_y \\ \sum I_x I_y & \sum I_y^2 \end{bmatrix}$는 Harris corner detector의 structure tensor $\mathbf{M}$과 동일하다.
+여기서 $\mathbf{A}^\top \mathbf{A} = \begin{bmatrix} \sum I_x^2 & \sum I_x I_y \\ \sum I_x I_y & \sum I_y^2 \end{bmatrix}$는 Harris corner detector의 structure tensor $\mathbf{M}$과 같다.
 
-**한계**: 큰 변위(large displacement)에서는 로컬 선형 근사가 실패. 이를 해결하기 위해 **이미지 피라미드**에서 coarse-to-fine으로 적용한다 (Pyramidal LK).
+**한계**: 변위가 크면(large displacement) 로컬 선형 근사가 맞지 않는다. 그래서 이미지 피라미드에서 거친 해상도부터 차례로 적용한다(Pyramidal LK, Bouguet 2000).
 
 ```python
 # Pyramidal Lucas-Kanade (OpenCV)
@@ -1227,56 +1203,56 @@ p1, status, err = cv2.calcOpticalFlowPyrLK(prev_gray, next_gray, p0, None, **lk_
 
 #### Horn-Schunck (1981)
 
-**글로벌 평활성 가정**: optical flow가 이미지 전체에서 부드럽게 변한다고 가정하고, 다음 에너지 함수를 최소화:
+**전역 평활성 가정**: flow가 이미지 전체에서 부드럽게 변한다고 두고 다음 에너지 함수를 최소화한다.
 
 $$E = \iint \left[ (I_x u + I_y v + I_t)^2 + \lambda^2 (\|\nabla u\|^2 + \|\nabla v\|^2) \right] dx \, dy$$
 
-첫 번째 항은 데이터 항(brightness constancy), 두 번째 항은 평활성 정규화. $\lambda$가 클수록 더 부드러운 flow.
+첫째 항은 데이터 항(brightness constancy), 둘째 항은 평활성 정규화 항이다. $\lambda$가 클수록 flow가 부드러워진다.
 
-Euler-Lagrange 방정식을 풀면 반복적 갱신 수식을 얻는다. Dense flow를 생성하지만, 경계에서의 불연속을 잘 처리하지 못한다는 한계가 있다.
+Euler-Lagrange 방정식에서 반복 갱신식을 얻는다. 모든 픽셀의 flow가 나오고, 물체 경계처럼 flow가 끊기는 곳에서는 flow가 번진다.
 
 ### 5.10.2 Learning-Based Optical Flow: FlowNet → RAFT → FlowFormer → UniMatch
 
 #### FlowNet / FlowNet 2.0 (2015/2017)
 
-[Dosovitskiy et al. (2015)](https://arxiv.org/abs/1504.06852)의 FlowNet은 두 이미지에서 optical-flow field를 end-to-end supervised learning으로 직접 예측한 초기 CNN 시스템이다. 두 이미지를 입력으로 받아 flow field를 출력하는 encoder-decoder 구조다.
+[Dosovitskiy et al. (2015)](https://arxiv.org/abs/1504.06852)의 FlowNet은 두 이미지를 받아 optical flow를 바로 출력하도록 지도 학습한 초기 CNN이다. 구조는 encoder-decoder다.
 
-[FlowNet 2.0 (Ilg et al., 2017)](https://arxiv.org/abs/1612.01925)은 여러 FlowNet을 스택하여 정확도를 끌어올렸다.
+[FlowNet 2.0 (Ilg et al., 2017)](https://arxiv.org/abs/1612.01925)은 FlowNet 여러 개를 쌓아 정확도를 높였다.
 
-#### RAFT (2020): Optical Flow의 새로운 표준
+#### RAFT (2020)
 
-[Teed & Deng (2020)](https://arxiv.org/abs/2003.12039)의 RAFT는 **4D correlation volume + 반복적 GRU 업데이트**라는 새로운 아키텍처 패러다임을 제시하여, ECCV 2020 Best Paper를 수상했다.
+[Teed & Deng (2020)](https://arxiv.org/abs/2003.12039)의 RAFT는 4D correlation volume과 GRU 반복 갱신으로 flow를 구하며, ECCV 2020 Best Paper를 받았다.
 
-**아키텍처 3단계**:
+**구조**:
 
-**1. Feature Encoder**: 입력 두 이미지 각각에 CNN(ResNet 변형)을 적용하여 1/8 해상도의 특징 맵 $\mathbf{g}_1, \mathbf{g}_2 \in \mathbb{R}^{H/8 \times W/8 \times D}$를 추출. 별도의 Context Encoder가 첫 번째 이미지에서 GRU의 초기 hidden state와 context feature를 추출.
+**1. Feature Encoder**: 입력 두 이미지 각각에 CNN(ResNet 변형)을 적용해 1/8 해상도의 특징 맵 $\mathbf{g}_1, \mathbf{g}_2 \in \mathbb{R}^{H/8 \times W/8 \times D}$를 뽑는다. 별도의 Context Encoder가 첫 번째 이미지에서 GRU의 초기 hidden state와 context feature를 뽑는다.
 
-**2. Correlation Volume 구성**: 두 특징 맵의 모든 픽셀 쌍에 대해 내적을 계산:
+**2. Correlation Volume**: 두 특징 맵의 모든 픽셀 쌍의 내적을 계산한다.
 
 $$C_{ijkl} = \sum_d g_1(i, j, d) \cdot g_2(k, l, d)$$
 
-4D correlation volume $\mathbf{C} \in \mathbb{R}^{H/8 \times W/8 \times H/8 \times W/8}$ 생성. 축은 모두 특징 맵 해상도 기준이다. 이를 후반 두 차원에 대해 average pooling하여 4단계 **correlation pyramid**을 구축 (스케일 1, 2, 4, 8).
+4D correlation volume $\mathbf{C} \in \mathbb{R}^{H/8 \times W/8 \times H/8 \times W/8}$ 이 생긴다. 축은 모두 특징 맵 해상도 기준이다. 뒤의 두 차원을 average pooling해 4단계 correlation pyramid(스케일 1, 2, 4, 8)를 만든다.
 
-**coarse-to-fine이 아닌, single resolution에서 multi-scale lookup**을 수행한다는 점이 이전 방법과의 차이다.
+flow는 한 해상도에서만 갱신하고, 상관값은 여러 스케일의 pyramid에서 찾아본다.
 
-**3. Iterative Update (GRU)**: ConvGRU가 현재 flow 추정치를 반복적으로 정제한다:
+**3. Iterative Update (GRU)**: ConvGRU가 flow 추정치를 반복해서 고친다.
 
 각 반복 $k$에서:
-1. 현재 flow 추정 $\mathbf{f}^k$에 따라 correlation pyramid에서 값을 lookup (현재 대응 위치 주변의 local window 참조)
-2. Correlation feature, 현재 flow, context feature를 결합
-3. ConvGRU가 hidden state $\mathbf{h}^k$를 업데이트
-4. Hidden state에서 flow 잔차(residual) $\Delta \mathbf{f}$ 예측
-5. Flow 업데이트: $\mathbf{f}^{k+1} = \mathbf{f}^k + \Delta \mathbf{f}$
+1. 현재 flow $\mathbf{f}^k$가 가리키는 대응 위치 주변의 작은 윈도우에서 correlation pyramid 값을 읽는다
+2. 읽은 상관값, 현재 flow, context feature를 합친다
+3. ConvGRU가 hidden state $\mathbf{h}^k$를 갱신한다
+4. hidden state에서 flow 잔차(residual) $\Delta \mathbf{f}$를 예측한다
+5. $\mathbf{f}^{k+1} = \mathbf{f}^k + \Delta \mathbf{f}$로 갱신한다
 
-원 논문 구성은 학습 시 12회, 추론 시 12~32회 갱신을 사용한다. 추가 반복이 논문 실험에서 오차를 낮추기도 했지만, 수렴 뒤에는 개선이 보장되지 않으므로 지연시간과 검증 오차로 횟수를 정한다.
+원 논문은 학습 때 12번 갱신하고, 평가 때는 Sintel에서 32번, KITTI에서 24번 갱신한다. 반복을 늘리면 논문 실험에서 오차가 더 줄기도 했다. 실제 횟수는 지연시간과 검증 오차를 보고 정한다.
 
-**All-Pairs vs. Coarse-to-Fine**: coarse-to-fine 방법은 거친 단계의 대응 오류를 후속 단계에서 복구하기 어려울 수 있다. RAFT는 모든 feature 쌍의 상관을 만들어 반복 갱신 중 여러 스케일에서 조회하므로 큰 변위 후보에도 접근할 수 있다. 다만 반복 최적화와 특징이 실패하면 큰 변위를 여전히 놓칠 수 있다.
+**All-Pairs와 Coarse-to-Fine**: coarse-to-fine 방법은 거친 단계에서 틀린 대응을 뒤 단계에서 바로잡기 어렵다. RAFT는 모든 특징 쌍의 상관을 미리 만들어 두고 갱신 때마다 여러 스케일에서 찾아보므로, 작은 물체의 큰 움직임 같은 경우도 후보에 들어간다. RAFT 논문은 이 점을 coarse-to-fine 대비 장점으로 든다(Teed & Deng 2020 §1).
 
-**학습**: 모든 반복 단계의 예측에 대해 ground-truth flow와의 L1 loss를 적용하되, 후반 반복에 exponentially increasing weights:
+**학습**: 반복 단계마다 정답 flow와의 L1 loss를 구하고, 뒤 반복일수록 가중치를 지수적으로 키운다.
 
 $$L = \sum_{k=1}^{K} \gamma^{K-k} \| \mathbf{f}^k - \mathbf{f}^{gt} \|_1$$
 
-여기서 $\gamma = 0.8$.
+여기서 $\gamma = 0.8$이다.
 
 ```python
 # RAFT 사용 예제 (torchvision)
@@ -1294,40 +1270,40 @@ with torch.no_grad():
 
 #### FlowFormer (2022)
 
-[FlowFormer (Huang et al., 2022)](https://arxiv.org/abs/2203.16194)는 cost volume을 토큰화하고 트랜스포머로 cost memory를 인코딩한다. 이어 recurrent transformer decoder가 이 표현을 조회하며 optical flow를 반복 갱신한다. 논문에서는 RAFT를 상회하는 정확도를 보고했다.
+[FlowFormer (Huang et al., 2022)](https://arxiv.org/abs/2203.16194)는 cost volume을 토큰으로 바꾸고 트랜스포머로 cost memory를 만든다. recurrent transformer decoder가 이 memory를 참조하며 flow를 반복 갱신한다. 논문은 Sintel 벤치마크에서 RAFT보다 낮은 오차를 보고했다.
 
 #### UniMatch (2023)
 
-[Xu et al. (2023)](https://arxiv.org/abs/2211.05783)의 UniMatch는 **optical flow, stereo matching, depth estimation을 하나의 통합 프레임워크**로 처리한다. 세 태스크를 모두 "두 관측 사이의 dense correspondence" 문제로 표현한다.
+[Xu et al. (2023)](https://arxiv.org/abs/2211.05783)의 UniMatch는 optical flow, stereo matching, depth estimation을 모두 두 시점 사이의 dense correspondence 문제로 보고 한 모델로 푼다.
 
 ### 5.10.3 Dense Stereo: SGM → RAFT-Stereo → UniMatch
 
-Stereo matching은 좌우 카메라 이미지에서 **수평 방향의 시차(disparity)**를 추정하는 문제다. Optical flow의 특수한 경우 (수직 방향 flow = 0)로 볼 수 있다.
+Stereo matching은 정렬(rectify)된 좌우 이미지에서 수평 방향 시차(disparity)를 추정하는 문제다. 수직 flow가 0인 optical flow로 볼 수 있다.
 
 #### SGM (Semi-Global Matching, Hirschmuller 2005)
 
 SGM은 전통적인 dense stereo 방법으로, 다음 순서로 시차를 구한다.
-- 각 픽셀에서 모든 시차 후보에 대한 매칭 비용(cost) 계산
-- 8(또는 16) 방향에서 1D 동적 프로그래밍으로 비용을 집계(aggregation)
-- 집계된 비용에서 최소값을 선택하여 시차 결정
+- 픽셀마다 모든 시차 후보의 매칭 비용(cost)을 계산한다
+- 8개(또는 16개) 방향을 따라 1차원 동적 계획법으로 비용을 모은다(aggregation)
+- 모은 비용이 가장 작은 시차를 고른다
 
 $$L_r(p, d) = C(p, d) + \min\begin{cases} L_r(p-r, d) \\ L_r(p-r, d-1) + P_1 \\ L_r(p-r, d+1) + P_1 \\ \min_i L_r(p-r, i) + P_2 \end{cases}$$
 
-여기서 $P_1, P_2$는 평활성 페널티.
+$P_1, P_2$는 평활성 페널티다.
 
 #### RAFT-Stereo (2021)
 
-RAFT의 아키텍처를 stereo matching에 적용. 4D correlation volume을 3D (H×W×D)로 축소하고, 반복적 GRU로 시차를 정제한다.
+RAFT 구조를 stereo matching에 맞춘 것이다(Lipson et al., 3DV 2021). 같은 행의 픽셀끼리만 상관을 계산해 3D correlation volume을 만들고, GRU로 시차를 반복 갱신한다.
 
 #### UniMatch의 통합
 
-UniMatch는 flow, stereo, depth를 통합하여, 하나의 모델이 태스크에 따라 cross-attention의 방향과 범위를 조절한다:
+UniMatch는 같은 모델에서 과제에 따라 매칭 범위만 바꾼다.
 
 - **Stereo**: 수평 방향 1D correlation
 - **Flow**: 2D all-pairs correlation
-- **Depth**: 자세를 아는 두 시점 사이의 cross-view matching
+- **Depth**: 자세를 아는 두 시점 사이에서 깊이 후보를 따라 1D 매칭
 
-### 5.10.4 기술 흐름: Sparse Feature → Dense Correspondence
+### 5.10.4 Sparse Feature에서 Dense Correspondence까지
 
 ```
 [Sparse Correspondence]
@@ -1347,13 +1323,13 @@ FlowFormer (2022)    — cost volume 토큰화 + transformer
 UniMatch (2023)      — flow + stereo + depth 통합
 ```
 
-RAFT의 all-pairs correlation과 iterative refinement는 dense matching, **detector-free feature matching**(LoFTR, RoMa), **learned SLAM**(DROID-SLAM)에 영향을 미쳤다.
+DROID-SLAM(Teed & Deng, 2021)은 RAFT의 correlation volume과 반복 갱신 구조를 SLAM에 가져왔다.
 
 ---
 
 ## 기술 계보 요약
 
-아래 도식은 이 장에서 다룬 기술의 흐름을 잇는다:
+이 장의 방법을 한 도식에 모았다.
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1382,7 +1358,7 @@ Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB
     SuperGlue (2020) ──────────────→ LightGlue (2023)
       GNN + cross-attention           adaptive depth/width
       Sinkhorn optimal transport      dual-softmax (Sinkhorn 제거)
-      O(N²) × 9 layers               조기 종료, 3-5× 빠름
+      O(N²) × 9 layers               조기 종료, 2.5-4× 빠름
 
 ═══════════════════════ 검출기 없는 정합으로 전환 ═══════════════════════
 
@@ -1415,8 +1391,6 @@ Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB
       coarse-to-fine    iterative GRU     cost tokenization     +depth 통합
                             │
                             │ RAFT의 아이디어 전파
-                            ├──→ LoFTR (all-pairs attention)
-                            ├──→ RoMa (iterative refinement)
                             └──→ DROID-SLAM (correlation + DBA)
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1437,30 +1411,15 @@ Harris (1988) ─────→ SIFT (2004) ───→ FAST (2006) ─→ ORB
 
 ═══════════════════════════════════════════════════════════════════════════════
 
-[Cross-Modal — MI 기반 우회 전략]
+[Cross-Modal — 2D-3D 대응]
 
     MI (정보 이론) ──→ NMI ──→ NID (Koide et al. 2023)
       다중 모달리티      정규화     LiDAR-Camera calibration
       통계적 의존성
 
+    투영 기반: LiDAR 포인트 클라우드 렌더링 + SuperGlue (Koide et al. 2023 초기값 추정)
+    학습 기반: LCD (2020), P2-Net (2021)
+
 ═══════════════════════════════════════════════════════════════════════════════
-
-요약:
-  1. 전통적 3단계 파이프라인(detect → describe → match)을 딥러닝으로
-     각각 대체하는 흐름: SIFT → SuperPoint → SuperGlue → LightGlue
-
-  2. 파이프라인 자체를 해체하고 end-to-end 밀집 매칭으로 전환하는 흐름:
-     RAFT → LoFTR → RoMa
-
-  3. Foundation model 활용: DINOv2 특징을 매칭의 기반으로 고정하고
-     매칭 로직을 학습하는 흐름.
-
-  4. 3D-Aware 매칭의 등장(2024-2025): DUSt3R → MASt3R → VGGT는
-     "2D 매칭 후 3D 복원"의 순서를 뒤집어, 3D 구조를 직접 추론한 뒤
-     그 구조에서 대응점을 얻는다.
-
-  2, 3, 4는 고정된 검출기-기술자 파이프라인 밖으로 매칭을 확장한다.
-  1은 효율성과 해석 가능성이 중요한 조건에서 여전히 유용하다.
 ```
 
-Ch.6은 이 매칭 기술을 Visual Odometry의 frontend에 배치하고, Ch.4의 상태 추정 방법을 backend와 연결한다.

@@ -202,10 +202,9 @@ R3LIVE's shared state can continue receiving valid updates when one modality tem
 **Factor graph design**: LVI-SAM consists of two subsystems, a visual-inertial system (VIS) and a LiDAR-inertial system (LIS), and the factor graph is maintained by the LIS, which inherits it from LIO-SAM. The factors it holds are:
 - IMU preintegration factor (between successive keyframes)
 - LiDAR odometry factor (scan matching result)
-- GPS factor (when available)
 - Loop closure factor (upon revisit detection)
 
-Rather than inserting its own odometry into this graph as a factor, the VIS couples in by supplying the LIS with an initial guess and by taking LiDAR depth to fix its own scale.
+In the public implementation, rather than inserting its own odometry into this graph as a factor, the VIS couples in by supplying the LIS with an initial guess and by taking LiDAR depth to fix its own scale (the paper also adds visual-odometry constraints to the graph, but the public code disables that factor).
 
 ### 8.2.3 FAST-LIVO / FAST-LIVO2
 
@@ -300,12 +299,12 @@ We compare the designs of the three systems from a factor graph perspective:
 | Camera processing | Direct (photometric) | Feature-based (Shi-Tomasi + KLT) | Direct (photometric) |
 | Map representation | ikd-Tree + RGB | Voxel map | Hash+Octree voxel map |
 | Feature extraction | Not required | Required (LiDAR edge/planar, visual corners) | Not required |
-| GPS integration | None | Integrated as factor | None |
+| GPS integration | None | None (GPS-factor code inherited from LIO-SAM is disabled by default) | None |
 | Loop closure | None | Integrated as factor | None |
 | Embedded validation | Benchmark on target hardware | Benchmark on target hardware | ARM implementations reported; revalidate under the target setup |
 
 **Criteria for narrowing the candidates**:
-- Evaluate LVI-SAM when integrated loop closure and GPS factors are required. Also check the sensor configuration, ROS dependencies, and revisit performance on the target data.
+- Evaluate LVI-SAM when integrated loop closure is required. Also check the sensor configuration, ROS dependencies, and revisit performance on the target data.
 - Evaluate R3LIVE when direct photometric updates and colored mapping are required. Compare color, trajectory, and map-quality metrics in the target scenes.
 - Evaluate FAST-LIVO2 as an ARM deployment candidate, but measure throughput, worst-case latency, and memory at the target sensor resolution and configuration.
 - In environments with scarce visual or LOAM features, include direct methods such as R3LIVE and FAST-LIVO2 as candidates, then validate photometric calibration and sensitivity to dynamic objects.
@@ -603,10 +602,10 @@ A shared clock or trigger can make the latency path clearer than software receiv
 When hardware synchronization is not possible, the time offset is estimated in software:
 
 - **Kalibr approach**: Represent the continuous-time trajectory with a B-spline and include the inter-sensor time offset as an optimization variable, estimating everything jointly.
-- **Correlation-based**: Estimate the time delay from the cross-correlation between two signals in which the sensors observed the same motion. Using acceleration requires removing gravity from the IMU measurement and bringing both signals into the same frame, and with a monocular camera the scale of the velocity is undetermined. Practice therefore mostly compares gyro angular rate against the camera's rotation rate, which needs none of those three conditions.
+- **Correlation-based**: Estimate the time delay from the cross-correlation between two signals in which the sensors observed the same motion. Using acceleration requires removing gravity from the IMU measurement and bringing both signals into the same frame, and with a monocular camera the scale of the velocity is undetermined. Practice therefore mostly compares the magnitude (norm) of the gyro angular rate against that of the camera's rotation rate, which needs none of those three conditions. Comparing the angular-velocity vectors component by component would require rotating one of them by the camera-IMU extrinsic rotation, whereas the magnitude does not depend on the frame.
 
 $$
-\hat{\tau} = \arg\max_{\tau} \int \boldsymbol{\omega}_{\text{IMU}}(t) \cdot \boldsymbol{\omega}_{\text{camera}}(t + \tau) \, dt
+\hat{\tau} = \arg\max_{\tau} \int \left\| \boldsymbol{\omega}_{\text{IMU}}(t) \right\| \, \left\| \boldsymbol{\omega}_{\text{camera}}(t + \tau) \right\| \, dt
 $$
 
 ```python

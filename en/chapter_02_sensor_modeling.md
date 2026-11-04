@@ -96,7 +96,7 @@ Here $r_d$ is a dimensionless normalized radius. In a pure equidistant projectio
 
 Projected coordinates:
 
-$$\begin{bmatrix} u \\ v \end{bmatrix} = \begin{bmatrix} f_x \cdot r_d \cdot \frac{x_n}{\sqrt{x_n^2 + y_n^2}} + c_x \\ f_y \cdot r_d \cdot \frac{y_n}{\sqrt{x_n^2 + y_n^2}} + c_y \end{bmatrix}$$
+$$\begin{bmatrix} u \\ v \end{bmatrix} = \begin{bmatrix} f_x \cdot r_d \cdot \frac{X_c}{\sqrt{X_c^2 + Y_c^2}} + c_x \\ f_y \cdot r_d \cdot \frac{Y_c}{\sqrt{X_c^2 + Y_c^2}} + c_y \end{bmatrix}$$
 
 Fisheye lenses offer a wide FoV that benefits perception of the surrounding environment, and they are supported by VIO systems such as [VINS-Mono](https://arxiv.org/abs/1708.03852) and Basalt. For calibration, OCamCalib of [Scaramuzza et al. (2006)](https://rpg.ifi.uzh.ch/docs/IROS06_scaramuzza.pdf) or Kalibr can be used.
 
@@ -303,7 +303,7 @@ This problem is essentially the same as rolling shutter for cameras. If the $i$-
 
 $$\mathbf{P}_L^{(t_0)} = \mathbf{T}(t_0)^{-1} \cdot \mathbf{T}(t_i) \cdot \mathbf{P}_L^{(t_i)}$$
 
-where $\mathbf{T}(t_i)$ is the LiDAR pose at time $t_i$.
+where $\mathbf{T}(t_i)$ is the LiDAR pose (LiDAR-to-world transform) at time $t_i$.
 
 **Correction methods:**
 
@@ -341,7 +341,7 @@ def undistort_scan(points, timestamps, T_start, T_end, t_start, t_end):
         alpha = np.clip(alpha, 0, 1)
         
         # Pose interpolation at that time
-        R_i = slerp(timestamps[i]).as_matrix()
+        R_i = slerp(np.clip(timestamps[i], t_start, t_end)).as_matrix()
         t_i = (1 - alpha) * T_start[:3, 3] + alpha * T_end[:3, 3]
         
         # Frame at that time -> frame at start time
@@ -367,7 +367,7 @@ The table below compares spinning LiDAR with limited-FoV non-repetitive scanning
 | Feature extraction | Scan-line-based feasible | No scan-line structure |
 | Suitable algorithms | LOAM, LeGO-LOAM | FAST-LIO/LIO2 (point-wise processing) |
 
-FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829) suit non-repetitive scanning LiDAR, which has no scan lines, because their iterated EKF structure does not depend on scan lines and instead **processes individual points sequentially**. In contrast, LOAM's edge/planar feature extraction presupposes scan-line structure and is hard to apply directly to non-repetitive scanning. More recently, [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035) extends this structure to sequentially fuse three sensors — LiDAR, inertial, and visual — within the same iterated EKF, using a direct method to process both LiDAR points and images without separate feature extraction.
+FAST-LIO / [FAST-LIO2](https://arxiv.org/abs/2107.06829) suit non-repetitive scanning LiDAR, which has no scan lines: they feed the point-wise residuals of a whole scan into an iterated EKF update, and FAST-LIO2 in particular **registers raw points directly to the map** without feature extraction, so it does not depend on scan lines. Updating the state point by point in sequence is the approach of Point-LIO in Ch.7. In contrast, LOAM's edge/planar feature extraction presupposes scan-line structure and is hard to apply directly to non-repetitive scanning. More recently, [FAST-LIVO2 (Zheng et al., 2024)](https://arxiv.org/abs/2408.14035) extends this structure to sequentially fuse three sensors — LiDAR, inertial, and visual — within the same iterated EKF, using a direct method to process both LiDAR points and images without separate feature extraction.
 
 ---
 
@@ -411,7 +411,7 @@ Meaning of each term:
 - $\mathbf{g}_w = [0, 0, -g]^\top$: gravity vector ($g \approx 9.81\,\text{m/s}^2$)
 - $\mathbf{R}_{bw}$: world-to-body rotation matrix
 - $\mathbf{b}_a$: accelerometer bias
-- $\mathbf{n}_a \sim \mathcal{N}(\mathbf{0}, \sigma_a^2 \mathbf{I})$: measurement noise
+- $\mathbf{n}_a \sim \mathcal{N}(\mathbf{0}, \sigma_a^2 \mathbf{I})$: measurement noise. Because $\sigma_a$ is a continuous-time noise density ($\text{m/s}^2/\sqrt{\text{Hz}}$), the discrete noise sampled at interval $\Delta t$ has standard deviation $\sigma_a/\sqrt{\Delta t}$ (the bias random walk is instead multiplied by $\sqrt{\Delta t}$).
 
 **Role of gravity.** The fact that the accelerometer "feels" gravity is of great importance in IMU-based fusion. Even at rest, the accelerometer measures $[0, 0, g]^\top$ (when z is up). From this gravity observation we can estimate roll and pitch. Yaw, however, is a rotation about the gravity vector and is therefore unobservable from gravity. VIO/LIO sets an arbitrary initial yaw and estimates relative rotations. Global yaw requires observations tied to an external heading reference, such as a magnetometer or a known map.
 
@@ -447,7 +447,7 @@ On a log-log plot, the slope of the Allan deviation $\sigma(\tau)$ identifies th
 
 1. **Angular random walk (ARW)**: units $°/\sqrt{\text{hr}}$ or $\text{rad/s}/\sqrt{\text{Hz}}$. Read the value at $\tau = 1\,\text{s}$ on the Allan deviation plot, or read from the slope-$-1/2$ region. This corresponds to $\sigma_g$.
 2. **Velocity random walk (VRW)**: units $\text{m/s}/\sqrt{\text{hr}}$ or $\text{m/s}^2/\sqrt{\text{Hz}}$. The white-noise density of the accelerometer. This corresponds to $\sigma_a$.
-3. **In-run bias stability**: the minimum of the Allan deviation plot. It characterizes the stability of time-averaged stationary sensor output, rather than a theoretical lower bound on the bias-estimation error of a fusion system.
+3. **In-run bias stability**: the minimum of the Allan deviation plot (a common datasheet convention). The IEEE Std 952 bias-instability coefficient $B$ satisfies $\sigma(\tau) \approx 0.664B$ in the flat region, so it equals the minimum divided by 0.664; the `bias_instability` returned by the Allan code in Ch.3 is this $B$. It characterizes the stability of time-averaged stationary sensor output, rather than a theoretical lower bound on the bias-estimation error of a fusion system.
 4. **Rate random walk**: the rate at which the bias changes over time. This corresponds to $\sigma_{bg}, \sigma_{ba}$.
 
 ```python
@@ -459,7 +459,7 @@ def compute_allan_variance(data, dt, max_cluster_size=None):
     Args:
         data: (N,) data for one IMU axis collected at rest
         dt: sampling period (seconds)
-        max_cluster_size: maximum cluster size (defaults to N//2 when None)
+        max_cluster_size: maximum cluster size (defaults to N//10 when None: at least 10 clusters even at the longest tau)
     
     Returns:
         taus: array of cluster times
@@ -467,7 +467,7 @@ def compute_allan_variance(data, dt, max_cluster_size=None):
     """
     N = len(data)
     if max_cluster_size is None:
-        max_cluster_size = N // 2
+        max_cluster_size = N // 10  # with only 2-3 clusters at long tau, the estimate is so noisy that the minimum is underestimated
     
     # Cluster sizes generated on a log scale
     cluster_sizes = np.unique(np.logspace(
@@ -533,7 +533,7 @@ def extract_imu_params(taus, adevs):
 
 The equations that integrate IMU measurements into a navigation state (position, velocity, attitude) are called the strapdown navigation equations. "Strapdown" refers to the sensor being rigidly fixed (strapped down) to the platform, so that coordinate transformations are carried out in software rather than by a mechanical gimbal.
 
-Continuous-time dynamics of the state $[\mathbf{R}, \mathbf{v}, \mathbf{p}]$ in the world (or navigation) frame:
+Under the usual VIO/LIO assumption that neglects Earth rotation and treats the world frame as inertial, the continuous-time dynamics of the world-frame state $[\mathbf{R}, \mathbf{v}, \mathbf{p}]$ are as follows. In an Earth-fixed navigation frame (NED/ENU), the attitude and velocity equations gain additional Earth-rate and transport-rate terms.
 
 $$\dot{\mathbf{R}} = \mathbf{R} \cdot [\tilde{\boldsymbol{\omega}} - \mathbf{b}_g - \mathbf{n}_g]_\times$$
 
@@ -660,7 +660,7 @@ def imu_strapdown(gyro_data, accel_data, dt, R0, v0, p0, bg, ba, gravity):
 - After 10 s: $\frac{1}{2} \times 0.01 \times 100 = 0.5\,\text{m}$
 - After 60 s: $\frac{1}{2} \times 0.01 \times 3600 = 18\,\text{m}$
 
-This example shows that position error in an unaided, low-cost MEMS inertial estimate can quickly exceed a mission budget even over a short interval. The useful duration depends on IMU performance, thermal environment, motion, initialization, and the mission's error budget. Higher-performance INS units can operate unaided for longer, but drift still accumulates. VIO/LIO systems **include** the biases $\mathbf{b}_g, \mathbf{b}_a$ **in the state vector** and update them from observations by other sensors. Research on deep-learning-based inertial odometry has also been active. [AirIO (Chen et al., 2025)](https://arxiv.org/abs/2501.15659) strengthens the observability of IMU features and reports an accuracy improvement of more than 50% over prior learning-based inertial odometry in drone settings.
+This example shows that position error in an unaided, low-cost MEMS inertial estimate can quickly exceed a mission budget even over a short interval. The useful duration depends on IMU performance, thermal environment, motion, initialization, and the mission's error budget. Higher-performance INS units can operate unaided for longer, but drift still accumulates. VIO/LIO systems **include** the biases $\mathbf{b}_g, \mathbf{b}_a$ **in the state vector** and update them from observations by other sensors. Research on deep-learning-based inertial odometry has also been active. [AirIO (Qiu et al., 2025)](https://arxiv.org/abs/2501.15659) strengthens the observability of IMU features and reports an accuracy improvement of more than 50% over prior learning-based inertial odometry in drone settings.
 
 ### 2.3.5 IMU Grade Classification
 
@@ -731,7 +731,7 @@ PPP is a technique that achieves centimeter-level positioning with a single rece
 
 | Property | RTK | PPP |
 |------|-----|-----|
-| Base station required | Yes (within a few km) | No |
+| Base station required | Yes (typically within 10–20 km of a single base) | No |
 | Convergence time | seconds to tens of seconds | tens of minutes (traditional), minutes (PPP-AR) |
 | Precision (after convergence) | $\sim 2\,\text{cm}$ | $\sim 5\,\text{cm}$ |
 | Coverage | Near the base station | Global |
@@ -807,7 +807,7 @@ def geodetic_to_enu(lat, lon, alt, lat0, lon0, alt0):
 
 ## 2.5 Radar Model
 
-Radar is an active sensor that uses radio waves. It operates reliably in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade, and measures relative **velocity directly** via the Doppler effect.
+Radar is an active sensor that uses radio waves. It operates reliably in **adverse weather (rain, fog, snow, dust)** where cameras and LiDAR degrade, and, unlike cameras and time-of-flight LiDAR, measures relative **velocity directly** via the Doppler effect.
 
 ### 2.5.1 FMCW Radar Principles
 
@@ -855,7 +855,7 @@ Traditional automotive radar provides three-dimensional information — range, v
 |------|-----------------|-------|
 | Adverse-weather operation | Excellent | Weak |
 | Point density | Medium (thousands of points/frame) | High (hundreds of thousands of points/frame) |
-| Velocity measurement | Direct (Doppler) | Not available (requires two-frame differencing) |
+| Velocity measurement | Direct (Doppler) | Not available (requires two-frame differencing; FMCW LiDAR is the exception) |
 | Angular resolution | $\sim 1°$ | $\sim 0.1°$ |
 | Cost | Low to medium | Medium to high |
 | Static-object detection | Possible (depends on detection and clutter-removal settings) | Excellent |
@@ -952,7 +952,7 @@ where:
 - $P_0 = 101325\,\text{Pa}$: standard sea-level pressure
 - $T_0 = 288.15\,\text{K}$: standard sea-level temperature
 - $L = 0.0065\,\text{K/m}$: lapse rate
-- $R = 287.053\,\text{J/(kg·K)}$: specific gas constant for air
+- $R = 287.053\,\text{J/(kg}\cdot\text{K)}$: specific gas constant for air
 - $g_0 = 9.80665\,\text{m/s}^2$: standard gravitational acceleration
 
 Simplified approximation (low altitude):
@@ -983,9 +983,9 @@ where:
 
 **Yaw extraction.** If roll and pitch are known (from the accelerometer), the yaw angle can be computed from the magnetometer reading:
 
-$$\psi = \arctan2(m_y \cos\phi - m_z \sin\phi, \, m_x \cos\theta + m_y \sin\theta \sin\phi + m_z \sin\theta \cos\phi)$$
+$$\psi = \arctan2(m_z \sin\phi - m_y \cos\phi, \, m_x \cos\theta + m_y \sin\theta \sin\phi + m_z \sin\theta \cos\phi)$$
 
-where $\phi$ is roll, $\theta$ is pitch, and $m_x, m_y, m_z$ are the hard-iron-corrected magnetometer readings.
+where $\phi$ is roll, $\theta$ is pitch, and $m_x, m_y, m_z$ are the hard-iron-corrected magnetometer readings. The formula assumes an NED world frame, a body frame with x forward, y right, and z down, and Z-Y-X Euler angles; $\psi$ is measured clockwise from magnetic north.
 
 **Limitations and cautions:**
 - Magnetic distortion is very large indoors, inside vehicles, and near buildings. Near reinforced-concrete buildings, heading errors of tens of degrees can occur.
@@ -1013,7 +1013,7 @@ where:
 
 $$d_i = \|\mathbf{p} - \mathbf{a}_i\| + n_{d,i}, \quad i = 1, \ldots, N_a$$
 
-where $\mathbf{p}$ is the unknown tag position and $\mathbf{a}_i$ is the known position of the $i$-th anchor. Three or more anchors suffice to estimate a 2D position, and four or more for 3D.
+where $\mathbf{p}$ is the unknown tag position and $\mathbf{a}_i$ is the known position of the $i$-th anchor. Three or more anchors suffice to estimate a 2D position, and four or more non-coplanar anchors for 3D (if all anchors are at the same height, the linearization below cannot observe $z$).
 
 ```python
 import numpy as np
@@ -1061,12 +1061,12 @@ The table summarizes each sensor's observation model and main characteristics.
 | Camera | 2D image coordinates | $\pi(\mathbf{T} \cdot \mathbf{P})$ (pinhole + distortion) | Detection noise, distortion residual | Target detector and reprojection residuals on held-out images |
 | LiDAR | 3D point $(r, \alpha, \omega)$ | Range-bearing | Range noise, beam divergence, mixed pixel | Device datasheet + residual tests by range, surface, and incidence angle |
 | IMU (gyro) | Angular velocity $\boldsymbol{\omega}$ | $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$ | Bias, random walk | Device datasheet + Allan, temperature, and vibration tests |
-| IMU (accel) | Specific force $\mathbf{a}$ | $\tilde{\mathbf{a}} = \mathbf{R}(\mathbf{a}-\mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$ | Bias, random walk | Device datasheet + Allan, temperature, and vibration tests |
+| IMU (accel) | Specific force $\mathbf{a}$ | $\tilde{\mathbf{a}} = \mathbf{R}_{bw}(\mathbf{a}_w-\mathbf{g}_w) + \mathbf{b}_a + \mathbf{n}_a$ | Bias, random walk | Device datasheet + Allan, temperature, and vibration tests |
 | GNSS | Pseudorange $\rho$ | $\rho = r + c\delta t_r + I + T + \epsilon$ | Multipath, ionosphere, troposphere | Target-environment logs by receiver and correction status |
 | Radar | Range, Doppler, bearing | FMCW beat frequency | Clutter, multipath | Device range/velocity/angular resolution + tests by target, RCS, and weather |
 | Wheel odom. | Rotation count | $\Delta s = r \Delta\theta$ | Slip | Repeated trajectories by surface, load, and slip condition |
 | Barometer | Pressure $P$ | $h = f(P)$ | Weather change | Repeated static, temperature, and weather-condition measurements |
-| Magnetometer | Magnetic field $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | Hard/soft iron | Calibration residual + magnetic-interference test at the operating site |
+| Magnetometer | Magnetic field $\mathbf{m}$ | $\tilde{\mathbf{m}} = \mathbf{R}_{bw}\mathbf{m}_w + \mathbf{b} + \mathbf{n}$ | Hard/soft iron | Calibration residual + magnetic-interference test at the operating site |
 | UWB | Range $d$ | $d = \|\mathbf{p} - \mathbf{a}\| + n$ | NLOS | Per-anchor LOS/NLOS range residuals |
 
 Even with accurate observation models, fusion performance breaks down when the relative sensor positions or time synchronization are wrong. Using sensors together requires **calibration**, which determines their geometric and temporal relationships.

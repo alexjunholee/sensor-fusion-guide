@@ -1,8 +1,6 @@
 # Ch.12 — 실전 시스템 & 벤치마크
 
-센서 모델링, 상태 추정, odometry, place recognition, 공간 표현은 실제 플랫폼에서 하나의 시스템으로 조합된다.
-
-자율주행, 드론, 핸드헬드 매핑은 센서 퓨전이 핵심으로 쓰이는 대표 플랫폼들이다. 각 환경에 맞추어 구성된 시스템은 표준 벤치마크와 전용 진단 도구로 정량 평가한다.
+센서 모델링, 상태 추정, odometry, place recognition, 공간 표현은 실제 플랫폼에서 한 시스템으로 묶인다. 센서 퓨전을 많이 쓰는 자율주행차, 드론, 핸드헬드 매핑 장비가 그런 플랫폼이고, 이런 시스템의 성능은 표준 벤치마크와 평가 도구로 잰다.
 
 ---
 
@@ -10,15 +8,15 @@
 
 ### 12.1.1 자율주행 (Autonomous Driving)
 
-자율주행의 안전 아키텍처는 단일 센서 결함을 감지하고 위험 전파를 차단하도록 설계해야 한다. 운행을 유지할지 최소 위험 상태로 천이할지는 운행 설계 영역(ODD)과 안전 사례에 의해 결정된다. 다양한 센서 모달리티는 이 과정에서 결함 포용적 중복성과 상호 검증 장치를 제공한다.
+자율주행차는 센서 하나가 고장 나도 그 고장을 알아채고, 잘못된 값이 뒤 단계로 퍼지지 않게 막아야 한다. 고장이 났을 때 계속 달릴지, 최소 위험 상태(minimal risk condition)로 넘어가 멈출지는 운행 설계 영역(ODD, Operational Design Domain)과 안전 논증(safety case)에 따라 정한다. 종류가 다른 센서를 함께 달면 한 센서가 고장 나도 다른 센서가 그 역할을 이어받고, 센서끼리 값을 맞춰 보며 서로 검증할 수 있다.
 
 #### Sensor Suite 구성 사례
 
 **Waymo** (5th generation):
-- 1 × 장거리 LiDAR (360°, 최대 300m)
-- 4 × 단거리 LiDAR (근거리 사각지대 커버)
-- 29 × 카메라 (360° 커버, 다양한 화각)
-- 6 × radar (장거리 속도 측정)
+- 1 × 장거리 LiDAR (360°, 300m 넘는 거리까지)
+- 4 × 단거리 perimeter LiDAR (차체 네 곳, 가까운 사각지대)
+- 29 × 카메라 (360°, 화각이 겹치게 배치)
+- radar (속도 측정. Waymo 발표문은 개수를 밝히지 않음)
 - IMU, GNSS, wheel encoder
 
 **[nuScenes](https://arxiv.org/abs/1903.11027) 수집 차량**:
@@ -28,12 +26,12 @@
 - IMU, GNSS
 
 **Camera-centric production example**:
-- 다중 surround camera와 neural perception을 중심으로 구성할 수 있다.
-- 실제 장착 sensor와 radar 사용 여부는 차량 세대·시장·시점에 따라 바뀌므로 특정 회사 전체를 고정된 "vision-only" 구성으로 일반화하지 않는다.
+- 여러 대의 surround camera와 신경망 인식을 중심에 둔다.
+- 어떤 센서를 달고 radar를 쓰는지는 차량 세대, 판매 시장, 시기마다 다르다. 특정 회사 구성을 적을 때는 세대와 시점을 함께 밝힌다.
 
 ### 12.1.2 Production-Level Fusion Pipeline
 
-프로덕션 자율주행 시스템의 센서 퓨전 파이프라인은 대체로 다음 요소로 구성된다. 아래 화살표는 처리 단계의 개념적 순서이며 모듈 사이의 유일한 의존 관계가 아니다. 특히 위치 추정은 추적·예측의 하류가 아니라 GNSS·IMU·LiDAR·wheel 관측으로 병행 수행되고 그 결과가 인식·예측·계획에 함께 쓰인다.
+양산 자율주행 시스템의 센서 퓨전 파이프라인은 대체로 아래와 같다. 화살표는 처리 순서를 대략 보여 줄 뿐이고, 실제 모듈은 이보다 더 얽혀 있다. 예를 들어 위치 추정은 GNSS·IMU·LiDAR·wheel 관측으로 인식과 동시에 돌아가고, 그 결과를 인식·예측·계획이 모두 가져다 쓴다.
 
 ```
 센서 동기화 (HW trigger + PTP)
@@ -56,11 +54,9 @@
 [Planning & Control]
 ```
 
-Late Fusion과 Deep Fusion은 서로 다른 설계 철학을 대표한다.
+**Late fusion**은 센서마다 따로 3D bounding box를 검출한 뒤 NMS(Non-Maximum Suppression, 겹치는 박스 중 점수가 가장 높은 것만 남기는 방법) 같은 방법으로 합친다. 모듈을 나누기 쉽고 디버깅도 쉽다. 그러나 각 센서가 이미 판단을 끝낸 결과만 합치므로, 한 센서의 약점을 다른 센서의 원시 정보로 메우기 어렵다.
 
-**Late fusion** 방식은 각 센서에서 독립적으로 3D bounding box를 검출하고 NMS(Non-Maximum Suppression)로 결합한다. 모듈화와 디버깅이 쉬운 반면, 센서 간 상보성을 충분히 활용하기 어렵다.
-
-**Deep fusion** 방식은 센서의 feature 단계에서 학습으로 결합한다. 결합 위치는 방법마다 다르다. [BEVFusion](https://arxiv.org/abs/2205.13542) (MIT)은 카메라와 LiDAR 특징을 공유 BEV 표현으로 변환해 그 공간에서 합치고, TransFusion은 LiDAR BEV 특징에서 출발한 object query가 이미지 특징에 cross-attention하는 transformer decoder 구조다. 어느 쪽이든 센서 간 상보적 정보를 네트워크가 학습으로 활용한다. 단, end-to-end 학습에 대규모 레이블 데이터가 필요하다는 부담이 있다.
+**Deep fusion**은 센서의 feature를 네트워크 안에서 합치고, 합치는 방법을 학습한다. 어디서 합치는지는 방법마다 다르다. MIT의 [BEVFusion](https://arxiv.org/abs/2205.13542)은 카메라와 LiDAR feature를 같은 BEV(bird's-eye view, 위에서 내려다본 평면) 격자로 옮겨 그 위에서 합친다. TransFusion은 LiDAR BEV feature로 만든 object query가 transformer decoder에서 이미지 feature에 cross-attention을 건다. 이렇게 하면 한 센서의 약점을 다른 센서의 정보로 메우는 방법을 네트워크가 스스로 배운다. 대신 end-to-end로 학습하려면 레이블을 붙인 데이터가 많이 필요하다.
 
 ```python
 # BEV Fusion 개념도 (pseudo-code)
@@ -104,46 +100,42 @@ def bev_fusion_pipeline(lidar_points, camera_images, calibrations):
 
 ### 12.1.3 Localization Stack
 
-자율주행 localization은 일반적으로 두 단계로 구성된다:
+자율주행 localization은 보통 두 단계로 나뉜다.
 
-1. **Global localization**: GNSS (RTK 또는 PPP)로 초기 위치를 맵 위에 배치한다. 도심에서는 multipath 문제로 수 미터 오차가 발생할 수 있으므로, 이것만으로는 부족하다.
+1. **Global localization**: GNSS(RTK나 PPP)로 차량이 지도 위 어디쯤 있는지 처음 위치를 잡는다. 도심에서는 위성 신호가 건물에 반사되는 multipath 때문에 오차가 몇 미터까지 커질 수 있어, 이것만으로는 모자란다.
 
-2. **Map-relative localization**: 현재 LiDAR scan을 HD point-cloud map에 NDT/ICP로 정합한다. 충분한 map 정확도·중첩·기하·초기값 아래에서 GNSS가 약한 구간의 위치를 제약할 수 있지만, cm-level 오차는 map과 평가 조건으로 검증해야 한다.
+2. **Map-relative localization**: 지금 들어온 LiDAR scan을 미리 만든 HD point-cloud map에 NDT나 ICP로 맞춘다. 지도가 정확하고, scan과 지도가 충분히 겹치고, 주변 형상이 특징적이고, 초기값이 가까우면 GNSS가 약한 구간에서도 위치를 잡아 준다. cm 단위 정확도가 나오는지는 그 지도와 평가 조건에서 직접 확인해야 한다.
 
-Factor graph 기반 통합:
+이 관측들을 factor graph 하나로 묶으면 다음과 같다.
 $$\mathbf{x}^* = \arg\min \underbrace{f_{\text{IMU}}}_{\text{예측}} + \underbrace{f_{\text{LiDAR}}}_{\text{맵 정합}} + \underbrace{f_{\text{GNSS}}}_{\text{전역 앵커}} + \underbrace{f_{\text{wheel}}}_{\text{속도}}$$
 
 ---
 
 ## 12.2 드론/UAV
 
-드론 환경의 센서 퓨전은 자율주행과는 상당히 다른 제약 아래에서 동작한다.
-
 ### 12.2.1 Visual-Inertial 중심 시스템
 
-카메라 + IMU는 드론에서 흔히 쓰이는 센서 조합이다. 소형 드론은 무게와 전력 제약 때문에 LiDAR를 탑재하기 어렵고, 카메라와 IMU는 두 제약을 모두 만족한다(Livox Mid-360 같은 소형 solid-state LiDAR가 등장하면서 선택지는 달라지고 있다). 별도의 과제는 진동이다. 드론의 프로펠러 진동이 IMU 데이터에 노이즈를 추가하므로, 방진 마운트와 소프트웨어 필터링이 함께 필요하다.
+드론에는 카메라와 IMU를 함께 다는 경우가 많다. 소형 드론은 싣는 무게와 쓰는 전력이 빠듯해서 LiDAR를 달기 어렵고, 카메라와 IMU는 가볍고 전력도 적게 먹는다. Livox Mid-360처럼 작은 LiDAR를 다는 드론도 있다. 드론에서는 진동도 문제다. 프로펠러 진동이 IMU 측정에 그대로 실리므로 방진 마운트를 달고 소프트웨어 필터도 함께 쓴다.
 
-드론의 고속 제어 루프를 지탱하기 위해 주로 활용되는 오픈소스 VIO 파이프라인들이 있다.
-- **VINS-Mono/Fusion**: tightly-coupled optimization 기반. PX4와 통합 가능.
-- **MSCKF/OpenVINS**: filter 기반. 연산량이 적어 embedded 보드에 적합.
-- **Basalt**: visual-inertial mapping with non-linear factor recovery.
+드론에 쓰는 오픈소스 VIO의 예는 다음과 같다.
+- **VINS-Mono/Fusion**: tightly-coupled 최적화 방식. PX4와 연동해 쓸 수 있다.
+- **MSCKF/OpenVINS**: 필터 방식. 연산량이 적어 임베디드 보드에 맞다.
+- **Basalt**: 논문 제목은 "Visual-Inertial Mapping with Non-Linear Factor Recovery"(Usenko et al., RA-L 2020)이다. VIO에서 얻은 정보를 비선형 factor로 요약해 전역 지도 최적화에 다시 쓴다.
 
 ### 12.2.2 GPS-Denied Navigation
 
-GPS 신호가 없는 환경 — 실내, 터널, 숲 캐노피 아래, 전자전 환경 — 에서의 자율 비행은 드론이 풀어야 할 과제다.
+실내, 터널, 우거진 숲 아래, 전파 교란을 받는 곳에서는 GPS 신호를 쓸 수 없다. 이런 곳에서 드론을 자율 비행시키는 방법은 미리 깔아 둔 지도나 장비가 있는지에 따라 달라진다.
 
-접근 방식은 사전 인프라 여부에 따라 갈린다.
-
-1. **VIO 단독**: 드리프트가 누적되므로 허용되는 임무(mission) 길이는 운동 양상(motion), 텍스처(texture), 캘리브레이션(calibration), 루프 클로저(loop closure)와 오차 예산으로 정한다.
-2. **VIO + 지형 매칭**: 사전 구축된 지형·건물 맵과 현재 카메라 관측을 매칭해 드리프트를 억제한다. 사전 지도(prior map)가 필요하다.
-3. **VIO + UWB**: 환경에 UWB 앵커를 설치하고 거리 측정(ranging)으로 드리프트를 보정한다. 인프라 사전 구축이 전제다.
-4. **VIO + 기압계(barometer)**: 기압(pressure) 변화로 상대 고도(altitude) 추정을 보조한다. 기상·온도·프로펠러 후류(prop wash)에 따른 바이어스(bias)가 있어 절대 z축 드리프트를 단독으로 제거하지는 못한다.
+1. **VIO 단독**: 드리프트가 쌓이므로 얼마나 오래 날 수 있는지는 움직임, 주변 텍스처, 캘리브레이션 품질, loop closure 유무, 허용 오차에 따라 달라진다.
+2. **VIO + 지형 매칭**: 지금 카메라에 보이는 장면을 미리 만든 지형·건물 지도(prior map)와 맞춰 드리프트를 누른다.
+3. **VIO + UWB**: 비행 구역에 UWB 앵커를 미리 설치하고, 앵커까지 잰 거리로 드리프트를 바로잡는다.
+4. **VIO + 기압계**: 기압 변화로 상대 고도를 잰다. 날씨, 온도, 프로펠러 바람(prop wash) 때문에 바이어스가 생기므로 고도 드리프트를 확실히 줄이려면 다른 고도 기준과 함께 쓴다.
 
 ### 12.2.3 실시간 제약
 
-드론의 센서 주기와 허용 지연은 최대 각가속도, 제어 대역폭, 카메라 노출, 통신 오버헤드를 종합 고려해 산정한다. IMU는 에일리어싱과 적분 드리프트를 억제할 수 있는 고주파 샘플링 주기를 확보해야 한다. 카메라 셔터 노출 시간은 모션 블러와 저조도 노이즈의 절충점에서 결정된다. 상태 추정치의 종단간(end-to-end) 허용 지연 역시 임의의 고정 수치가 아니라 폐루프 제어 안정성 해석과 비행 시험을 통해 규정해야 한다.
+센서를 몇 Hz로 읽고 지연을 얼마까지 허용할지는 기체의 최대 각가속도, 제어 대역폭, 카메라 노출 시간, 통신 지연을 함께 보고 정한다. IMU는 에일리어싱이 생기지 않고 적분 오차가 덜 쌓이도록 충분히 빠르게 샘플링해야 한다. 카메라 노출 시간은 길면 모션 블러가 생기고 짧으면 어두운 곳에서 노이즈가 늘어서, 그 사이에서 고른다. 센서 입력에서 상태 추정값이 나오기까지의 지연을 얼마나 허용할지도 폐루프 제어 안정성을 분석하고 비행 시험을 해 보며 정한다.
 
-**Point-LIO**는 포인트 단위로 처리하여 스캔 완료를 기다리지 않으므로 지연을 줄인 LIO다. 드론의 고속 기동에도 적용할 수 있다.
+**Point-LIO**(He et al., Advanced Intelligent Systems 2023)는 스캔 한 장이 다 모이기를 기다리지 않고 점이 들어올 때마다 상태를 갱신하는 LIO다. 이렇게 하면 스캔 안의 모션 왜곡이 생기지 않는다. 논문 실험에서는 odometry를 4~8 kHz로 냈고, IMU 측정 범위를 넘는 75 rad/s 회전에서도 추정이 버텼다. 논문은 레이싱 드론에 적용한 예도 실었다.
 
 ```python
 class DroneVIOConfig:
@@ -200,17 +192,17 @@ def check_image_quality(image, angular_velocity, exposure_time):
 
 ## 12.3 핸드헬드/백팩 매핑
 
-핸드헬드 또는 백팩에 장착된 센서로 환경을 매핑하는 것은 측량(surveying), BIM(Building Information Modeling), 디지털 트윈 구축 등에 널리 사용된다.
+손에 들거나 등에 메는 센서로 주변을 매핑하는 방법은 측량, BIM(Building Information Modeling, 건물 정보 모델), 디지털 트윈 제작에 쓰인다.
 
 ### 12.3.1 SLAM as a Service
 
 상용 핸드헬드 매핑 장비의 예:
 
-- **Leica BLK2GO**: 핸드헬드 LiDAR 스캐너. LiDAR + IMU + 카메라 융합으로 실시간 SLAM 수행. 정확도는 제조사가 명시한 조건(스캔 길이, 폐합 여부, 검증 방식)에서 읽고, 발주 규격은 아래 12.3.2의 기준으로 따로 확인한다.
-- **NavVis VLX**: 백팩 장착. 4개의 카메라 + LiDAR. 실내 매핑에 특화.
-- **GeoSLAM ZEB**: 핸드헬드 모바일 매핑. 초기 세대는 2D LiDAR를 스프링에 매달아 보행 중 수동으로 진동시키는 구조였고, ZEB-REVO 이후 세대는 모터로 회전하는 헤드를 쓴다. 세대에 따라 스캔 기구가 다르다.
+- **Leica BLK2GO**: 손에 드는 LiDAR 스캐너. LiDAR, IMU, 카메라를 합쳐 실시간으로 SLAM을 돌린다. 제조사가 밝힌 정확도는 스캔 길이, 루프를 닫았는지, 어떻게 검증했는지 같은 조건에서 나온 값이다. 실제 발주 규격은 §12.3.2의 기준으로 따로 확인한다.
+- **NavVis VLX**: 몸 앞과 머리 위에 센서가 오도록 걸치는 웨어러블 장비. VLX 3 데이터시트 기준으로 32채널 LiDAR 2대와 카메라 4대를 단다. 실내와 실외에서 모두 쓴다.
+- **GeoSLAM ZEB**: 손에 드는 모바일 매핑 장비. 초기 모델(ZEB1)은 2D LiDAR를 스프링에 달아 걸을 때 흔들리게 해서 3D를 훑었다. ZEB-REVO부터는 모터로 헤드를 돌린다.
 
-이런 장비가 수행하는 작업의 개념 흐름은 다음과 같다. 세 제품은 내부 알고리즘을 공개하지 않으므로 아래 이름들은 같은 자리를 채우는 공개 방법의 예시이며 실제 채택을 뜻하지 않는다.
+세 제품 모두 내부 알고리즘을 공개하지 않았다. 아래 흐름은 이런 장비가 하는 일을 단계별로 나눈 것이고, 단계마다 적은 방법은 공개된 방법 가운데 고른 예다.
 
 ```
 LiDAR + IMU → LIO (FAST-LIO2 또는 유사)
@@ -226,26 +218,24 @@ Post-processing (클라우드 정리, mesh 생성)
 
 ### 12.3.2 Survey-Grade Mapping
 
-측량용 매핑은 발주 규격과 검증 절차를 먼저 정한다.
+측량용 매핑에서는 발주 규격과 검증 절차부터 정한다.
 
-- **절대 정확도**: 요구 수평·수직 오차와 신뢰수준을 정하고, 독립 check point로 검증한다. GNSS·total station·GCP는 현장 조건에 맞춰 사용한다.
-- **상대 정확도**: 맵 내부의 일관성. Loop closure와 global optimization이 이 일관성을 맞춘다.
-- **포인트 밀도**: 대상 크기와 deliverable에 필요한 point spacing·완전성을 정한다. 1cm 같은 값은 현장 규격일 수 있지만 보편적 기준은 아니다.
-- **색상 품질**: 정확한 HDR 색상 매핑. 카메라-LiDAR 시간 동기화와 extrinsic 캘리브레이션이 정밀해야 한다.
+- **절대 정확도**: 수평·수직 오차 한계와 신뢰수준을 정하고, 계산에 쓰지 않은 별도 check point로 검증한다. 기준점은 현장에 맞춰 GNSS, total station, GCP(지상 기준점) 가운데서 고른다.
+- **상대 정확도**: 지도 안의 점들이 서로 얼마나 잘 맞는지 본다. Loop closure와 전역 최적화가 이를 맞춘다.
+- **포인트 밀도**: 대상 크기와 납품물에 필요한 점 간격과 빠짐없는 정도를 정한다. 1 cm 같은 값을 요구하는 현장도 있지만 어디서나 통하는 기준은 아니다.
+- **색상 품질**: 점에 HDR 색을 정확히 입히려면 카메라와 LiDAR의 시간 동기화와 extrinsic 캘리브레이션이 정밀해야 한다.
 
-실제 센서 퓨전에서는 다음 문제를 처리해야 한다.
+이런 장비로 매핑할 때 센서 퓨전이 부딪히는 문제는 다음과 같다.
 
-1. **Degenerate environments**: 긴 복도, 빈 방 등 기하학적 특징이 부족한 환경. LiDAR-only에서 발생하는 drift를 카메라 또는 IMU가 보완. R3LIVE, FAST-LIVO2 같은 multi-modal 시스템이 효과적.
+1. **Degenerate environment(퇴화 환경)**: 긴 복도나 빈 방처럼 형상 특징이 부족한 곳. LiDAR만 쓰면 이런 곳에서 드리프트가 생기는데, 카메라나 IMU가 이를 메운다. R3LIVE, FAST-LIVO2 같은 LiDAR-카메라-IMU 시스템이 이런 경우를 겨냥해 만들어졌다.
 
-2. **다층 건물**: GNSS가 없으므로 층간 이동에서 z축 드리프트가 특히 문제다. 같은 층을 재방문하는 경로라면 loop closure가 이 오차를 크게 줄인다. 단일 통과 경로에는 닫을 루프가 없으므로 기압계, 층고·도면 prior, 기준점 같은 다른 관측으로 제약한다.
+2. **다층 건물**: 실내라 GNSS가 없어서 층을 오르내릴 때 높이 방향 드리프트가 특히 크다. 같은 층을 다시 지나가는 경로라면 loop closure로 이 오차를 크게 줄인다. 한 번 지나가고 마는 경로에는 닫을 루프가 없으므로 기압계, 층고·도면 정보, 기준점 같은 다른 관측으로 높이를 붙잡는다.
 
-3. **유리/거울**: LiDAR 빔이 투과하거나 반사. 카메라로 보완하거나, 반사 포인트 필터링.
+3. **유리와 거울**: LiDAR 빔이 유리를 뚫고 지나가거나 거울에 반사돼 엉뚱한 점이 생긴다. 카메라로 보완하거나 반사된 점을 걸러 낸다.
 
 ---
 
 ## 12.4 벤치마크 & 평가
-
-센서 퓨전 시스템을 공정하게 비교하려면 표준화된 데이터셋과 평가 메트릭이 필요하다.
 
 ### 12.4.1 주요 데이터셋
 
@@ -256,45 +246,43 @@ Post-processing (클라우드 정리, mesh 생성)
 | **[TUM-RGBD](https://doi.org/10.1109/IROS.2012.6385773)** | 2012 | 실내 | RGB-D | Kinect v1 기반 Visual SLAM 시퀀스와 평가 도구 |
 | **TUM-VI** | 2018 | 실내+실외 | Stereo, IMU | VIO 벤치마크. 다양한 모션 패턴 |
 | **[Hilti](https://arxiv.org/abs/2109.11316)** | 2021–2023 challenge editions | 건설 현장 | LiDAR, Camera, IMU | 산업 환경 특화. 도전적 조건 |
-| **[HeLiPR](https://arxiv.org/abs/2309.14590)** | 2023 | 실외 (도심) | Heterogeneous LiDAR, IMU, GNSS/INS | 이종 LiDAR 사이의 장소 인식 연구용. Ouster+Velodyne+Livox+Aeva. 카메라 포함 여부는 릴리스별 센서 목록에서 확인한다 |
+| **[HeLiPR](https://arxiv.org/abs/2309.14590)** | 2023 | 실외 (도심) | 이종 LiDAR 4종, IMU, GNSS/INS | 서로 다른 LiDAR 사이의 장소 인식 연구용. Ouster OS2-128, Velodyne VLP-16, Livox Avia, Aeva Aeries II. 논문의 센서 목록에 카메라는 없다 |
 | **[nuScenes](https://arxiv.org/abs/1903.11027)** | 2020 | 실외 (자율주행) | Camera, LiDAR, Radar, GPS/IMU | 1000개 씬, 23 클래스 3D 어노테이션, 360° 서라운드 센서 |
-| **Newer College** | 2020 | 실외 (캠퍼스) | LiDAR, Camera, IMU | 옥스퍼드 New College 구내. 핸드헬드 단일 세션, 루프 다수 |
+| **Newer College** | 2020 | 실외 (캠퍼스) | LiDAR, Camera, IMU | 옥스퍼드 New College 구내. 핸드헬드로 수집, 루프가 많다 |
 
 각 데이터셋의 특성과 용도:
 
-**KITTI** — 2012년에 공개된 자율주행 odometry·SLAM의 장기 기준선이다. Velodyne 64채널 LiDAR, 스테레오 카메라, GPS/IMU를 제공한다. 한계도 뚜렷하다. 센서가 오래되었고 시퀀스가 짧다. ground truth는 GPS/INS 기반이라 모든 구간에서 cm 수준 정확도를 보장하지 않는다.
+**KITTI** — 2012년에 공개된 자율주행 odometry·SLAM 데이터셋이다. Velodyne 64채널 LiDAR, 스테레오 카메라, GPS/IMU 데이터가 들어 있다. 2011년에 녹화한 데이터라 센서가 오래됐다. ground truth는 GPS/INS(OXTS RT3003)로 만들어서, 위성 신호가 나쁜 구간에서는 오차가 cm 수준을 넘을 수 있다.
 
-**EuRoC** — 드론(MAV)에 장착된 스테레오 카메라 + IMU 데이터로, VIO에서 널리 쓰이는 benchmark다. Ground truth는 구간에 따라 Vicon motion capture 또는 Leica laser tracker로 기록됐다. 11개 시퀀스가 easy → medium → difficult로 분류되어 있다.
+**EuRoC** — 드론(MAV)에 단 스테레오 카메라와 IMU로 모은 데이터셋으로, ORB-SLAM3와 DROID-SLAM이 이 데이터셋으로 결과를 보고했다(Ch.6). Ground truth는 Vicon Room에서는 Vicon motion capture로, Machine Hall에서는 Leica laser tracker로 잡았다. 시퀀스 11개가 easy, medium, difficult로 나뉜다.
 
-**Hilti** — 건설 현장의 분진, 진동, 반복 기하 구조라는 가혹한 환경에서 SLAM 성능을 검증하는 챌린지다. 2021년, 2022년, 2023년에 걸쳐 개최되었으며, 회차마다 센서 탑재 구성과 정합 평가 규칙이 달라지므로 세부 명세는 공식 릴리스 논문을 참조해야 한다.
+**Hilti** — 건설 현장에서 SLAM이 얼마나 버티는지 겨루는 챌린지다. 2021년, 2022년, 2023년에 열렸고, 해마다 센서 구성과 평가 규칙이 달라서 세부 사항은 해당 연도 논문을 봐야 한다.
 
-**HeLiPR** — 2023년 공개되었으며, 서로 다른 종류의 LiDAR(spinning, solid-state, FMCW)를 동시에 탑재했다. 이종 LiDAR 사이의 장소 인식(inter-LiDAR place recognition) 연구에 쓰인다.
+**HeLiPR** — 2023년에 공개됐다. 회전식 LiDAR 2종, 비반복 스캔 LiDAR(Livox Avia), FMCW LiDAR(Aeva Aeries II)를 한 차량에 함께 달았다. 서로 다른 LiDAR로 찍은 scan끼리 같은 장소를 알아보는 inter-LiDAR place recognition 연구에 쓴다. 같은 장소를 약 2주 간격으로 다시 달렸고, MulRan과 겹치는 경로도 있다.
 
-**Newer College** — 옥스퍼드 New College 구내를 핸드헬드 장비로 한 세션에 걸으며 수집한 데이터로, 같은 구역을 반복 통과해 loop closure 평가에 적합하다. 시점·계절 변화를 담은 long-term 연구에는 Boreas 같은 데이터셋이 맞다. 핸드헬드 LiDAR로 수집되어 도전적인 모션 패턴을 포함한다.
+**Newer College** — 옥스퍼드 New College 구내를 손에 든 장비로 걸으며 모았다. 같은 구역을 여러 번 지나가서 loop closure를 평가하기 좋고, 사람이 들고 걸었기 때문에 흔들림이 큰 움직임도 들어 있다. 계절이 바뀌는 장기 데이터가 필요하면 Boreas 같은 데이터셋을 쓴다.
 
-2022년 이후 새로운 벤치마크가 빠르게 추가되고 있다.
-
-[Hilti-Oxford](https://arxiv.org/abs/2208.09825) (2022)는 mm 수준 ground truth를 제공하는 건설 환경 SLAM benchmark로 2022 challenge에 사용됐다. [Boreas](https://arxiv.org/abs/2203.10168) (Burnett et al. 2023)는 동일 경로를 1년간 반복 주행하여 수집한 자율주행 데이터셋이다. LiDAR·radar·카메라를 포함하며 사계절 조건을 담는다. [Snail-Radar](https://arxiv.org/abs/2407.11705) (Huai et al., IJRR 2025)는 4D radar SLAM 평가를 위한 benchmark로, 다양한 환경과 플랫폼의 4D radar odometry/SLAM 결과를 제공한다.
+2022년 이후에도 새 벤치마크가 계속 나왔다. [Hilti-Oxford](https://arxiv.org/abs/2208.09825)(2022)는 건설 현장 SLAM 데이터셋으로, ground truth 정확도가 mm 수준이다. 2022년 Hilti 챌린지에 쓰였다. [Boreas](https://arxiv.org/abs/2203.10168)(Burnett et al., IJRR 2023)는 같은 경로를 1년 동안 되풀이해 달리며 모은 자율주행 데이터셋이다. LiDAR, radar, 카메라 데이터가 들어 있고 계절 변화와 함께 비·눈 같은 날씨, 밤 주행까지 담았다. [SNAIL Radar](https://arxiv.org/abs/2407.11705)(Huai et al., IJRR 2025)는 4D radar SLAM을 평가하려고 만든 데이터셋이다. 손에 든 장비, 전기자전거, SUV 세 가지로 우한대학 캠퍼스와 터널이 있는 고속도로를 달리며 모았고, 기존 radar odometry 3종과 place recognition 3종을 이 데이터로 비교한 결과도 실었다.
 
 ### 12.4.2 평가 메트릭
 
-**ATE (Absolute Trajectory Error)**: 추정 궤적과 ground truth 궤적의 전역적 차이를 측정한다.
+**ATE (Absolute Trajectory Error)**: 추정한 궤적이 ground truth 궤적과 전체적으로 얼마나 떨어져 있는지 잰다.
 
 $$\text{ATE} = \sqrt{\frac{1}{N} \sum_{i=1}^{N} \| \text{trans}(\mathbf{T}_{\text{gt},i}^{-1} \cdot \mathbf{T}_{\text{est},i}) \|^2}$$
 
-평가 전에 두 궤적을 정렬(alignment)하는 경우가 많고, 정렬의 자유도는 센서 이름이 아니라 관측 불가능한 자유도와 벤치마크 규약이 정한다. 스케일이 관측되지 않는 순수 단안에서는 Sim(3), 스케일이 관측되는 stereo·LiDAR·단안+IMU에서는 SE(3)를 쓴다. KITTI odometry의 공식 지표처럼 Sim(3) 정렬을 쓰지 않는 규약도 있고, 앞의 측량 절처럼 사후 정렬 없이 절대 좌표 오차를 보는 경우도 있다.
+ATE를 계산하기 전에는 보통 두 궤적을 정렬(alignment)한다. 정렬에서 몇 자유도를 맞출지는 그 시스템이 관측할 수 없는 자유도와 벤치마크 규약에 따라 정한다. 스케일을 알 수 없는 단안 카메라만 쓰면 Sim(3)로, 스케일을 아는 stereo·LiDAR·단안+IMU면 SE(3)로 정렬한다. KITTI odometry는 공식 지표로 ATE 대신 구간별 상대 오차를 쓴다. §12.3.2의 측량처럼 정렬하지 않고 절대 좌표 오차를 그대로 재는 경우도 있다.
 
 $$\mathbf{S}^* = \arg\min_{\mathbf{S} \in \text{Sim}(3)} \sum_i \| \mathbf{p}_{\text{gt},i} - \mathbf{S} \cdot \mathbf{p}_{\text{est},i} \|^2$$
 
-이 정렬은 Umeyama algorithm으로 closed-form 해를 구할 수 있다.
+이 정렬 문제는 Umeyama 알고리즘(1991)으로 닫힌 해를 바로 구한다.
 
-**RPE (Relative Pose Error)**: 짧은 구간에서의 상대적 정확도를 측정한다. 드리프트 성향을 나타낸다.
+**RPE (Relative Pose Error)**: 일정 간격만큼 떨어진 두 시점 사이의 상대 움직임이 얼마나 정확한지 잰다. 시간이 갈수록 오차가 얼마나 쌓이는지 보여 준다.
 
 $$\text{RPE}(\Delta) = \sqrt{\frac{1}{M} \sum_{i=1}^{M} \| \text{trans}((\mathbf{T}_{\text{gt},i}^{-1} \mathbf{T}_{\text{gt},i+\Delta})^{-1} (\mathbf{T}_{\text{est},i}^{-1} \mathbf{T}_{\text{est},i+\Delta})) \|^2}$$
 
-위 식의 $\Delta$는 프레임 인덱스 간격이다. 짧은 $\Delta$에서의 RPE는 odometry 정확도를, 긴 $\Delta$에서의 RPE는 드리프트를 반영한다. KITTI처럼 거리 구간(100~800 m)으로 평가하려면 각 시작 프레임에서 누적 이동 거리가 목표값에 도달하는 프레임을 먼저 찾아 대응시켜야 한다.
+위 식의 $\Delta$는 프레임 번호 간격이다. $\Delta$가 짧으면 RPE는 odometry의 국소 정확도를 보여 주고, 길면 그동안 쌓인 드리프트를 보여 준다. KITTI처럼 이동 거리 구간(100~800 m)으로 평가하려면, 각 시작 프레임에서 이동 거리가 목표값에 이르는 프레임을 먼저 찾아 짝지어야 한다.
 
-Place recognition에는 별도의 메트릭이 사용된다. **Recall@N**은 상위 N개 후보 중 올바른 장소가 포함된 비율이며, Recall@1이 가장 엄격한 기준이다. **Precision-Recall curve**는 threshold에 따른 precision·recall 트레이드오프를 보여주고, **AUC**는 그 커브 아래 면적으로 전체 성능을 단일 수치로 요약한다.
+Place recognition은 다른 지표로 잰다. Recall@N은 상위 N개 후보 안에 맞는 장소가 들어 있는 질의의 비율이다. N이 1이면 첫 후보가 맞아야 하므로 가장 엄격하다. Precision-Recall curve는 판정 threshold를 바꿔 가며 precision과 recall이 어떻게 맞바뀌는지 보여 준다. AUC는 이 곡선 아래 넓이로, 성능을 숫자 하나로 요약한다.
 
 ```python
 import numpy as np
@@ -424,32 +412,30 @@ def umeyama_alignment(source, target, with_scale=True):
 
 ### 12.4.3 공정한 비교의 어려움
 
-벤치마크 결과를 해석할 때는 다음 사항에 주의해야 한다.
+벤치마크 숫자를 읽을 때는 다음을 확인한다.
 
-1. **파라미터 튜닝**: 같은 알고리즘도 파라미터에 따라 성능이 크게 달라진다. 특정 데이터셋에 맞춰 튜닝한 수치는 그 설정에서의 결과이므로 다른 환경으로 옮겨 읽을 수 없다. 튜닝 조건을 함께 보고했는지 확인해야 한다.
+1. **파라미터 튜닝**: 같은 알고리즘도 파라미터에 따라 성능이 크게 바뀐다. 특정 데이터셋에 맞춰 튜닝한 수치는 그 설정에서만 나온 결과다. 논문이 튜닝 조건을 밝혔는지 본다.
 
-2. **하드웨어 의존성**: 실시간 성능은 하드웨어에 크게 좌우된다. "실시간"의 정의가 논문마다 다르다(데스크톱 GPU vs 임베디드 ARM).
+2. **하드웨어**: 실시간으로 도는지는 하드웨어에 크게 달려 있다. 데스크톱 GPU에서 실시간인 것과 임베디드 ARM 보드에서 실시간인 것은 다르다.
 
-3. **Completeness**: 일부 시스템은 어려운 시퀀스에서 tracking loss가 발생하는데, 성공한 구간만으로 ATE를 계산하면 실패 빈도가 반영되지 않는다. **Completeness** (= 성공한 시퀀스 비율)도 함께 보고해야 한다.
+3. **Completeness**: 어떤 시스템은 어려운 시퀀스에서 추적을 놓친다. 성공한 구간만으로 ATE를 계산하면 얼마나 자주 실패했는지가 빠지므로, 성공한 시퀀스 비율(completeness)도 함께 보고한다.
 
-4. **초기화 차이**: VIO 시스템의 초기화 방법과 시간이 다르면, 같은 시퀀스에서도 결과가 달라진다.
+4. **초기화**: VIO는 초기화 방법과 걸리는 시간이 시스템마다 달라서, 같은 시퀀스에서도 결과가 달라진다.
 
-5. **Loop closure 포함 여부**: 루프 클로저를 켠 결과와 끈 결과를 섞어 비교하면 안 된다. Loop closure가 있으면 ATE가 크게 낮아질 수 있다. 이름으로 판단할 수는 없다. VO로 불리는 DSO는 루프 클로저가 없지만 LDSO는 더했고, ORB-SLAM3는 루프 클로저를 끄고 돌릴 수 있다. 실제 설정을 확인한다.
+5. **Loop closure를 켰는가**: Loop closure를 켜면 ATE가 크게 떨어지므로 비교하는 시스템들의 설정을 맞춘다. DSO는 loop closure가 없는 odometry이고, LDSO는 여기에 loop closure를 더한 것이다. ORB-SLAM3는 loop closure를 끄고도 돌릴 수 있다. 시스템 이름만 보지 말고 실제 설정을 확인한다.
 
 ---
 
 ## 12.5 오픈소스 도구 가이드
 
-센서 퓨전 연구와 실무에서는 다음 오픈소스 도구를 자주 쓴다.
-
 ### 12.5.1 최적화 라이브러리
 
 **GTSAM** (Georgia Tech Smoothing and Mapping):
 - Factor graph 기반 최적화 라이브러리
-- iSAM2 구현 포함
-- C++ with Python bindings (gtsam)
-- LIO-SAM 등 많은 SLAM 시스템의 백엔드
-- 장점: factor graph를 직관적으로 구성 가능, 다양한 factor 타입 내장
+- iSAM2 구현이 들어 있다
+- C++ 라이브러리이고 Python 바인딩(gtsam)도 있다
+- LIO-SAM이 백엔드로 쓴다
+- Factor graph를 문제 구조 그대로 짜기 쉽고, 자주 쓰는 factor가 미리 들어 있다
 
 ```python
 # GTSAM Python 사용 예시 (개념 코드)
@@ -522,53 +508,53 @@ def simple_pose_graph_gtsam():
 ```
 
 **Ceres Solver**:
-- Google이 개발한 nonlinear least squares 최적화 라이브러리
-- C++ 전용 (Python 바인딩은 제한적)
-- 자동 미분(automatic differentiation) 지원
-- VINS-Mono 등에서 사용
-- Factor graph 추상화 없이 순수 최적화 문제를 직접 정의
+- Google이 만든 비선형 최소자승 최적화 라이브러리
+- C++ 라이브러리이고 Python에서 쓰기는 불편하다
+- 자동 미분(automatic differentiation)을 지원한다
+- VINS-Mono 등이 쓴다
+- Factor graph 개념 없이 cost function을 직접 더해 문제를 만든다
 
 **g2o** (General Graph Optimization):
-- Kümmerle et al. (2011) 개발
-- C++ 라이브러리, 그래프 최적화 특화
-- 다양한 vertex/edge 타입 사전 정의 (SE2, SE3, Sim3 등)
-- GTSAM의 factor 타입 계층 대신 vertex/(hyper-)edge 그래프 추상화를 직접 정의하는 구조. 처리 속도 비교는 문제 크기, 변수 순서화, 선형 solver, 빌드 설정에 따라 뒤집히므로 목표 문제에서 직접 측정한다
+- Kümmerle et al.(ICRA 2011)이 발표했다
+- 그래프 최적화용 C++ 라이브러리
+- SE2, SE3, Sim3 같은 vertex/edge 타입이 미리 들어 있다
+- 문제를 vertex와 (hyper-)edge로 이루어진 그래프로 정의한다. GTSAM과 어느 쪽이 빠른지는 문제 크기, 변수 순서, 선형 solver, 빌드 설정에 따라 뒤바뀌므로 자기 문제로 직접 재 본다
 
 세 라이브러리 비교:
 
 | 특성 | GTSAM | Ceres | g2o |
 |------|-------|-------|-----|
 | 추상화 수준 | Factor graph | Cost function | Graph vertex/edge |
-| 자동 미분 | 부분 지원 (Expression 기반) | 완전 지원 | 기본은 수치 미분 대체, 버전에 따라 자동 미분 제공 |
-| Incremental | iSAM2 | 미지원 | 미지원 |
+| 자동 미분 | 부분 지원 (Expression 기반) | 완전 지원 | 기본은 수치 미분, 버전에 따라 자동 미분 제공 |
+| Incremental | iSAM2 | 미지원 | 예제(g2o_incremental)로 제공 |
 | Python 지원 | 양호 | 제한적 | 제한적 |
 | 대표 사용처 | LIO-SAM | VINS-Mono | ORB-SLAM |
 
 ### 12.5.2 캘리브레이션 도구
 
 **Kalibr** (ethz-asl):
-- Camera-IMU, Camera-Camera, multi-IMU 캘리브레이션
-- Continuous-time B-spline trajectory 기반
-- AprilGrid 타겟 사용
-- Camera-IMU calibration에 널리 쓰이지만 설치가 까다로움 (ROS 의존)
+- 카메라-IMU, 카메라-카메라, 여러 IMU 사이의 캘리브레이션
+- 궤적을 연속 시간 B-spline으로 표현해 추정한다
+- AprilGrid 타겟을 쓴다
+- ROS에 의존해서 설치가 까다롭다
 
-**OpenCalib** (2023):
-- 자율주행 전체 센서 스택의 통합 캘리브레이션
-- 카메라 내부, LiDAR-카메라, LiDAR-IMU, radar-카메라, LiDAR-LiDAR 등 센서 쌍별 도구의 모음. 네 센서의 모든 조합에 대응하는 모듈이 있는 것은 아니다
-- Target-based + Targetless 모두 포함
+**OpenCalib** (2022):
+- 자율주행차에 달린 센서 전체를 캘리브레이션하는 도구 모음(Shanghai AI Lab, arXiv 2205.14087)
+- 카메라 내부 파라미터, LiDAR-카메라, LiDAR-IMU, radar-카메라, LiDAR-LiDAR처럼 센서 쌍마다 도구가 따로 있다. 지원하는 조합은 저장소에서 확인한다
+- 타겟을 쓰는 방법과 쓰지 않는 방법이 모두 들어 있다
 
 **[direct_visual_lidar_calibration](https://arxiv.org/abs/2302.05094)** (Koide et al. 2023):
-- NID 기반 targetless LiDAR-카메라 캘리브레이션
-- SuperGlue로 초기 추정, NID로 정밀 정합
-- 카메라 이미지 한 장과 LiDAR 점군 한 세트의 짝으로 동작 (single-shot). 회전형 LiDAR에서는 누적 점군을 쓰는 경우가 있어 필요한 점 밀도를 함께 확인한다
+- 타겟 없이 NID(normalized information distance)로 LiDAR와 카메라를 맞추는 캘리브레이션
+- SuperGlue 대응점으로 초기값을 잡고, NID를 최소화해 정밀하게 맞춘다
+- 이미지 한 장과 LiDAR 포인트 클라우드 한 묶음만으로 돈다(single-shot). 회전형 LiDAR는 점이 성기므로 여러 scan을 쌓은 포인트 클라우드를 쓰기도 한다
 
 ### 12.5.3 평가 도구
 
 **evo** (MH Grupp):
-- Python 기반 궤적 평가 도구
-- ATE, RPE 계산 및 시각화
-- TUM, KITTI, EuRoC 등 다양한 형식 지원
-- 명령행 도구와 Python API 모두 제공
+- Python으로 만든 궤적 평가 도구
+- ATE, RPE를 계산하고 그림으로 그린다
+- TUM, KITTI, EuRoC 형식을 읽는다
+- 명령행 도구와 Python API가 모두 있다
 
 ```bash
 # evo 사용 예시
@@ -660,26 +646,23 @@ def compare_systems(gt_file, system_files, system_names):
 ### 12.5.4 기타 필수 도구
 
 **ROS 2** (Robot Operating System):
-- 센서 퓨전 시스템의 통합 프레임워크
-- 센서 드라이버, 시간 동기화, 메시지 전달 인프라 제공
-- 대부분의 오픈소스 SLAM 시스템이 ROS 패키지로 나옴
+- 센서 퓨전 시스템을 묶는 미들웨어
+- 센서 드라이버, 타임스탬프와 메시지 동기화, 프로세스 사이의 메시지 전달을 맡는다
+- 이 가이드에서 다룬 LIO-SAM, FAST-LIO2, VINS-Mono 같은 오픈소스 SLAM 시스템이 ROS 패키지로 나온다
 
 **Open3D**:
-- 3D 데이터 처리 Python 라이브러리
-- Point cloud, mesh, TSDF 처리
-- ICP, RANSAC, FPFH 등 기하학 알고리즘 내장
-- 시각화 기능 우수
+- 3D 데이터를 다루는 라이브러리(C++ 코어, Python API)
+- point cloud, mesh, TSDF를 다룬다
+- ICP, RANSAC, FPFH 같은 기하 알고리즘이 들어 있다
+- 시각화 기능이 있다
 
 **CloudCompare**:
-- 포인트 클라우드 비교/편집 GUI 도구
-- 두 포인트 클라우드의 거리 비교(C2C, C2M)
-- 포인트 클라우드 정합, 필터링, 다운샘플링
+- 포인트 클라우드를 비교하고 편집하는 GUI 도구
+- 점과 점(C2C), 점과 mesh(C2M) 사이 거리를 잰다
+- 정합, 필터링, 다운샘플링도 한다
 
 **COLMAP**:
-- Structure from Motion (SfM) + Multi-View Stereo (MVS) 파이프라인
-- 이미지 집합으로 3D 재구성
-- 센서 퓨전에서 camera intrinsic 추정이나 ground truth 맵 구축에 쓴다
+- Structure from Motion(SfM)과 Multi-View Stereo(MVS) 파이프라인
+- 사진 여러 장으로 3D를 재구성한다
+- 센서 퓨전에서는 camera intrinsic을 추정하거나 기준 지도를 만들 때 쓴다
 
----
-
-앞에서 다룬 센서 퓨전 이론은 이러한 실전 시스템과 벤치마크를 통해 제품과 연구에 적용된다. Foundation model, event camera, 4D radar, end-to-end SLAM은 현재 연구가 활발한 **연구 프런티어**다.

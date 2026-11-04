@@ -379,7 +379,7 @@ $$Q(\theta) = \int_0^{\sigma_{\max}} q(\theta, \sigma) f(\sigma) d\sigma$$
 Here, $q(\theta, \sigma)$ is the quality of the model $\theta$ at threshold $\sigma$, and $f(\sigma)$ is the prior over thresholds.
 
 - MAGSAC++ implements this more efficiently and adds a weighted least-squares fit based on $\sigma$-consensus.
-- The inlier/outlier decision threshold disappears, so sensitivity to its selection is substantially reduced. The integration bound $\sigma_{\max}$ still has to be specified, which is what the `ransacReprojThreshold` argument below supplies.
+- The inlier/outlier decision threshold disappears, so sensitivity to its selection is substantially reduced. The integration bound $\sigma_{\max}$ still has to be set. OpenCV's `USAC_MAGSAC` takes this bound as the larger of `ransacReprojThreshold` and a per-model internal default (2.5 for the fundamental matrix), and uses `ransacReprojThreshold` itself for the termination test and for the inliers in the returned `mask`.
 
 ```python
 # OpenCV's USAC (includes MAGSAC++)
@@ -617,7 +617,7 @@ with torch.no_grad():
     img_tensor = torch.from_numpy(img).float().unsqueeze(0).unsqueeze(0) / 255.0
     pred = sp({'image': img_tensor})   # returned keys: keypoints, keypoint_scores, descriptors
     keypoints = pred['keypoints']        # (1, N, 2)
-    descriptors = pred['descriptors']    # (1, 256, N)
+    descriptors = pred['descriptors']    # (1, N, 256)
     scores = pred['keypoint_scores']              # (1, N)
 ```
 
@@ -750,7 +750,7 @@ If SuperPoint learned detection+description, SuperGlue **learned the matching st
 **Adaptive Depth (early layer exit)**:
 - A lightweight classifier (MLP) after each layer predicts matching confidence.
 - If confidence is sufficiently high, the network terminates early.
-- Easy image pairs are processed in only 2-3 layers, while difficult pairs use all 9 layers.
+- In the paper's Figure 2 example, the easy pair stops after 3 layers and the difficult pair after 8 (of 9 layers).
 
 **Adaptive Width (keypoint pruning)**:
 - Keypoints deemed unmatchable are pruned in intermediate layers.
@@ -1133,7 +1133,7 @@ GeoTransformer (2022) — geometric invariant transformer, RANSAC-free
 
 The most common cross-modal correspondence problem is **matching between 2D images and 3D point clouds**. Application scenarios:
 
-- **Camera-LiDAR extrinsic calibration**: establish a correspondence between the two sensors — the same physical point for target-based methods, statistical dependence over the overlap for targetless MI-based methods
+- **Camera-LiDAR extrinsic calibration**: find the same physical point observed by both sensors to estimate the extrinsic parameters
 - **Visual localization against a LiDAR map**: localize a camera image against a LiDAR map
 - **Loop closure**: cross-validate camera and LiDAR observations
 
@@ -1153,7 +1153,7 @@ The calibration tool of Koide et al. (2023) uses this approach: the LiDAR dense 
 
 LCD (Learned Cross-Domain Descriptors): learns a common embedding space for 2D image patches and 3D point cloud patches.
 
-P2-Net (Wang et al., 2021): learns patch-to-point matching to infer direct correspondences between 2D image patches and 3D points.
+P2-Net (Wang et al., 2021): learns pixel-to-point matching to infer direct correspondences between 2D image pixels and 3D points.
 
 ### 5.9.3 Why Cross-Modal Is Difficult: The Representation Gap
 
@@ -1268,7 +1268,7 @@ At each iteration $k$:
 4. Predict the flow residual $\Delta \mathbf{f}$ from the hidden state
 5. Flow update: $\mathbf{f}^{k+1} = \mathbf{f}^k + \Delta \mathbf{f}$
 
-The original configuration uses 12 updates during training and 12–32 at inference. Extra iterations reduced error in some paper experiments, but improvement is not guaranteed after convergence; choose the count from latency and validation error.
+The original configuration uses 12 updates during training and, for evaluation, 32 on Sintel and 24 on KITTI. Extra iterations reduced error in some paper experiments, but improvement is not guaranteed after convergence; choose the count from latency and validation error.
 
 **All-Pairs vs. Coarse-to-Fine**: coarse-to-fine methods can struggle to recover a correspondence missed at a coarse level. RAFT constructs all-pairs feature correlations and queries them at several scales during recurrent updates, preserving access to large-displacement candidates. It can still fail when the features or iterative update choose the wrong match.
 

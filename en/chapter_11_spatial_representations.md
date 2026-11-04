@@ -815,7 +815,7 @@ An object-level map only recognizes individual objects. But humans understand en
 **Construction of the Places layer**: Hydra builds this layer as follows.
 
 1. Compute the ESDF from the TSDF.
-2. Incrementally extract the GVD from the ESDF. The GVD is the set of points equidistant from two or more nearest obstacles, and a vertex of the graph is a point equidistant from three or more. Such a point is where clearance is locally maximal, which makes it a good point for the robot to pass through.
+2. Incrementally extract the GVD from the ESDF. The GVD is the set of points equidistant from two or more nearest obstacles, and a vertex of the graph is a point equidistant from four or more (in a 3D GVD, points equidistant from exactly three form the edges). Such a point is where clearance is locally maximal, which makes it a good point for the robot to pass through.
 3. Configure GVD vertices as place nodes and GVD edges as connections between places.
 4. This place graph is a topological map that can be used directly for path planning.
 
@@ -823,7 +823,7 @@ An object-level map only recognizes individual objects. But humans understand en
 
 1. Assign each place node the distance to the nearest obstacle (its clearance) as a value.
 2. At narrow passages such as doorways, this value is low.
-3. Raise the clearance threshold step by step (dilation) to cut the narrow connections, then apply modularity-based community detection to the remaining subgraph to group the places into rooms.
+3. Raise the clearance threshold step by step (dilation) to cut the narrow connections. Count the connected components of the remaining subgraph at each threshold, and take the components of the largest subgraph whose count equals the median of these counts as room seeds. The places removed by the threshold are then assigned to rooms by modularity-based community detection initialized with these seeds.
 
 **Hierarchical loop closure**: Hydra leverages several layers of the scene graph to improve loop closure. Descriptors from the place and object layers narrow the candidates, and the registration between two scene-graph portions is verified with TEASER++. The paper reports that in its own experiments this structure detected more loops, and did so more accurately, than an appearance-based BoW approach.
 
