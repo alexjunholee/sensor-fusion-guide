@@ -1,8 +1,8 @@
-# Ch.4 — State Estimation Theory
+# Chapter 4. State Estimation
 
-Sensor observation models and inter-sensor calibration parameters are inputs to the **algorithms** that estimate a robot's state (position, attitude, velocity, etc.). Kalman filters, factor graphs, and IMU preintegration process those inputs in the odometry and fusion systems of Ch.6–8.
+Chapters 2 and 3 established how individual sensors measure the physical world and how their measurements are spatially aligned and temporally synchronized. Once those calibrated streams arrive, the next challenge is fusing them into a coherent estimate of the robot's evolving state—its position, velocity, orientation, and internal sensor biases. That is the role of the **state estimation** algorithms that power odometry and multi-sensor fusion pipelines (→ Chapters 6–8).
 
-> State estimation runs from Bayesian filtering through the Kalman filter family and the particle filter to factor-graph-based optimization. The derivations also explain why modern robotics systems moved from filtering to optimization.
+> State estimation traces a continuous arc from recursive Bayesian filtering—through the Kalman filter family and particle filters—to factor-graph optimization. Following the derivations in sequence reveals not just how each estimator works, but why modern robotics largely moved from single-step filtering to graph-based smoothing.
 
 ---
 
@@ -10,80 +10,67 @@ Sensor observation models and inter-sensor calibration parameters are inputs to 
 
 ### 4.1.1 Definition of the State Estimation Problem
 
-Robot state estimation is a **conditional probabilistic inference** problem. It seeks the posterior over the state $\mathbf{x}_k$ given all observations up to the present $\mathbf{z}_{1:k}$ and control inputs $\mathbf{u}_{1:k}$:
+Because real sensors are noisy and motion commands never execute perfectly, a robot cannot observe its true state directly. Instead, state estimation is formulated as a **conditional probabilistic inference** problem: given every observation up to the present, $\mathbf{z}_{1:k}$, and every control input, $\mathbf{u}_{1:k}$, we seek the posterior distribution over the current state $\mathbf{x}_k$:
 
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k}, \mathbf{u}_{1:k})$$
 
-Here:
-- $\mathbf{x}_k \in \mathbb{R}^n$: state vector at time $k$ (position, velocity, attitude, bias, etc.)
-- $\mathbf{z}_k \in \mathbb{R}^m$: observation vector at time $k$ (camera, LiDAR, IMU, etc.)
-- $\mathbf{u}_k \in \mathbb{R}^l$: control input at time $k$
+In this notation, $\mathbf{x}_k \in \mathbb{R}^n$ denotes the state vector at time $k$ (typically position, velocity, attitude, and sensor biases), $\mathbf{z}_k \in \mathbb{R}^m$ denotes the observation vector from sensors such as cameras, LiDAR, or IMUs, and $\mathbf{u}_k \in \mathbb{R}^l$ denotes the control input applied at step $k$.
 
-To solve this problem we define two models:
+To relate these quantities probabilistically, we specify two generative models that describe how the robot moves and how its sensors perceive the world:
 
 **Motion Model (Process Model)**:
 $$\mathbf{x}_k = f(\mathbf{x}_{k-1}, \mathbf{u}_k) + \mathbf{w}_k, \quad \mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$$
 
 $$p(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{u}_k)$$
 
-This represents the transition probability from the previous state to the current state given the control input $\mathbf{u}_k$. The process noise $\mathbf{w}_k$ reflects the model's uncertainty.
+This defines the transition probability from the previous state to the current state under control input $\mathbf{u}_k$, with process noise $\mathbf{w}_k$ capturing unmodeled dynamics and actuation uncertainty.
 
 **Observation Model (Measurement Model)**:
 $$\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k, \quad \mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$$
 
 $$p(\mathbf{z}_k \mid \mathbf{x}_k)$$
 
-This is the likelihood of the observation given the current state. The measurement noise $\mathbf{v}_k$ reflects the sensor's uncertainty.
+This specifies the likelihood of receiving observation $\mathbf{z}_k$ given the current state, with measurement noise $\mathbf{v}_k$ capturing sensor noise.
 
-Intuitively, the robot cannot know exactly "where it is," but by combining "how it moved" (motion model) and "what it sees" (observation model), it progressively refines a **belief** about its own position.
+Taken together, the motion model predicts how the robot's belief spreads as it moves, while the observation model anchors that belief against incoming sensor readings.
 
 ### 4.1.2 Markov Assumptions and Recursive Estimation
 
-For practical filtering, we introduce the **Markov assumptions**:
+If computing $p(\mathbf{x}_k \mid \mathbf{z}_{1:k}, \mathbf{u}_{1:k})$ required re-evaluating the entire measurement history from time $1$ to $k$ at every step, memory and runtime would grow without bound. To make real-time filtering tractable, we introduce two **Markov assumptions**:
 
-1. **First-order Markov process**: The current state $\mathbf{x}_k$ depends only on the immediately previous state $\mathbf{x}_{k-1}$ and the control $\mathbf{u}_k$; it is conditionally independent of earlier states and observations:
+1. **First-order Markov process**: Given the immediately preceding state $\mathbf{x}_{k-1}$ and the current control $\mathbf{u}_k$, the current state $\mathbf{x}_k$ is conditionally independent of all earlier states, controls, and observations:
 $$p(\mathbf{x}_k \mid \mathbf{x}_{0:k-1}, \mathbf{u}_{1:k}, \mathbf{z}_{1:k-1}) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{u}_k)$$
 
-2. **Conditional observation independence**: Given the current state $\mathbf{x}_k$, the observation $\mathbf{z}_k$ is independent of everything else:
+2. **Conditional observation independence**: Given the current state $\mathbf{x}_k$, the current observation $\mathbf{z}_k$ is conditionally independent of past states, controls, and earlier observations:
 $$p(\mathbf{z}_k \mid \mathbf{x}_{0:k}, \mathbf{u}_{1:k}, \mathbf{z}_{1:k-1}) = p(\mathbf{z}_k \mid \mathbf{x}_k)$$
 
-These two assumptions let us update the current estimate from the previous estimate without storing the entire observation history $\mathbf{z}_{1:k}$. This procedure is **recursive estimation**.
+Together, these assumptions allow us to fold all past history into the previous posterior and update it incrementally as each new measurement arrives—a paradigm known as **recursive estimation**.
 
 ### 4.1.3 Prediction-Update Cycle
 
-The Bayesian filter iterates two steps:
+Under the Markov assumptions, Bayesian filtering alternates between predicting the state forward through motion and correcting that prediction with incoming measurements:
 
-**Prediction Step**: Using the motion model, predict the current prior from the previous posterior.
+**Prediction Step**: Starting from the previous posterior $p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1}, \mathbf{u}_{1:k-1})$, we propagate our belief forward using the motion model:
 
 $$\boxed{p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1}, \mathbf{u}_{1:k}) = \int p(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{u}_k) \, p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1}, \mathbf{u}_{1:k-1}) \, d\mathbf{x}_{k-1}}$$
 
-This integral is the **Chapman-Kolmogorov equation**. Its physical meaning is:
-- $p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1})$: posterior at time $k-1$ (result of the previous step)
-- $p(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{u}_k)$: state transition probability (motion model)
-- The predicted distribution is obtained by a weighted average of the transition probability over all possible values of the previous state.
+This integral is the **Chapman-Kolmogorov equation**. Because we do not know $\mathbf{x}_{k-1}$ with certainty, we average the transition probability $p(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{u}_k)$ over every plausible previous state, weighted by the previous posterior $p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1})$. The result is our predicted prior before seeing $\mathbf{z}_k$.
 
-**Update Step**: When a new observation $\mathbf{z}_k$ arrives, update the posterior via Bayes' rule.
+**Update Step**: When a new observation $\mathbf{z}_k$ arrives, we incorporate it via Bayes' rule:
 
 $$\boxed{p(\mathbf{x}_k \mid \mathbf{z}_{1:k}, \mathbf{u}_{1:k}) = \frac{p(\mathbf{z}_k \mid \mathbf{x}_k) \, p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1}, \mathbf{u}_{1:k})}{p(\mathbf{z}_k \mid \mathbf{z}_{1:k-1})}}$$
 
-Here:
-- Numerator $p(\mathbf{z}_k \mid \mathbf{x}_k)$: likelihood (observation model)
-- Numerator $p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1})$: prior obtained in the prediction step
-- Denominator $p(\mathbf{z}_k \mid \mathbf{z}_{1:k-1}) = \int p(\mathbf{z}_k \mid \mathbf{x}_k) p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1}) d\mathbf{x}_k$: normalization constant (evidence)
-
-Intuitively, each time an observation arrives, we ask "how consistent is this observation with my prediction?" and revise our belief accordingly.
+Here the numerator multiplies the observation likelihood $p(\mathbf{z}_k \mid \mathbf{x}_k)$ by the predicted prior $p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1})$, while the denominator $p(\mathbf{z}_k \mid \mathbf{z}_{1:k-1}) = \int p(\mathbf{z}_k \mid \mathbf{x}_k) p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1}) d\mathbf{x}_k$ acts as the normalizing evidence constant. Intuitively, each update scores candidate states by how well they explain the new sensor measurement and shifts probability mass toward the most consistent hypotheses.
 
 ### 4.1.4 Why Closed-Form Solutions Fail
 
-Although the prediction-update formulation above is theoretically perfect, in practice the Chapman-Kolmogorov integral $\int p(\mathbf{x}_k \mid \mathbf{x}_{k-1}) p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1}) d\mathbf{x}_{k-1}$ cannot be solved analytically in most cases. The reasons are:
+While the prediction-update recursion is exact in theory, the Chapman-Kolmogorov integral $\int p(\mathbf{x}_k \mid \mathbf{x}_{k-1}) p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1}) d\mathbf{x}_{k-1}$ rarely admits a closed-form solution in real robotic systems for three reasons:
 
-1. **Nonlinear motion/observation models**: If $f(\cdot)$ and $h(\cdot)$ are nonlinear, propagating a Gaussian distribution does not preserve Gaussianity. The posterior can take arbitrarily complex shapes.
+1. **Nonlinear motion and observation models**: When $f(\cdot)$ or $h(\cdot)$ is nonlinear, passing a Gaussian distribution through the model does not preserve Gaussianity, and the posterior can take arbitrarily skewed or curved shapes.
+2. **High-dimensional state spaces**: Numerical integration on a grid scales exponentially with state dimension, quickly running into the curse of dimensionality.
+3. **Multimodal distributions**: In problems such as global localization in symmetric environments, several distinct poses can explain the observations equally well, producing a multimodal posterior that a single-peak density cannot capture.
 
-2. **High-dimensional state spaces**: As the dimensionality of the state vector grows, the computational cost of the integral grows exponentially (curse of dimensionality).
-
-3. **Multimodal distributions**: When the robot could be at multiple locations (e.g., global localization in a symmetric environment), the posterior becomes multimodal.
-
-Therefore, approximations are essential in practice, and different filters arise depending on the approximation:
+Practical filters therefore differ primarily in how they approximate this intractable integral and represent the resulting belief:
 
 | Approximation | Filter | Distribution representation | Regime |
 |----------|------|---------|----------|
@@ -93,7 +80,7 @@ Therefore, approximations are essential in practice, and different filters arise
 | Sample-based | Particle Filter | $\{(\mathbf{x}^{(i)}, w^{(i)})\}_{i=1}^N$ | Strongly nonlinear, multimodal |
 | Iterated linearization | IEKF | $\mathcal{N}(\hat{\mathbf{x}}, \mathbf{P})$ | Strongly nonlinear |
 
-We derive each method in detail in what follows.
+We begin with the one setting where no approximation is needed—the linear-Gaussian Kalman filter—and then examine how each extension relaxes those assumptions.
 
 ---
 
@@ -101,95 +88,83 @@ We derive each method in detail in what follows.
 
 ### 4.2.1 Kalman Filter: Derivation and Optimality
 
-The Kalman Filter (KF) is the exact solution of the Bayesian filter under the assumptions of a **linear system + Gaussian noise**. Rudolf Kalman introduced it in his 1960 paper ["A New Approach to Linear Filtering and Prediction Problems"](https://doi.org/10.1115/1.3662552), and its practicality was established when it was applied to orbit estimation in the Apollo program.
+When both the dynamics and the measurements are linear and all uncertainties are Gaussian, the intractable Bayesian recursion collapses into closed-form linear algebra. Under these assumptions, Gaussianity is preserved across every prediction and update step, so the entire posterior can be tracked exactly through just two objects: a mean vector and a covariance matrix. That exact solution is the **Kalman Filter (KF)**, introduced by Rudolf Kalman in his 1960 paper ["A New Approach to Linear Filtering and Prediction Problems"](https://doi.org/10.1115/1.3662552) and proven in practice on Apollo-era orbit estimation.
 
 #### Linear System Model
 
-We assume a system with linear state transition and observation:
+To see why Gaussianity closes under linear dynamics, we write the state transition and observation models in matrix form:
 
 $$\mathbf{x}_k = \mathbf{F}_k \mathbf{x}_{k-1} + \mathbf{B}_k \mathbf{u}_k + \mathbf{w}_k, \quad \mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$$
 $$\mathbf{z}_k = \mathbf{H}_k \mathbf{x}_k + \mathbf{v}_k, \quad \mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$$
 
-Here:
-- $\mathbf{F}_k \in \mathbb{R}^{n \times n}$: state transition matrix
-- $\mathbf{B}_k \in \mathbb{R}^{n \times l}$: control input matrix
-- $\mathbf{H}_k \in \mathbb{R}^{m \times n}$: observation matrix
-- $\mathbf{Q}_k \in \mathbb{R}^{n \times n}$: process noise covariance (positive semi-definite, symmetric)
-- $\mathbf{R}_k \in \mathbb{R}^{m \times m}$: measurement noise covariance (positive definite, symmetric)
-
-Applying a linear transformation to a Gaussian yields another Gaussian. Thus the posterior remains Gaussian and is fully described by its mean and covariance.
+Here $\mathbf{F}_k \in \mathbb{R}^{n \times n}$ is the state transition matrix, $\mathbf{B}_k \in \mathbb{R}^{n \times l}$ is the control input matrix, and $\mathbf{H}_k \in \mathbb{R}^{m \times n}$ maps the state into measurement space. Uncertainty enters through the symmetric positive semi-definite process noise covariance $\mathbf{Q}_k \in \mathbb{R}^{n \times n}$ and the symmetric positive definite measurement noise covariance $\mathbf{R}_k \in \mathbb{R}^{m \times m}$. Because any affine transformation of a Gaussian random vector produces another Gaussian, a Gaussian initial belief stays Gaussian forever and is completely specified by its mean and covariance.
 
 #### MMSE Derivation — Why the Kalman Filter Is Optimal
 
-We derive the Kalman filter's optimality from the Minimum Mean Square Error (MMSE) perspective. What we want is the estimator that minimizes the mean squared error:
+We can derive the filter directly from the Minimum Mean Square Error (MMSE) criterion, seeking the estimator that minimizes the expected squared Euclidean error given all measurements so far:
 
 $$\hat{\mathbf{x}}_k = \arg\min_{\hat{\mathbf{x}}} \mathbb{E}[\|\mathbf{x}_k - \hat{\mathbf{x}}\|^2 \mid \mathbf{z}_{1:k}]$$
 
-The MMSE estimator is the conditional expectation $\hat{\mathbf{x}}_k = \mathbb{E}[\mathbf{x}_k \mid \mathbf{z}_{1:k}]$. We show that in a linear-Gaussian system this coincides exactly with the Kalman filter's state update equations.
+For any distribution, the MMSE estimator is the conditional expectation $\hat{\mathbf{x}}_k = \mathbb{E}[\mathbf{x}_k \mid \mathbf{z}_{1:k}]$. Evaluating the Bayesian prediction-update recursion for a linear-Gaussian system shows that this conditional expectation coincides exactly with the Kalman filter equations.
 
-**Bayesian derivation**: Assume the posterior at time $k-1$ is Gaussian:
+Assume that after incorporating measurements up to step $k-1$, the posterior is Gaussian:
 
 $$p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1}) = \mathcal{N}(\hat{\mathbf{x}}_{k-1|k-1}, \mathbf{P}_{k-1|k-1})$$
 
 **Step 1: Prediction — evaluate the Chapman-Kolmogorov integral**
 
-Under the linear motion model:
+Under the linear motion model,
 $$\mathbf{x}_k = \mathbf{F}_k \mathbf{x}_{k-1} + \mathbf{B}_k \mathbf{u}_k + \mathbf{w}_k$$
 
-Since $\mathbf{x}_{k-1}$ is Gaussian and $\mathbf{w}_k$ is independent Gaussian, $\mathbf{x}_k$ is also Gaussian. Computing its mean and covariance:
+the predicted state combines two independent Gaussian terms—the previous state and the process noise $\mathbf{w}_k$—so $\mathbf{x}_k$ remains Gaussian. Taking expectations gives the predicted mean:
 
 $$\hat{\mathbf{x}}_{k|k-1} = \mathbb{E}[\mathbf{x}_k \mid \mathbf{z}_{1:k-1}] = \mathbf{F}_k \hat{\mathbf{x}}_{k-1|k-1} + \mathbf{B}_k \mathbf{u}_k$$
 
-The covariance follows from $\tilde{\mathbf{x}}_{k|k-1} = \mathbf{x}_k - \hat{\mathbf{x}}_{k|k-1} = \mathbf{F}_k \tilde{\mathbf{x}}_{k-1|k-1} + \mathbf{w}_k$:
+Subtracting this mean from $\mathbf{x}_k$ isolates the prediction error $\tilde{\mathbf{x}}_{k|k-1} = \mathbf{x}_k - \hat{\mathbf{x}}_{k|k-1} = \mathbf{F}_k \tilde{\mathbf{x}}_{k-1|k-1} + \mathbf{w}_k$, whose outer-product expectation gives the predicted covariance:
 
 $$\mathbf{P}_{k|k-1} = \mathbb{E}[\tilde{\mathbf{x}}_{k|k-1} \tilde{\mathbf{x}}_{k|k-1}^\top] = \mathbf{F}_k \mathbf{P}_{k-1|k-1} \mathbf{F}_k^\top + \mathbf{Q}_k$$
 
-Predicted distribution: $p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1}) = \mathcal{N}(\hat{\mathbf{x}}_{k|k-1}, \mathbf{P}_{k|k-1})$.
+Thus the Chapman-Kolmogorov integral evaluates cleanly to $p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1}) = \mathcal{N}(\hat{\mathbf{x}}_{k|k-1}, \mathbf{P}_{k|k-1})$.
 
 **Step 2: Update — apply Bayes' rule**
 
-From the observation model $\mathbf{z}_k = \mathbf{H}_k \mathbf{x}_k + \mathbf{v}_k$, construct the joint distribution of the predicted state and the observation:
+When the measurement $\mathbf{z}_k = \mathbf{H}_k \mathbf{x}_k + \mathbf{v}_k$ arrives, the predicted state and the predicted observation are jointly Gaussian:
 
 $$\begin{bmatrix} \mathbf{x}_k \\ \mathbf{z}_k \end{bmatrix} \sim \mathcal{N}\left( \begin{bmatrix} \hat{\mathbf{x}}_{k|k-1} \\ \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1} \end{bmatrix}, \begin{bmatrix} \mathbf{P}_{k|k-1} & \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \\ \mathbf{H}_k \mathbf{P}_{k|k-1} & \mathbf{S}_k \end{bmatrix} \right)$$
 
-Here $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k \in \mathbb{R}^{m \times m}$ is the innovation covariance.
-
-For a jointly Gaussian distribution, the conditional is also Gaussian, and its mean equals the original mean plus a correction proportional to the correlation with the observation:
+where $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k \in \mathbb{R}^{m \times m}$ is the innovation covariance. Conditioning one component of a jointly Gaussian vector on another yields a Gaussian whose mean shifts from the prior mean in proportion to the cross-covariance and the measurement discrepancy:
 
 $$\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1} (\mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1})$$
 
-Defining the **Kalman gain** $\mathbf{K}_k \in \mathbb{R}^{n \times m}$:
+Factoring out the matrix multiplier defines the **Kalman gain** $\mathbf{K}_k \in \mathbb{R}^{n \times m}$:
 
 $$\boxed{\mathbf{K}_k = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1} = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top (\mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k)^{-1}}$$
 
-Intuitive meaning of the Kalman gain:
-- $\mathbf{R}_k \to \mathbf{0}$ (small measurement noise): the update follows the measurement constraint more strongly in the observable subspace. The notation $\mathbf{H}_k^{-1}$ applies only when $\mathbf{H}_k$ is square and invertible
-- $\mathbf{P}_{k|k-1} \to \mathbf{0}$ (prediction is very accurate): $\mathbf{K}_k \to \mathbf{0}$ → ignore the observation and trust the prediction
-- If the linear model and specified noise covariances are correct, the Kalman gain gives the conditional-mean weighting.
+The Kalman gain acts as an optimal weighting factor balancing prior confidence against sensor precision. As measurement noise vanishes ($\mathbf{R}_k \to \mathbf{0}$), the update tracks the measurement constraint tightly in the observable subspace (noting that writing $\mathbf{H}_k^{-1}$ applies only when $\mathbf{H}_k$ is square and invertible). Conversely, when the prediction is already highly certain ($\mathbf{P}_{k|k-1} \to \mathbf{0}$), $\mathbf{K}_k \to \mathbf{0}$ and the filter relies on the prior rather than noisy observations. Whenever the linear model and noise covariances are accurate, this gain achieves the exact conditional-mean weighting.
 
-**Innovation**:
+The discrepancy driving the correction is the **innovation**—the difference between what actually arrived and what the filter expected to see:
 $$\tilde{\mathbf{y}}_k = \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1} \in \mathbb{R}^m$$
 
-This is the difference between the predicted and actual observation. A zero innovation means that this measurement residual is zero, not that unobserved state components or model error vanish.
+Note that a zero innovation only indicates that this particular measurement residual vanishes, not that unobservable state components or modeling errors are absent. Multiplying the innovation by the Kalman gain completes the state update, and conditioning shrinks the prior covariance accordingly:
 
-**State update**:
 $$\boxed{\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde{\mathbf{y}}_k}$$
 
-**Covariance update**:
 $$\boxed{\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}}$$
 
-This covariance update is numerically more stable in Joseph form: $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$. If $\mathbf{P}_{k|k-1}$ and $\mathbf{R}_k$ are positive semidefinite, the expression preserves that algebraic structure; implementations may also symmetrize the result or use factorized solvers to limit roundoff.
+In numerical implementations, the covariance update is more stable in **Joseph form**: $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$. Unlike the simpler subtraction above, which can lose symmetry or positive semidefiniteness under floating-point roundoff, the Joseph form preserves that algebraic structure whenever $\mathbf{P}_{k|k-1}$ and $\mathbf{R}_k$ are positive semidefinite; practical code often adds explicit symmetrization or uses factorized solvers as well.
 
 #### KF Optimality Theorem
 
-**Theorem**: In a linear-Gaussian system, the Kalman filter is optimal in the following three senses:
-1. **MMSE (Minimum Mean Square Error) estimator**: minimizes the mean squared error
-2. **MAP (Maximum A Posteriori) estimator**: in a Gaussian, mean equals mode, so MAP and MMSE coincide
-3. **BLUE (Best Linear Unbiased Estimator)**: even without the Gaussian assumption, it is the linear unbiased estimator with minimum variance
+**Theorem**: In a linear-Gaussian system, the Kalman filter is simultaneously optimal in three distinct senses:
+1. **MMSE (Minimum Mean Square Error) estimator**: It minimizes the expected squared estimation error $\mathbb{E}[\|\mathbf{x}_k - \hat{\mathbf{x}}\|^2 \mid \mathbf{z}_{1:k}]$.
+2. **MAP (Maximum A Posteriori) estimator**: Because a Gaussian distribution's mean and mode coincide, the MMSE and MAP estimates are identical.
+3. **BLUE (Best Linear Unbiased Estimator)**: Even if the noise is non-Gaussian, so long as its first two moments match $\mathbf{Q}_k$ and $\mathbf{R}_k$, the KF remains the minimum-variance estimator among all linear unbiased estimators.
 
-Kalman's 1960 paper replaced Wiener's frequency-domain approach with a state-space, time-domain formulation that extends to time-varying and multivariate systems.
+Historically, Kalman's 1960 formulation replaced Wiener's stationary frequency-domain filter with a recursive state-space representation in the time domain, extending naturally to time-varying, multi-input multi-output systems.
 
 #### Python Implementation
+
+To make the prediction-update cycle concrete, the implementation below sets up a minimal `KalmanFilter` class using the Joseph-form covariance update and runs it on a 1D constant-velocity target tracked solely through noisy position measurements.
 
 ```python
 import numpy as np
@@ -308,23 +283,21 @@ print(f"final position uncertainty (1 sigma): {np.sqrt(P[0,0]):.3f}")
 
 ### 4.2.2 Extended Kalman Filter (EKF)
 
-Real robotic systems are almost always nonlinear. The 3D→2D projection of a camera, the quaternion-based rotation of an IMU, LiDAR scan matching, and GPS coordinate transformations are all nonlinear functions. The EKF is the most direct way to extend the Kalman filter to nonlinear systems.
+Unfortunately, real robotic sensors and kinematics rarely obey linear equations. Perspective camera projection maps 3D points onto 2D pixels nonlinearly, IMU integration rotates gravity and acceleration through 3D orientation, LiDAR scan matching couples pose nonlinearly with scene geometry, and GNSS coordinate conversions bend across a curved Earth. The **Extended Kalman Filter (EKF)** is the most direct way to preserve the Kalman recursion in these nonlinear regimes: keep the Gaussian parameterization, and linearize the models locally at each step.
 
 #### First-Order Taylor Expansion (Linearization)
 
-Nonlinear system model:
+Consider a general nonlinear system with additive Gaussian noise:
 $$\mathbf{x}_k = f(\mathbf{x}_{k-1}, \mathbf{u}_k) + \mathbf{w}_k$$
 $$\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k$$
 
-In this system, passing a Gaussian through a nonlinear function no longer yields a Gaussian. The EKF **linearizes the function about the current estimate via a first-order Taylor expansion**.
-
-Linearization of the motion model (about the estimate $\hat{\mathbf{x}}_{k-1|k-1}$):
+Because $f$ and $h$ are nonlinear, passing a Gaussian belief through them yields a non-Gaussian distribution. The EKF restores tractability by replacing each nonlinear function with its **first-order Taylor expansion** around the current best estimate. For the motion model, we linearize around the previous posterior mean $\hat{\mathbf{x}}_{k-1|k-1}$:
 
 $$f(\mathbf{x}_{k-1}, \mathbf{u}_k) \approx f(\hat{\mathbf{x}}_{k-1|k-1}, \mathbf{u}_k) + \mathbf{F}_k (\mathbf{x}_{k-1} - \hat{\mathbf{x}}_{k-1|k-1})$$
 
 $$\mathbf{F}_k = \left.\frac{\partial f}{\partial \mathbf{x}}\right|_{\hat{\mathbf{x}}_{k-1|k-1}, \mathbf{u}_k} \in \mathbb{R}^{n \times n}$$
 
-Linearization of the observation model (about the predicted estimate $\hat{\mathbf{x}}_{k|k-1}$):
+Similarly, for the observation model, we linearize around the predicted state $\hat{\mathbf{x}}_{k|k-1}$:
 
 $$h(\mathbf{x}_k) \approx h(\hat{\mathbf{x}}_{k|k-1}) + \mathbf{H}_k (\mathbf{x}_k - \hat{\mathbf{x}}_{k|k-1})$$
 
@@ -332,90 +305,85 @@ $$\mathbf{H}_k = \left.\frac{\partial h}{\partial \mathbf{x}}\right|_{\hat{\math
 
 #### EKF Algorithm
 
-**Prediction step**:
+Once the Jacobians $\mathbf{F}_k$ and $\mathbf{H}_k$ are evaluated, the EKF mimics the linear KF structure while still pushing the mean and innovation through the true nonlinear models. In the **prediction step**, the state advances via $f$ directly while uncertainty propagates through $\mathbf{F}_k$:
 $$\hat{\mathbf{x}}_{k|k-1} = f(\hat{\mathbf{x}}_{k-1|k-1}, \mathbf{u}_k)$$
 $$\mathbf{P}_{k|k-1} = \mathbf{F}_k \mathbf{P}_{k-1|k-1} \mathbf{F}_k^\top + \mathbf{Q}_k$$
 
-Note: the state prediction uses the nonlinear function $f$ directly, while the covariance propagation uses the Jacobian $\mathbf{F}_k$.
-
-**Update step**:
+In the **update step**, the innovation compares the actual measurement against the nonlinear prediction $h(\hat{\mathbf{x}}_{k|k-1})$, and the linear Jacobian $\mathbf{H}_k$ governs the gain and covariance shrinkage:
 $$\tilde{\mathbf{y}}_k = \mathbf{z}_k - h(\hat{\mathbf{x}}_{k|k-1})$$
 $$\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k$$
 $$\mathbf{K}_k = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1}$$
 $$\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde{\mathbf{y}}_k$$
 $$\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}$$
 
-Observe that the innovation $\tilde{\mathbf{y}}_k$ also uses the nonlinear function $h$ directly.
-
 #### Limitations of the EKF
 
-1. **Linearization error**: The stronger the nonlinearity, the larger the error of the first-order approximation. This can hurt the filter's consistency — the actual error may be larger than the uncertainty the filter reports.
+This local linearization makes the EKF fast and simple, yet it introduces three structural weaknesses that motivate the variants in the rest of this section:
 
-2. **Jacobian computation burden**: We must evaluate the Jacobians $\mathbf{F}_k$ and $\mathbf{H}_k$ at each time step's linearization points. When the system is complex, the Jacobian derivation becomes cumbersome and error-prone.
+1. **Linearization error and inconsistency**: When curvature is strong or uncertainty is wide, a tangent-plane approximation diverges from the true nonlinear transformation. Beyond degrading accuracy, this underestimates covariance and undermines filter consistency—the actual estimation error outgrows the uncertainty the filter claims.
+2. **Jacobian maintenance**: Analytical Jacobians $\mathbf{F}_k$ and $\mathbf{H}_k$ must be derived and evaluated at every step. For tightly coupled multi-sensor models, deriving these partial derivatives by hand is tedious and bug-prone.
+3. **Unimodal Gaussian constraint**: Because the posterior is forced into a single Gaussian, an EKF cannot represent multi-hypothesis beliefs when a robot faces ambiguous symmetry or global localization.
 
-3. **Unimodal assumption**: Gaussians are always unimodal, so multimodal posteriors cannot be represented.
+Even more pressing for 3D robotics is a fourth issue hidden inside the update equation $\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde{\mathbf{y}}_k$: ordinary vector addition breaks down as soon as the state includes 3D rotation. That limitation leads directly to the Error-State Kalman Filter.
 
 ### 4.2.3 Error-State Kalman Filter (ESKF)
 
-The ESKF (Error-State Kalman Filter) is widely used in state estimation with an IMU. Filter-based VIO systems such as MSCKF and OpenVINS, and the FAST-LIO family, use error-state or closely related manifold-filter formulations. [VINS-Mono](https://doi.org/10.1109/TRO.2018.2853729), by contrast, is based on sliding-window nonlinear optimization rather than an ESKF.
+When an IMU is part of the sensor suite, the **Error-State Kalman Filter (ESKF)** is the standard way to formulate a Kalman filter in 3D. Filter-based VIO systems such as MSCKF and OpenVINS, along with the FAST-LIO family, rely on error-state or closely related manifold-filter formulations—whereas [VINS-Mono](https://doi.org/10.1109/TRO.2018.2853729) opts for sliding-window nonlinear optimization instead.
 
 #### Why ESKF Instead of EKF
 
-When estimating a robot state — especially one that includes 3D orientation — using the EKF directly causes several problems:
+Applying a standard EKF directly to a 3D navigation state—one that couples position, velocity, orientation, and IMU biases—runs into three structural difficulties:
 
 **Problem 1: Non-Euclidean nature of rotation**
 
-3D rotation lives on the SO(3) manifold, not $\mathbb{R}^n$. Representing it with a quaternion $\mathbf{q} \in \mathbb{H}$ imposes $\|\mathbf{q}\| = 1$; representing it with a rotation matrix $\mathbf{R} \in SO(3)$ imposes $\mathbf{R}^\top \mathbf{R} = \mathbf{I}$, $\det(\mathbf{R}) = 1$.
-
-In a naive EKF state update $\hat{\mathbf{x}} \leftarrow \hat{\mathbf{x}} + \mathbf{K} \tilde{\mathbf{y}}$, the "+" is Euclidean addition. Adding an increment directly to four quaternion components breaks the unit norm. A direct quaternion EKF can be designed with consistent normalization and covariance projection, but normalizing only the value after an additive update can mishandle uncertainty in the constrained direction.
+3D orientation lives on the $SO(3)$ manifold rather than in $\mathbb{R}^n$. Representing it with a unit quaternion $\mathbf{q} \in \mathbb{H}$ imposes $\|\mathbf{q}\| = 1$, while a rotation matrix $\mathbf{R} \in SO(3)$ must satisfy $\mathbf{R}^\top \mathbf{R} = \mathbf{I}$ and $\det(\mathbf{R}) = 1$. In a naive EKF update $\hat{\mathbf{x}} \leftarrow \hat{\mathbf{x}} + \mathbf{K} \tilde{\mathbf{y}}$, the "+" denotes ordinary Euclidean addition, so adding an update vector to all four quaternion entries violates the unit-norm constraint. Although a direct quaternion EKF can be engineered with consistent normalization and covariance projection, merely normalizing the quaternion after an additive update mishandles uncertainty along the constrained radial direction.
 
 **Property 2: The error state is "almost zero"**
 
-After an update, the error state $\delta\mathbf{x} = \mathbf{x} \boxminus \hat{\mathbf{x}}$ is injected into the nominal state and reset to zero. If the nominal trajectory remains close to the true state, the model can be linearized in a small tangent-space neighborhood. Resetting alone does not guarantee a small linearization error, so initialization, observability, and model error still matter.
+After each measurement update, the estimated error state $\delta\mathbf{x} = \mathbf{x} \boxminus \hat{\mathbf{x}}$ is injected into the nominal state and reset to zero. As long as the nominal trajectory tracks the true state closely, the error stays within a small tangent-space neighborhood where first-order linearization holds well. Resetting alone does not guarantee small linearization errors—good initialization, observability, and accurate modeling remain essential—but separating the large trajectory from small perturbations keeps the filter's linearization well-behaved.
 
 **Problem 3: Different dynamics of the nominal and error states**
 
-Large motion changes are integrated in the nominal state, while small deviations around it are tracked in the error state. This supports prediction with high-rate IMU data and error correction when lower-rate external observations arrive.
+Large, rapid motion is integrated cleanly inside the nominal state, while small deviations around that trajectory evolve inside the error state. That separation maps directly onto multi-rate sensor fusion: high-rate IMU readings drive nominal propagation, and lower-rate exteroceptive measurements correct the accumulated error.
 
 #### ESKF Structure
 
-The ESKF maintains two states simultaneously:
+To exploit this separation, the ESKF maintains two coupled representations in parallel:
 
-1. **Nominal state** $\hat{\mathbf{x}}$: integrated through the nonlinear motion model without noise terms. It does not track uncertainty.
+1. **Nominal state** $\hat{\mathbf{x}}$: integrated through the nonlinear motion model without noise terms, serving as the noise-free reference trajectory without tracking uncertainty.
+2. **Error state** $\delta\mathbf{x}$: the small local discrepancy between the true state and the nominal state, estimated by a linear/extended Kalman filter in the tangent space. While the nominal trajectory remains close to the truth, a first-order tangent-space approximation is effective; once an update is injected into $\hat{\mathbf{x}}$, a reset Jacobian consistently transforms the error covariance into the new tangent coordinates.
 
-2. **Error state** $\delta\mathbf{x}$: the local difference between the nominal and true states, estimated by a Kalman filter. While the nominal state remains close, a first-order tangent-space approximation is useful; after injection, a reset Jacobian changes the covariance coordinates consistently.
-
-The true state is recovered by composition of the two:
+The true state is recovered by composing the nominal estimate with the error state via the manifold operator $\boxplus$:
 
 $$\mathbf{x}_{\text{true}} = \hat{\mathbf{x}} \boxplus \delta\mathbf{x}$$
 
-Here $\boxplus$ is the composition operation on the manifold. For Euclidean components it is ordinary addition; for rotation components it is:
+For Euclidean components such as position, velocity, and biases, $\boxplus$ reduces to ordinary vector addition; for 3D rotation, it applies a small multiplicative perturbation in the tangent space:
 
 $$\mathbf{R}_{\text{true}} = \hat{\mathbf{R}} \cdot \text{Exp}(\delta\boldsymbol{\theta})$$
 
-or, in quaternion form:
+In unit-quaternion form, the same small-angle perturbation writes as:
 
 $$\mathbf{q}_{\text{true}} = \hat{\mathbf{q}} \otimes \begin{bmatrix} 1 \\ \frac{1}{2}\delta\boldsymbol{\theta} \end{bmatrix} \approx \hat{\mathbf{q}} \otimes \delta\mathbf{q}$$
 
-Here $\delta\boldsymbol{\theta} \in \mathbb{R}^3$ is the angle-axis representation of the rotational error.
+where $\delta\boldsymbol{\theta} \in \mathbb{R}^3$ is the angle-axis error vector.
 
 #### State Vector of an IMU-Based ESKF
 
-Typical state vector in an IMU-camera/LiDAR fusion system:
-
-**Nominal state** (16-dimensional, with a quaternion):
+In a typical IMU–camera or IMU–LiDAR fusion pipeline, the **nominal state** is 16-dimensional when parameterized with a quaternion:
 $$\hat{\mathbf{x}} = \begin{bmatrix} {}^W\hat{\mathbf{p}} \\ {}^W\hat{\mathbf{v}} \\ \hat{\mathbf{q}}_{WB} \\ \hat{\mathbf{b}}_a \\ \hat{\mathbf{b}}_g \end{bmatrix} \in \mathbb{R}^{3} \times \mathbb{R}^{3} \times \mathbb{S}^3 \times \mathbb{R}^{3} \times \mathbb{R}^{3}$$
 
-**Error state** (15-dimensional — minimal parameterization of rotation):
+The corresponding **error state**, by contrast, is 15-dimensional because it uses a minimal 3-DoF tangent-space parameterization for orientation:
 $$\delta\mathbf{x} = \begin{bmatrix} \delta\mathbf{p} \\ \delta\mathbf{v} \\ \delta\boldsymbol{\theta} \\ \delta\mathbf{b}_a \\ \delta\mathbf{b}_g \end{bmatrix} \in \mathbb{R}^{15}$$
 
-The quaternion's 4D error is represented by the 3D vector $\delta\boldsymbol{\theta}$. Because of the unit-quaternion constraint the actual DoF is 3, and the ESKF naturally uses this minimal parameterization. An EKF can keep all four quaternion components, but it must handle normalization and the constrained covariance direction consistently.
+Representing orientation errors with $\delta\boldsymbol{\theta} \in \mathbb{R}^3$ rather than four quaternion components matches the three true degrees of freedom of $SO(3)$ and avoids redundant singular directions in the covariance matrix. (A direct quaternion EKF can retain four components, provided it applies consistent normalization and covariance projection.)
 
 #### ESKF Algorithm
 
+Putting the nominal and error states together gives a four-step cycle across IMU propagation and external sensor updates.
+
 **Step 1: Nominal state propagation (IMU mechanization)**
 
-Integrate the nominal state from the IMU measurements $(\tilde{\boldsymbol{\omega}}_k, \tilde{\mathbf{a}}_k)$. Subtract the biases and ignore the noise terms:
+Each incoming IMU sample $(\tilde{\boldsymbol{\omega}}_k, \tilde{\mathbf{a}}_k)$ drives the nominal state forward once estimated biases are subtracted and noise terms are omitted:
 
 $$\hat{\mathbf{q}}_{k+1} = \hat{\mathbf{q}}_k \otimes \mathbf{q}\{(\tilde{\boldsymbol{\omega}}_k - \hat{\mathbf{b}}_{g,k}) \Delta t\}$$
 $$\hat{\mathbf{v}}_{k+1} = \hat{\mathbf{v}}_k + (\hat{\mathbf{R}}_k (\tilde{\mathbf{a}}_k - \hat{\mathbf{b}}_{a,k}) + \mathbf{g}) \Delta t$$
@@ -423,11 +391,11 @@ $$\hat{\mathbf{p}}_{k+1} = \hat{\mathbf{p}}_k + \hat{\mathbf{v}}_k \Delta t + \f
 $$\hat{\mathbf{b}}_{a,k+1} = \hat{\mathbf{b}}_{a,k}$$
 $$\hat{\mathbf{b}}_{g,k+1} = \hat{\mathbf{b}}_{g,k}$$
 
-Here $\hat{\mathbf{R}}_k = \mathbf{R}(\hat{\mathbf{q}}_k) \in SO(3)$, and $\mathbf{g} = [0, 0, -9.81]^\top \, \text{m/s}^2$ is the gravity vector.
+Here $\hat{\mathbf{R}}_k = \mathbf{R}(\hat{\mathbf{q}}_k) \in SO(3)$ is the nominal body-to-world rotation matrix, and $\mathbf{g} = [0, 0, -9.81]^\top \, \text{m/s}^2$ is the gravity vector in a Z-up world frame.
 
 **Step 2: Error-state propagation (prediction)**
 
-We derive the continuous-time dynamics of the error state. Substituting the true IMU measurements $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$, $\tilde{\mathbf{a}} = \mathbf{R}^\top(\mathbf{a}_W - \mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$, and subtracting the nominal state:
+To propagate uncertainty, we derive the continuous-time error dynamics by substituting the IMU measurement models $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$ and $\tilde{\mathbf{a}} = \mathbf{R}^\top(\mathbf{a}_W - \mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$ into the true kinematics and subtracting the nominal equations:
 
 $$\delta\dot{\boldsymbol{\theta}} = -[\tilde{\boldsymbol{\omega}} - \hat{\mathbf{b}}_g]_\times \delta\boldsymbol{\theta} - \delta\mathbf{b}_g - \mathbf{n}_g$$
 $$\delta\dot{\mathbf{v}} = -\hat{\mathbf{R}}[\tilde{\mathbf{a}} - \hat{\mathbf{b}}_a]_\times \delta\boldsymbol{\theta} - \hat{\mathbf{R}} \delta\mathbf{b}_a - \hat{\mathbf{R}} \mathbf{n}_a$$
@@ -435,11 +403,11 @@ $$\delta\dot{\mathbf{p}} = \delta\mathbf{v}$$
 $$\delta\dot{\mathbf{b}}_a = \mathbf{n}_{ba}$$
 $$\delta\dot{\mathbf{b}}_g = \mathbf{n}_{bg}$$
 
-Here $[\mathbf{a}]_\times$ is the skew-symmetric matrix of the vector $\mathbf{a}$:
+Here $[\mathbf{a}]_\times$ denotes the skew-symmetric matrix associated with the cross product $\mathbf{a} \times (\cdot)$:
 
 $$[\mathbf{a}]_\times = \begin{bmatrix} 0 & -a_3 & a_2 \\ a_3 & 0 & -a_1 \\ -a_2 & a_1 & 0 \end{bmatrix} \in \mathbb{R}^{3 \times 3}$$
 
-In matrix form:
+Collecting the five equations into linear state-space form yields:
 
 $$\delta\dot{\mathbf{x}} = \mathbf{F}_c \delta\mathbf{x} + \mathbf{G}_c \mathbf{n}$$
 
@@ -451,30 +419,30 @@ $$\mathbf{F}_c = \begin{bmatrix}
 \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3
 \end{bmatrix} \in \mathbb{R}^{15 \times 15}$$
 
-Discretization (first-order approximation): $\mathbf{F}_d \approx \mathbf{I} + \mathbf{F}_c \Delta t$.
+Applying a first-order discretization $\mathbf{F}_d \approx \mathbf{I} + \mathbf{F}_c \Delta t$ then propagates the error covariance across the IMU interval:
 
 $$\mathbf{P}_{k+1|k} = \mathbf{F}_d \mathbf{P}_{k|k} \mathbf{F}_d^\top + \mathbf{G}_d \mathbf{Q}_d \mathbf{G}_d^\top$$
 
 **Step 3: Observation update**
 
-When a camera/LiDAR observation arrives, perform a standard EKF update on the error state. Linearize the observation model $\mathbf{z} = h(\mathbf{x}_{\text{true}})$ with respect to the error state:
+Whenever an external measurement from a camera or LiDAR arrives, the filter runs a standard EKF update on the 15-dimensional error state. Linearizing the measurement model $\mathbf{z} = h(\mathbf{x}_{\text{true}})$ around the nominal state gives:
 
 $$\mathbf{z} - h(\hat{\mathbf{x}}) \approx \mathbf{H} \delta\mathbf{x} + \mathbf{v}$$
 
 $$\mathbf{H} = \frac{\partial h}{\partial \delta\mathbf{x}}\bigg|_{\hat{\mathbf{x}}} \in \mathbb{R}^{m \times 15}$$
 
-This Jacobian is computed by the chain rule:
+This error-state Jacobian factors via the chain rule into the derivative with respect to the full state and the manifold perturbation Jacobian at zero error:
 
 $$\mathbf{H} = \frac{\partial h}{\partial \mathbf{x}_{\text{true}}} \cdot \frac{\partial \mathbf{x}_{\text{true}}}{\partial \delta\mathbf{x}}\bigg|_{\delta\mathbf{x}=\mathbf{0}}$$
 
-Standard Kalman update:
+With $\mathbf{H}$ in hand, the Kalman gain, error-state estimate, and updated covariance follow immediately:
 $$\mathbf{K} = \mathbf{P}_{k|k-1} \mathbf{H}^\top (\mathbf{H} \mathbf{P}_{k|k-1} \mathbf{H}^\top + \mathbf{R})^{-1}$$
 $$\delta\hat{\mathbf{x}} = \mathbf{K}(\mathbf{z} - h(\hat{\mathbf{x}}))$$
 $$\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}\mathbf{H})\mathbf{P}_{k|k-1}$$
 
 **Step 4: Injection of the error state and reset**
 
-Inject the error-state estimate $\delta\hat{\mathbf{x}}$ into the nominal state:
+Finally, we fold the estimated correction $\delta\hat{\mathbf{x}}$ back into the nominal state—additively for Euclidean states and multiplicatively on $SO(3)$ for the quaternion:
 
 $$\hat{\mathbf{p}} \leftarrow \hat{\mathbf{p}} + \delta\hat{\mathbf{p}}$$
 $$\hat{\mathbf{v}} \leftarrow \hat{\mathbf{v}} + \delta\hat{\mathbf{v}}$$
@@ -482,84 +450,79 @@ $$\hat{\mathbf{q}} \leftarrow \hat{\mathbf{q}} \otimes \mathbf{q}\{\delta\hat{\b
 $$\hat{\mathbf{b}}_a \leftarrow \hat{\mathbf{b}}_a + \delta\hat{\mathbf{b}}_a$$
 $$\hat{\mathbf{b}}_g \leftarrow \hat{\mathbf{b}}_g + \delta\hat{\mathbf{b}}_g$$
 
-After injection, reset the error state to $\delta\hat{\mathbf{x}} \leftarrow \mathbf{0}$. The covariance must also be transformed by the reset Jacobian:
+Once injected, the error mean is reset to $\delta\hat{\mathbf{x}} \leftarrow \mathbf{0}$, and the covariance is mapped into the new nominal tangent frame through the reset Jacobian:
 
 $$\mathbf{P} \leftarrow \mathbf{G} \mathbf{P} \mathbf{G}^\top$$
 
-Here $\mathbf{G} = \frac{\partial (\delta\mathbf{x} \boxminus \delta\hat{\mathbf{x}})}{\partial \delta\mathbf{x}}\big|_{\delta\hat{\mathbf{x}}}$. In practice, when $\delta\hat{\boldsymbol{\theta}}$ is small, we often approximate $\mathbf{G} \approx \mathbf{I}$.
+where $\mathbf{G} = \frac{\partial (\delta\mathbf{x} \boxminus \delta\hat{\mathbf{x}})}{\partial \delta\mathbf{x}}\big|_{\delta\hat{\mathbf{x}}}$. When the rotational correction $\delta\hat{\boldsymbol{\theta}}$ is small, implementations often approximate $\mathbf{G} \approx \mathbf{I}$.
 
 ### 4.2.4 Unscented Kalman Filter (UKF)
 
-The UKF rests on the insight that "approximating a distribution is easier than approximating a nonlinear function." The EKF approximates nonlinear functions by linearizing them, whereas the UKF leaves the nonlinear function intact and approximates the distribution with a finite set of **sigma points**.
+Both the EKF and ESKF work by linearizing the system equations and propagating a Gaussian through the resulting tangent approximation. The **Unscented Kalman Filter (UKF)** reverses that philosophy: rather than approximating a nonlinear function with a Taylor series, it is often easier and more accurate to approximate the probability distribution itself. The UKF leaves $f$ and $h$ untouched and captures the mean and covariance using a small, deterministic ensemble of **sigma points**.
 
 #### Unscented Transform
 
-For an $n$-dimensional Gaussian random variable $\mathbf{x} \sim \mathcal{N}(\hat{\mathbf{x}}, \mathbf{P})$, we generate $2n+1$ sigma points and weights:
+Given an $n$-dimensional Gaussian random variable $\mathbf{x} \sim \mathcal{N}(\hat{\mathbf{x}}, \mathbf{P})$, the Unscented Transform places $2n+1$ sigma points symmetrically around the mean along the principal axes of the covariance:
 
 $$\boldsymbol{\chi}_0 = \hat{\mathbf{x}}, \quad w_0 = \frac{\lambda}{n + \lambda}$$
 $$\boldsymbol{\chi}_i = \hat{\mathbf{x}} + \left(\sqrt{(n+\lambda)\mathbf{P}}\right)_i, \quad w_i = \frac{1}{2(n+\lambda)}, \quad i = 1, \ldots, n$$
 $$\boldsymbol{\chi}_{n+i} = \hat{\mathbf{x}} - \left(\sqrt{(n+\lambda)\mathbf{P}}\right)_i, \quad w_{n+i} = \frac{1}{2(n+\lambda)}, \quad i = 1, \ldots, n$$
 
-Here:
-- $\lambda = \alpha^2(n + \kappa) - n$ is a scaling parameter ($\alpha$: controls the sigma-point spread; $\kappa$: auxiliary parameter, typically $\kappa = 0$ or $3-n$)
-- $\left(\sqrt{(n+\lambda)\mathbf{P}}\right)_i$ is the $i$-th column of the Cholesky factor of $(n+\lambda)\mathbf{P}$
+Here $\lambda = \alpha^2(n + \kappa) - n$ sets the spread of the points ($\alpha$ controls dispersion around the mean, while $\kappa$ is a secondary scaling parameter typically chosen as $0$ or $3-n$), and $\left(\sqrt{(n+\lambda)\mathbf{P}}\right)_i$ denotes the $i$-th column of the Cholesky factor of $(n+\lambda)\mathbf{P}$.
 
-Pass each sigma point through the nonlinear function:
+Each sigma point is then pushed directly through the true nonlinear mapping:
 
 $$\boldsymbol{\gamma}_i = f(\boldsymbol{\chi}_i)$$
 
-Recover the mean and covariance from the transformed sigma points:
+Recombining the transformed points via weighted sample statistics yields the propagated mean and covariance:
 
 $$\hat{\mathbf{y}} = \sum_{i=0}^{2n} w_i^{(m)} \boldsymbol{\gamma}_i$$
 $$\mathbf{P}_y = \sum_{i=0}^{2n} w_i^{(c)} (\boldsymbol{\gamma}_i - \hat{\mathbf{y}})(\boldsymbol{\gamma}_i - \hat{\mathbf{y}})^\top$$
 
-The weights $w_i^{(m)}$ and $w_i^{(c)}$ are used for the mean and covariance respectively; $w_0^{(c)} = w_0^{(m)} + (1 - \alpha^2 + \beta)$ ($\beta = 2$ is optimal for Gaussians), and the remaining weights are identical.
+Here $w_i^{(m)}$ and $w_i^{(c)}$ denote the mean and covariance weights; only the center weight differs, with $w_0^{(c)} = w_0^{(m)} + (1 - \alpha^2 + \beta)$ (where $\beta = 2$ is optimal for Gaussian priors) and all remaining weights matching $w_i$.
 
 #### UKF Algorithm
 
+Embedded inside the Bayesian recursion, the Unscented Transform replaces Jacobian propagation in both phases:
+
 **Prediction step**:
-1. Generate sigma points from the current state $(\hat{\mathbf{x}}_{k-1|k-1}, \mathbf{P}_{k-1|k-1})$
-2. Pass each sigma point through the motion model: $\boldsymbol{\chi}_{k|k-1}^{(i)} = f(\boldsymbol{\chi}_{k-1|k-1}^{(i)}, \mathbf{u}_k)$
-3. Compute the predicted mean and covariance: $\hat{\mathbf{x}}_{k|k-1} = \sum w_i^{(m)} \boldsymbol{\chi}_{k|k-1}^{(i)}$
-4. $\mathbf{P}_{k|k-1} = \sum w_i^{(c)} (\boldsymbol{\chi}_{k|k-1}^{(i)} - \hat{\mathbf{x}}_{k|k-1})(\cdots)^\top + \mathbf{Q}_k$
+1. Generate sigma points from the current posterior $(\hat{\mathbf{x}}_{k-1|k-1}, \mathbf{P}_{k-1|k-1})$.
+2. Propagate each sigma point through the nonlinear motion model: $\boldsymbol{\chi}_{k|k-1}^{(i)} = f(\boldsymbol{\chi}_{k-1|k-1}^{(i)}, \mathbf{u}_k)$.
+3. Recover the predicted mean: $\hat{\mathbf{x}}_{k|k-1} = \sum w_i^{(m)} \boldsymbol{\chi}_{k|k-1}^{(i)}$.
+4. Recover the predicted covariance and add process noise: $\mathbf{P}_{k|k-1} = \sum w_i^{(c)} (\boldsymbol{\chi}_{k|k-1}^{(i)} - \hat{\mathbf{x}}_{k|k-1})(\cdots)^\top + \mathbf{Q}_k$.
 
 **Update step**:
-1. Regenerate sigma points from the predicted mean and covariance, including process noise $\mathbf{Q}_k$
-2. Pass them through the observation model: $\boldsymbol{\zeta}_k^{(i)} = h(\boldsymbol{\chi}_{k|k-1}^{(i)})$
-3. Predicted observation mean: $\hat{\mathbf{z}}_k = \sum w_i^{(m)} \boldsymbol{\zeta}_k^{(i)}$
-4. Observation covariance: $\mathbf{P}_{zz} = \sum w_i^{(c)} (\boldsymbol{\zeta}_k^{(i)} - \hat{\mathbf{z}}_k)(\cdots)^\top + \mathbf{R}_k$
-5. Cross-covariance: $\mathbf{P}_{xz} = \sum w_i^{(c)} (\boldsymbol{\chi}_{k|k-1}^{(i)} - \hat{\mathbf{x}}_{k|k-1})(\boldsymbol{\zeta}_k^{(i)} - \hat{\mathbf{z}}_k)^\top$
-6. Kalman gain: $\mathbf{K}_k = \mathbf{P}_{xz} \mathbf{P}_{zz}^{-1}$
-7. Update: $\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k (\mathbf{z}_k - \hat{\mathbf{z}}_k)$
-8. $\mathbf{P}_{k|k} = \mathbf{P}_{k|k-1} - \mathbf{K}_k \mathbf{P}_{zz} \mathbf{K}_k^\top$
+1. Regenerate sigma points from $(\hat{\mathbf{x}}_{k|k-1}, \mathbf{P}_{k|k-1})$ (already incorporating $\mathbf{Q}_k$).
+2. Project each point through the observation model: $\boldsymbol{\zeta}_k^{(i)} = h(\boldsymbol{\chi}_{k|k-1}^{(i)})$.
+3. Compute the predicted observation mean: $\hat{\mathbf{z}}_k = \sum w_i^{(m)} \boldsymbol{\zeta}_k^{(i)}$.
+4. Compute the innovation covariance: $\mathbf{P}_{zz} = \sum w_i^{(c)} (\boldsymbol{\zeta}_k^{(i)} - \hat{\mathbf{z}}_k)(\cdots)^\top + \mathbf{R}_k$.
+5. Compute the state–observation cross-covariance: $\mathbf{P}_{xz} = \sum w_i^{(c)} (\boldsymbol{\chi}_{k|k-1}^{(i)} - \hat{\mathbf{x}}_{k|k-1})(\boldsymbol{\zeta}_k^{(i)} - \hat{\mathbf{z}}_k)^\top$.
+6. Form the Kalman gain: $\mathbf{K}_k = \mathbf{P}_{xz} \mathbf{P}_{zz}^{-1}$.
+7. Update the state mean: $\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k (\mathbf{z}_k - \hat{\mathbf{z}}_k)$.
+8. Update the state covariance: $\mathbf{P}_{k|k} = \mathbf{P}_{k|k-1} - \mathbf{K}_k \mathbf{P}_{zz} \mathbf{K}_k^\top$.
 
 #### Pros and Cons of the UKF
 
 **Pros**:
-- No Jacobian computation. Big advantage for complex observation models (e.g., camera projection with distortion).
-- Propagates deterministic sigma points through the nonlinear function, approximating curvature in the transformed mean and covariance. The formal order depends on the distribution, function, and sigma-point parameters.
-- Can be simpler to implement than the EKF (function calls replace Jacobian derivation).
+- **Jacobian-free implementation**: Skipping analytical derivatives is a major practical advantage for intricate observation models such as camera projection with nonlinear lens distortion, making the filter cleaner to code and maintain.
+- **Higher-order moment capture**: Because deterministic sigma points sample the spread of the distribution directly through $f$ and $h$, they capture nonlinear curvature in the transformed mean and covariance better than a single tangent plane (though the formal order of accuracy depends on the distribution, nonlinearity, and sigma-point tuning).
 
 **Cons**:
-- Each of the $2n+1$ sigma points must be pushed through the nonlinear function, so the computational cost grows with the state dimension $n$.
-- Handling manifold states (e.g., SO(3)) requires replacing sigma-point generation and statistical aggregation with manifold operations, which is not straightforward.
-- ESKF formulations are common for IMU state estimation because they handle local manifold errors without propagating every sigma point. Which filter is more accurate depends on the model, initial error, and tuning.
+- **Scaling with state dimension**: Every one of the $2n+1$ sigma points must be evaluated through the nonlinear models, so compute grows linearly with $n$—expensive when the state grows to include many landmarks or calibration parameters.
+- **Awkward manifold handling**: Extending sigma-point generation and weighted averaging to Lie groups such as $SO(3)$ requires replacing Euclidean differences and sums with manifold retractions and intrinsic means, which is neither trivial nor cheap.
+- **Less common in IMU fusion**: In IMU-centric estimation, ESKF formulations are far more widespread because they handle local manifold errors cleanly without propagating $2n+1$ trajectories at IMU rate; which filter achieves lower error in a given system still depends on the model, initial error, and tuning.
 
 ### 4.2.5 Iterated Extended Kalman Filter (IEKF)
 
-The IEKF improves the accuracy of nonlinear observation handling by relinearizing iteratively in the update step, instead of linearizing only once.
+Instead of discarding Jacobians altogether as the UKF does, another way to curb linearization error is to keep the EKF structure and **relinearize iteratively inside the update step**. That idea yields the **Iterated Extended Kalman Filter (IEKF)**.
 
 #### Motivation: Linearization Error in the EKF Update
 
-In the EKF, the Jacobian $\mathbf{H}_k$ of the observation model is computed at the predicted estimate $\hat{\mathbf{x}}_{k|k-1}$. However, if the post-update estimate $\hat{\mathbf{x}}_{k|k}$ differs significantly from $\hat{\mathbf{x}}_{k|k-1}$, the linearization point is no longer optimal. The IEKF mitigates this by relinearizing at the post-update estimate and repeating the update.
+A standard EKF evaluates the measurement Jacobian $\mathbf{H}_k$ once at the predicted state $\hat{\mathbf{x}}_{k|k-1}$. When an observation is highly informative or strongly nonlinear, the posterior state $\hat{\mathbf{x}}_{k|k}$ can shift far enough from $\hat{\mathbf{x}}_{k|k-1}$ that the original tangent plane is a poor fit at the new estimate. The IEKF resolves this by treating the update as an iterative refinement: recompute $\mathbf{H}$ at the latest iterate and re-evaluate the correction until the estimate settles.
 
 #### IEKF Algorithm
 
-The prediction step is identical to the EKF. In the update step we iterate:
-
-Initialization: $\hat{\mathbf{x}}^{(0)} = \hat{\mathbf{x}}_{k|k-1}$
-
-For $j = 0, 1, 2, \ldots$ until convergence:
+Prediction proceeds identically to the standard EKF. During the update step, we initialize $\hat{\mathbf{x}}^{(0)} = \hat{\mathbf{x}}_{k|k-1}$ and iterate for $j = 0, 1, 2, \ldots$ until convergence:
 
 $$\mathbf{H}^{(j)} = \left.\frac{\partial h}{\partial \mathbf{x}}\right|_{\hat{\mathbf{x}}^{(j)}}$$
 
@@ -567,11 +530,11 @@ $$\mathbf{K}^{(j)} = \mathbf{P}_{k|k-1} \mathbf{H}^{(j)\top} (\mathbf{H}^{(j)} \
 
 $$\hat{\mathbf{x}}^{(j+1)} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}^{(j)} \left[\mathbf{z}_k - h(\hat{\mathbf{x}}^{(j)}) - \mathbf{H}^{(j)}(\hat{\mathbf{x}}_{k|k-1} - \hat{\mathbf{x}}^{(j)})\right]$$
 
-After convergence: $\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}^{(j+1)}$, $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}^{(j)} \mathbf{H}^{(j)}) \mathbf{P}_{k|k-1}$.
+Notice the extra term $-\mathbf{H}^{(j)}(\hat{\mathbf{x}}_{k|k-1} - \hat{\mathbf{x}}^{(j)})$: it keeps the prior anchor centered at $\hat{\mathbf{x}}_{k|k-1}$ while linearizing the measurement at $\hat{\mathbf{x}}^{(j)}$. Once the iterates converge, we set $\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}^{(j+1)}$ and compute the posterior covariance $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}^{(j)} \mathbf{H}^{(j)}) \mathbf{P}_{k|k-1}$.
 
-The IEKF is effectively equivalent to performing **Gauss-Newton optimization** in the observation update step. This perspective is important for understanding the connection to factor-graph-based optimization in Section 4.5.
+Mathematically, this loop is equivalent to solving a single-step **Gauss-Newton optimization** problem balancing the prior against the measurement likelihood—a deep structural link to the factor-graph optimizers we examine in Section 4.5. In practice, FAST-LIO2 builds directly on this insight by running a manifold IEKF that relinearizes thousands of LiDAR point-to-plane residuals across iterations during each scan update; doing so accounts for residual nonlinearity beyond a single linearization, with the actual accuracy gain and iteration count depending on initial error, scene geometry, and the stopping criterion.
 
-FAST-LIO2 uses a manifold IEKF that repeatedly relinearizes many LiDAR point-to-plane residuals during the state update. This can account for residual nonlinearity beyond a single linearization, but the gain and required iteration count depend on the initial error, scene geometry, and stopping rule.
+Yet every filter in the Kalman family shares one fundamental boundary: each represents the posterior as a single unimodal Gaussian. When a robot faces global localization ambiguity or severe non-Gaussianity where multiple distinct hypotheses must survive simultaneously, Gaussian filtering breaks down and we turn to sample-based particle methods.
 
 ---
 
@@ -579,59 +542,46 @@ FAST-LIO2 uses a manifold IEKF that repeatedly relinearizes many LiDAR point-to-
 
 ### 4.3.1 Overview of Sequential Monte Carlo (SMC)
 
-The particle filter (PF), or Sequential Monte Carlo (SMC) method, represents the posterior as a set of weighted samples (particles). Because it does not require the Gaussian assumption, it can handle multimodal distributions and strongly nonlinear systems.
+The **particle filter (PF)**—known more generally as the **Sequential Monte Carlo (SMC)** method—discards the Gaussian assumption altogether. Rather than summarizing the posterior with a single mean and covariance, it represents the distribution empirically as a cloud of weighted hypotheses called **particles**. Because no parametric shape is imposed, a particle cloud can track skewed, non-Gaussian beliefs as well as multimodal posteriors with several competing peaks.
 
-Particle approximation of the posterior:
+Mathematically, the posterior at time $k$ is approximated by a weighted sum of Dirac delta functions:
 
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k}) \approx \sum_{i=1}^{N} w_k^{(i)} \delta(\mathbf{x}_k - \mathbf{x}_k^{(i)})$$
 
-Here:
-- $N$: number of particles
-- $\mathbf{x}_k^{(i)}$: state of the $i$-th particle
-- $w_k^{(i)}$: weight of the $i$-th particle ($\sum_{i=1}^N w_k^{(i)} = 1$)
-- $\delta(\cdot)$: Dirac delta function
-
-As $N \to \infty$, the particle distribution converges to the true posterior. In practice we approximate with a finite number of particles; the number is chosen based on the complexity of the problem and the dimensionality of the state space.
+where $N$ is the particle count, $\mathbf{x}_k^{(i)}$ is the state hypothesis of the $i$-th particle, $w_k^{(i)}$ is its normalized importance weight ($\sum_{i=1}^N w_k^{(i)} = 1$), and $\delta(\cdot)$ denotes the Dirac delta distribution. In the asymptotic limit $N \to \infty$, this empirical measure converges to the true posterior; in practice, $N$ is chosen to balance approximation fidelity against real-time compute, taking into account both the complexity of the posterior and the dimension of the state space.
 
 ### 4.3.2 Importance Sampling
 
-Sampling directly from the posterior $p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$ is generally impossible. Instead, we draw samples from a **proposal distribution** $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k)$ and correct them with importance weights.
+Drawing samples directly from the true posterior $p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$ is typically impossible because its normalizing constant and closed form are unknown. **Importance sampling** sidesteps this barrier by drawing particles from an easier **proposal distribution** $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k)$ and compensating for the mismatch with importance weights.
 
-We derive the recursive weight update. From Bayes' rule:
+To derive the recursive weight update, apply Bayes' rule to the full trajectory posterior:
 
 $$p(\mathbf{x}_{0:k} \mid \mathbf{z}_{1:k}) = \frac{p(\mathbf{z}_k \mid \mathbf{x}_k) \, p(\mathbf{x}_k \mid \mathbf{x}_{k-1}) \, p(\mathbf{x}_{0:k-1} \mid \mathbf{z}_{1:k-1})}{p(\mathbf{z}_k \mid \mathbf{z}_{1:k-1})}$$
 
-Dividing by the proposal gives the importance ratio:
+Dividing by the factorized proposal distribution yields the recursive importance weight update:
 
 $$w_k^{(i)} \propto w_{k-1}^{(i)} \cdot \frac{p(\mathbf{z}_k \mid \mathbf{x}_k^{(i)}) \, p(\mathbf{x}_k^{(i)} \mid \mathbf{x}_{k-1}^{(i)})}{q(\mathbf{x}_k^{(i)} \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k)}$$
 
-**Simplest proposal**: use the transition prior as the proposal, i.e., $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1})$. The weights then simplify:
+The simplest and most widely taught choice—known as the **bootstrap filter**—uses the motion transition prior itself as the proposal, setting $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1})$. The transition terms cancel, leaving an intuitive update rule:
 
 $$w_k^{(i)} \propto w_{k-1}^{(i)} \cdot p(\mathbf{z}_k \mid \mathbf{x}_k^{(i)})$$
 
-Each particle's previous weight is multiplied by the observation likelihood at that particle's location. Given equal previous weights, particles more consistent with the observation receive higher weights.
-
-The optimal proposal is $q^*(\mathbf{x}_k \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k)$, but in most cases this cannot be obtained.
+Each particle simply moves according to the motion model and then scales its previous weight by the likelihood of the new sensor observation at its predicted pose: particles that explain $\mathbf{z}_k$ well gain weight, while inconsistent hypotheses fade. In theory, the minimum-variance proposal is $q^*(\mathbf{x}_k \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k)$, which already incorporates the latest measurement, though in most nonlinear systems it cannot be evaluated or sampled directly.
 
 ### 4.3.3 Resampling
 
-Propagating particles through the proposal leads to a **weight degeneracy** problem: a few particles accumulate most of the weight while the others become negligibly small. In effect, only a small subset of particles contribute, and the quality of the approximation deteriorates rapidly.
-
-We diagnose degeneracy using the effective sample size:
+Repeating importance updates over many time steps introduces **weight degeneracy**: after several iterations, one or two particles accumulate virtually all the probability mass while the remaining particles carry near-zero weights and contribute nothing to the estimate. We monitor this collapse via the **effective sample size**:
 
 $$N_{\text{eff}} = \frac{1}{\sum_{i=1}^N (w_k^{(i)})^2}$$
 
-If $N_{\text{eff}} < N_{\text{threshold}}$ (typically $N/2$), we perform resampling.
+When all weights are uniform, $N_{\text{eff}} = N$; when a single particle dominates, $N_{\text{eff}} \to 1$. Whenever $N_{\text{eff}}$ drops below a chosen threshold $N_{\text{threshold}}$ (commonly $N/2$), the filter triggers **resampling**—duplicating high-weight particles, pruning negligible ones, and resetting all weights to $1/N$.
 
-**Resampling**: the process of duplicating high-weight particles and removing low-weight ones to make the weights uniform.
+Three resampling schemes are standard in practice:
+- **Multinomial resampling**: draws $N$ independent indices with replacement from the discrete distribution defined by the weights. While conceptually simple, independent draws introduce high sampling variance.
+- **Systematic resampling**: draws a single uniform offset $U_0 \sim \text{Uniform}(0, 1/N)$ and steps across the cumulative weight distribution at regular intervals $U_i = U_0 + (i-1)/N$. It runs in linear time and typically achieves lower variance than multinomial resampling, though it does not guarantee minimum variance across every possible weight configuration.
+- **Stratified resampling**: partitions $[0, 1)$ into $N$ equal strata like systematic resampling, but draws an independent uniform sample within each stratum rather than sharing one global offset.
 
-Main resampling strategies:
-
-**Multinomial resampling**: draw $N$ independent samples using the weights as probabilities. The most intuitive but has high variance.
-
-**Systematic resampling**: generate a single uniform random number $U_0 \sim \text{Uniform}(0, 1/N)$, then traverse the CDF with $U_i = U_0 + (i-1)/N$. It is inexpensive and often reduces variance relative to multinomial resampling, but it does not guarantee the minimum variance for every weight configuration.
-
-**Stratified resampling**: use independent uniform random numbers within each stratum. Like systematic resampling it divides the interval into strata, but draws independently within each stratum rather than sharing one random offset.
+The Python implementation below puts these pieces together into a **Sampling Importance Resampling (SIR)** bootstrap particle filter using systematic resampling whenever $N_{\text{eff}}$ falls below $N/2$.
 
 ```python
 import numpy as np
@@ -719,97 +669,86 @@ def bootstrap_particle_filter(f, h, Q, R, z_seq, N=1000, x0_sampler=None):
 
 ### 4.3.4 Rao-Blackwellized Particle Filter (RBPF)
 
-The RBPF splits the state space into two parts, estimating one with particles and the other analytically (e.g., with a Kalman filter). This reduces the dimensionality the particle filter must cover, yielding a good approximation with far fewer particles.
+Pure particle filters struggle as state dimension grows, because covering a high-dimensional space with random samples quickly becomes prohibitive. The **Rao-Blackwellized Particle Filter (RBPF)** mitigates this by partitioning the state: sample only the low-dimensional, strongly nonlinear variables with particles, and track the remaining conditionally Gaussian variables analytically with Kalman filters.
 
-Let the state be partitioned as $\mathbf{x} = [\mathbf{x}_1, \mathbf{x}_2]$. If, given $\mathbf{x}_1$, the conditional distribution of $\mathbf{x}_2$ is analytically tractable (e.g., Gaussian):
+Suppose the state splits into $\mathbf{x} = [\mathbf{x}_1, \mathbf{x}_2]$ such that, conditioned on $\mathbf{x}_1$, the posterior over $\mathbf{x}_2$ is analytically tractable. By the chain rule of probability:
 
 $$p(\mathbf{x}_1, \mathbf{x}_2 \mid \mathbf{z}_{1:k}) = p(\mathbf{x}_2 \mid \mathbf{x}_1, \mathbf{z}_{1:k}) \cdot p(\mathbf{x}_1 \mid \mathbf{z}_{1:k})$$
 
-- $p(\mathbf{x}_1 \mid \mathbf{z}_{1:k})$: approximated by a particle filter
-- $p(\mathbf{x}_2 \mid \mathbf{x}_1, \mathbf{z}_{1:k})$: tracked by a Kalman filter attached to each particle
-
-**Rao-Blackwell theorem**: the variance of the estimator under this partition is always less than or equal to the variance of the pure particle filter.
+Here $p(\mathbf{x}_1 \mid \mathbf{z}_{1:k})$ is approximated by the particle cloud, while $p(\mathbf{x}_2 \mid \mathbf{x}_1, \mathbf{z}_{1:k})$ is maintained analytically by a bank of Kalman filters attached to each particle. By the **Rao-Blackwell theorem**, marginalizing out the tractable subspace analytically is guaranteed never to increase estimator variance relative to sampling the joint space:
 
 $$\text{Var}[\hat{\mathbf{x}}_{\text{RBPF}}] \leq \text{Var}[\hat{\mathbf{x}}_{\text{PF}}]$$
 
-**Connection to FastSLAM**: FastSLAM is a representative application of the RBPF. It represents the robot trajectory with particles and tracks landmark positions with individual EKFs attached to each particle.
-
-- $\mathbf{x}_1 = \mathbf{x}_{0:k}^{\text{robot}}$ (robot trajectory) → particle filter
-- $\mathbf{x}_2 = \{\mathbf{m}_1, \ldots, \mathbf{m}_M\}$ (landmarks) → $M$ independent 2D EKFs per particle
-
-Given the robot trajectory, observations of each landmark become mutually independent (conditional independence), so $M$ small EKFs can be run independently instead of one giant EKF. This conditional independence is central to FastSLAM's efficiency. For one observation with known landmark association, balanced-tree map management gives an update cost of $O(N \log M)$ for $N$ particles and $M$ landmarks, versus $O(M^2)$ for the corresponding EKF-SLAM update.
+**Connection to FastSLAM**: FastSLAM is the classic robotic application of an RBPF. It uses particles to represent the robot's trajectory $\mathbf{x}_1 = \mathbf{x}_{0:k}^{\text{robot}}$ and tracks the map of $M$ landmarks $\mathbf{x}_2 = \{\mathbf{m}_1, \ldots, \mathbf{m}_M\}$ with $M$ independent 2D EKFs per particle. Why does the map factor cleanly? Conditioned on a specific robot trajectory, observations of distinct landmarks become conditionally independent, eliminating the cross-correlations that force a single EKF-SLAM filter to maintain one giant dense covariance matrix. With balanced-tree map storage and known data association, FastSLAM updates a single landmark observation in $O(N \log M)$ time for $N$ particles and $M$ landmarks, compared with $O(M^2)$ for a standard EKF-SLAM update.
 
 ### 4.3.5 Limitations of the Particle Filter and Its Current Role
 
-A major limitation of the PF is the **curse of dimensionality**. In general high-dimensional problems, the particle count needed for a useful approximation can grow very rapidly. VIO and LIO states usually include attitude, velocity, and biases, so representing the full state with particles is often inefficient in real time unless a strong proposal or Rao–Blackwellization reduces the sampled dimension.
+Even with Rao-Blackwellization, the particle filter remains constrained by the **curse of dimensionality**: in general high-dimensional state spaces, the number of particles needed to avoid sample impoverishment can grow explosively. Because visual-inertial and LiDAR-inertial odometry states couple 3D pose, linear velocity, and accelerometer/gyroscope biases—often 15 dimensions or more before adding landmarks—running a full-state particle filter in real time is rarely practical without an unusually tight proposal or structural factorization.
 
-For this reason, the PF plays a limited role in modern robotic systems:
+Consequently, modern robotics deploys particle filters selectively where their nonparametric flexibility shines:
+- **2D RBPF SLAM**: Occupancy-grid mapping pipelines such as GMapping track only the 3-DoF planar pose with particles while attaching a 2D grid map to each particle.
+- **Global localization (Monte Carlo Localization, MCL)**: When a robot boots up inside a known map without an initial pose estimate—or must recover from sudden relocation in the kidnapped-robot problem (paired with recovery heuristics such as injecting fresh particles)—a particle cloud handles multimodal ambiguity naturally.
+- **Low-dimensional nonlinear tracking**: Specialized tasks with small state vectors and severe non-Gaussianity or multimodality.
 
-- **2D SLAM (RBPF-based)**: still used in 2D occupancy-grid SLAM such as GMapping. Only the robot pose (3-DoF) is represented by particles, with the map represented by a grid attached to each particle.
-- **Global localization (MCL)**: when the robot's initial position is unknown in an existing map. Recovery after an unexpected relocation during operation (the kidnapped-robot problem) also requires a recovery strategy, such as redistributing particles. The PF's ability to represent multimodal distributions naturally makes it a good fit.
-- **Low-dimensional nonlinear estimation**: specialized problems with a low-dimensional state and strong nonlinearity.
+High-dimensional 3D navigation, by contrast, is dominated by the Kalman filter family (especially the ESKF) and factor-graph optimization.
 
-High-dimensional state estimation is dominated by the Kalman filter family (especially the ESKF) and factor-graph-based optimization.
+Yet every sequential filter—whether Kalman-based or particle-based—shares a structural habit: as time marches forward, past states are either marginalized out immediately or frozen at the linearization points chosen when their measurements first arrived. To understand why modern SLAM largely moved beyond pure filtering, we need to contrast **filtering** with **smoothing**.
 
 ---
 
-## 4.4 Smoothing vs Filtering
+## 4.4 Filtering and Smoothing
 
 ### 4.4.1 The Difference Between Filtering and Smoothing
 
-**Filtering**: uses observations up to the present to estimate the current state.
+The distinction between filtering and smoothing comes down to which measurements are allowed to inform an estimate:
+
+- **Filtering** estimates only the *current* state given observations received up to the present:
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$$
 
-**Smoothing**: uses all observations (including future ones) to estimate past states.
+- **Smoothing** estimates *past* (or all) states given the full measurement sequence—including future observations collected after time $k$:
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:T}), \quad k < T$$
 
-Under a correct probabilistic model and the same loss, conditioning on future observations can reduce a smoother's expected Bayes risk. This does not guarantee lower realized error on every trajectory or for every approximate optimizer. Real-time estimation uses filters as well as incremental and fixed-lag smoothers; batch smoothers are also used for post-processing.
+Under a well-specified probabilistic model and identical loss function, conditioning on future measurements can reduce a smoother's expected Bayes risk, though this theoretical advantage does not guarantee lower realized error on every individual trajectory or for every approximate solver. In practice, real-time systems rely on sequential filters alongside incremental and fixed-lag smoothers, while full batch smoothers remain standard for offline mapping and post-processing.
 
 ### 4.4.2 Fixed-Lag Smoother
 
-A fixed-lag smoother uses observations up to the current time $k$ to estimate the state at $k-L$, $L$ steps in the past:
+Between single-step filtering and full-trajectory smoothing lies the **fixed-lag smoother**, which estimates the state $L$ steps behind the current time using all observations up to time $k$:
 
 $$p(\mathbf{x}_{k-L} \mid \mathbf{z}_{1:k})$$
 
-This is a compromise between filtering and full smoothing. Allowing a latency of $L$ lets the estimator revisit a past state with additional observations.
-
-The sliding-window optimization systems of VINS-Mono, ORB-SLAM3, and similar systems are close to fixed-lag smoothers. They can relinearize keyframes jointly inside the window, but an accuracy comparison with filtering must hold compute budget, model, and dataset constant.
+By tolerating a bounded lag $L$, the estimator can revisit recent poses as new measurements tighten geometric constraints before older states leave the window. Sliding-window nonlinear optimizers such as VINS-Mono and ORB-SLAM3 operate in much the same spirit, jointly relinearizing keyframes inside an active window; as with any architectural choice, rigorous accuracy comparisons against filters require holding the compute budget, sensor model, and dataset fixed.
 
 ### 4.4.3 Full Smoothing (Batch Optimization)
 
-Estimate all states of the entire trajectory simultaneously using all observations:
+Pushing the window to the entire mission yields **full smoothing (batch optimization)**, which solves for the entire state history simultaneously given all recorded measurements:
 
 $$p(\mathbf{x}_{0:T} \mid \mathbf{z}_{1:T})$$
 
-Solving this as MAP (Maximum A Posteriori) estimation gives:
+Framing this inference as Maximum A Posteriori (MAP) estimation seeks the trajectory that maximizes the joint posterior:
 
 $$\mathbf{x}_{0:T}^* = \arg\max_{\mathbf{x}_{0:T}} p(\mathbf{x}_{0:T} \mid \mathbf{z}_{1:T})$$
 
-Under Gaussian noise assumptions, MAP becomes a Nonlinear Least Squares (NLS) problem. This is the starting point of factor-graph-based optimization.
+When sensor noise is modeled as Gaussian, maximizing this joint posterior turns into a **Nonlinear Least Squares (NLS)** problem—the exact mathematical starting point for factor-graph optimization.
 
 ### 4.4.4 Why Modern SLAM Moved From Filtering To Optimization
 
-Until the early 2000s, EKF-SLAM was the mainstream of SLAM. Gradually, the field shifted to graph-based optimization (= batch smoothing) for four reasons.
+Through the early 2000s, EKF-SLAM was the dominant paradigm in mobile robotics. Over the following decade, however, the field shifted decisively toward graph-based optimization (smoothing) for four fundamental reasons:
 
 **1. The linearization-point problem**
 
-The EKF is "linearize once, and you're done." The Jacobian at time $k$ is computed at the time-$k$ estimate, and if a better estimate is later obtained, the past Jacobians are not revised. In contrast, batch optimization can iteratively relinearize the Jacobians of the entire trajectory at the current estimate.
-
-[Strasdat et al. (2012) "Visual SLAM: Why Filter?"](https://doi.org/10.1016/j.imavis.2012.02.009) presented this argument systematically: given the same computational budget, increasing the number of features improves accuracy more than increasing the number of frames, and bundle adjustment, whose cost is linear in the number of features, is more efficient in that respect than filtering, whose cost is cubic.
+A standard EKF linearizes once and never looks back: the Jacobian at time $k$ is evaluated at the time-$k$ estimate and baked into the covariance forever, even after later observations reveal a much better trajectory estimate. By contrast, batch and sliding-window optimizers can repeatedly relinearize every factor along the trajectory around the latest iterate. In their influential analysis ["Visual SLAM: Why Filter?" (2012)](https://doi.org/10.1016/j.imavis.2012.02.009), Strasdat et al. showed that under an equal computational budget, tracking more visual features improves accuracy more effectively than keeping more frames—and bundle adjustment, whose cost scales linearly in the number of features, exploits that tradeoff far more efficiently than EKF-SLAM, whose dense update scales cubically.
 
 **2. Consistency issues**
 
-Without an external reference, SLAM has gauge freedoms: transforming the global frame can leave all observations unchanged. Their number differs among 2D SLAM, 3D SLAM, and visual-inertial estimation; VIO, for example, normally has four unobservable directions, three for global position and one for yaw about gravity. Implementations anchor the first pose or selected degrees of freedom to choose a gauge. If an EKF linearizes at changing estimates, it can nevertheless inject spurious information along these directions and become inconsistent. First-Estimate Jacobian (FEJ) and observability-constrained formulations are designed to preserve this null space more faithfully.
+Without an external absolute reference, SLAM exhibits **gauge freedoms**: shifting or rotating the global reference frame leaves all relative observations unchanged. The exact null-space dimension depends on the problem—2D SLAM, 3D SLAM, and visual-inertial odometry differ, with VIO typically having four unobservable directions (three global translations and yaw about gravity). While implementations choose a gauge by anchoring the first pose or selected degrees of freedom, an EKF that relinearizes at shifting estimates along the trajectory can inadvertently inject spurious information into these unobservable directions, causing overconfident covariances and filter inconsistency. Techniques such as First-Estimate Jacobian (FEJ) and observability-constrained filtering were specifically invented to preserve that null space more faithfully.
 
 **3. Scalability**
 
-In EKF-SLAM with $M$ landmarks, the covariance matrix has size $O((n + 3M)^2)$ and each update has cost $O((n+3M)^2)$. This becomes intractable as the map grows.
-
-In graph-based SLAM the information matrix (Hessian) is **sparse**. Each variable is connected only to variables that share factors, so many matrix entries are zero. Exploiting this sparsity can reduce work relative to a dense solve, but actual complexity depends on graph topology, elimination ordering, and fill-in introduced by loop closures.
+In EKF-SLAM with $M$ landmarks, maintaining all pairwise state–landmark correlations produces a dense covariance matrix of size $O((n + 3M)^2)$, making each update cost $O((n+3M)^2)$—rapidly intractable as a map grows. In graph-based SLAM, by contrast, the information matrix (Hessian) is **sparse**, because variables only couple when they share a factor. Exploiting that sparsity often slashes runtime compared to a dense filter update, though actual computational cost still depends on graph topology, variable elimination ordering, and the fill-in created by loop closures.
 
 **4. Natural handling of loop closures**
 
-In filter-based systems, handling a loop closure requires retaining the covariance information for past states, which increases the computational cost. In graph-based systems, a loop closure is simply a new factor (constraint) to add, and the whole graph is re-optimized.
+In a filter, closing a loop back to a long-past pose requires retaining correlations with historical states or performing awkward state augmentation. In a factor graph, a loop closure is nothing more than adding a new relative-pose constraint connecting two existing nodes and re-solving the graph.
 
 | Aspect | Filtering (EKF) | Optimization (Graph) |
 |------|----------------|---------------------|
@@ -820,7 +759,9 @@ In filter-based systems, handling a loop closure requires retaining the covarian
 | Cost | Depends on state and observation structure | Depends on graph topology, ordering, and fill-in |
 | Consistency | Requires care with linearization and observability | Relinearization alone is insufficient; gauge and marginalization still matter |
 
-Filter-based approaches remain in use. [MSCKF (Mourikis & Roumeliotis, 2007)](https://ieeexplore.ieee.org/document/4209642) and OpenVINS target bounded-compute settings, and FAST-LIO2 combines an IEKF with an ikd-tree. Accuracy comparisons between filtering and optimization require matched datasets, sensors, and compute budgets.
+That is not to say filtering has vanished. Bounded-compute filters such as [MSCKF (Mourikis & Roumeliotis, 2007)](https://ieeexplore.ieee.org/document/4209642) and OpenVINS remain workhorses on resource-constrained aerial platforms, and FAST-LIO2 achieves remarkable throughput by pairing a manifold IEKF with an incremental `ikd-tree`. Any fair accuracy comparison between filtering and optimization must therefore keep the dataset, sensor models, and compute budget matched.
+
+To turn the smoothing formulation into practical real-time software, however, we need a clean representation that exposes factor sparsity and supports Lie-group manifolds directly. That representation is the **factor graph**.
 
 ---
 
@@ -828,16 +769,13 @@ Filter-based approaches remain in use. [MSCKF (Mourikis & Roumeliotis, 2007)](ht
 
 ### 4.5.1 Factor Graph Representation
 
-A factor graph is a kind of probabilistic graphical model — a bipartite graph consisting of variables and factors.
+To turn full or fixed-lag smoothing into a clean, modular solver, we encode the joint probability distribution as a **factor graph**—a bipartite graph linking *variable nodes* (unknown states to be estimated) with *factor nodes* (probabilistic constraints imposed by sensor measurements or priors). Under conditional independence across measurements, the joint posterior factors into a product of local potentials:
 
 $$p(\mathbf{X} \mid \mathbf{Z}) \propto \prod_{i} f_i(\mathbf{X}_i)$$
 
-Here:
-- $\mathbf{X} = \{\mathbf{x}_0, \mathbf{x}_1, \ldots, \mathbf{x}_T, \mathbf{l}_1, \ldots, \mathbf{l}_M\}$: variable nodes (poses, landmarks, biases, etc.)
-- $f_i(\mathbf{X}_i)$: the $i$-th factor. A "probabilistic potential" or "probabilistic constraint" on the subset $\mathbf{X}_i$ of variables
-- $\mathbf{Z}$: all observations
+Here $\mathbf{X} = \{\mathbf{x}_0, \mathbf{x}_1, \ldots, \mathbf{x}_T, \mathbf{l}_1, \ldots, \mathbf{l}_M\}$ collects all state variables—robot poses, velocities, biases, and landmarks—$\mathbf{Z}$ denotes the full measurement set, and each factor $f_i(\mathbf{X}_i)$ expresses a local probabilistic constraint over the small subset of variables $\mathbf{X}_i$ involved in that observation.
 
-Each factor corresponds to a specific observation or piece of prior information:
+Different sensors and priors map directly onto distinct factor types:
 
 | Factor type | Connected variables | Meaning |
 |------------|-------------|------|
@@ -849,119 +787,102 @@ Each factor corresponds to a specific observation or piece of prior information:
 | GPS factor | $\mathbf{x}_k$ | Absolute-position observation |
 | Loop closure factor | $\mathbf{x}_i, \mathbf{x}_j$ | Loop-closure relative pose |
 
-Factor graphs are **modular**. Adding a sensor requires defining its factor and adding it to the graph; existing factors need not change.
+Because every sensor enters strictly as an independent factor node, factor graphs are inherently **modular**: fusing an additional modality requires defining a new factor type and wiring it into the relevant variables, without altering the rest of the graph.
 
 ### 4.5.2 MAP Inference = Nonlinear Least Squares
 
-Under a Gaussian noise model, each factor takes the form:
+When measurement noise is Gaussian, each factor takes an exponential quadratic form:
 
 $$f_i(\mathbf{X}_i) \propto \exp\left(-\frac{1}{2} \|\mathbf{r}_i(\mathbf{X}_i)\|^2_{\boldsymbol{\Sigma}_i}\right)$$
 
-Here $\mathbf{r}_i(\mathbf{X}_i)$ is the residual and $\|\mathbf{r}\|^2_{\boldsymbol{\Sigma}} = \mathbf{r}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$ is the squared Mahalanobis distance.
-
-For an observation factor, for example:
+where $\mathbf{r}_i(\mathbf{X}_i)$ is the factor's residual vector and $\|\mathbf{r}\|^2_{\boldsymbol{\Sigma}} = \mathbf{r}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$ denotes the squared Mahalanobis distance weighted by sensor precision. For a typical observation factor, the residual compares the measurement against the predicted observation:
 $$\mathbf{r}_i = \mathbf{z}_i - h_i(\mathbf{X}_i), \quad \boldsymbol{\Sigma}_i = \mathbf{R}_i \text{ (observation noise covariance)}$$
 
-MAP estimate of the full posterior:
+Seeking the Maximum A Posteriori (MAP) trajectory means maximizing the product of all factors:
 
 $$\mathbf{X}^* = \arg\max_\mathbf{X} p(\mathbf{X} \mid \mathbf{Z}) = \arg\max_\mathbf{X} \prod_i f_i(\mathbf{X}_i)$$
 
-Taking logarithms and flipping signs:
+Taking the negative logarithm turns that product of Gaussians into a sum of squared residuals:
 
 $$\boxed{\mathbf{X}^* = \arg\min_\mathbf{X} \sum_i \|\mathbf{r}_i(\mathbf{X}_i)\|^2_{\boldsymbol{\Sigma}_i}}$$
 
-This is the **Nonlinear Least Squares (NLS)** problem. The probabilistic inference problem has been converted into an optimization problem. The 139-page tutorial [Dellaert & Kaess (2017) "Factor Graphs for Robot Perception"](https://doi.org/10.1561/2300000043) systematically explains this process.
+Probabilistic MAP inference has therefore been converted into a **Nonlinear Least Squares (NLS)** optimization problem. For a comprehensive 139-page treatment of this duality and its linear-algebraic machinery, see [Dellaert & Kaess (2017), "Factor Graphs for Robot Perception"](https://doi.org/10.1561/2300000043).
 
 ### 4.5.3 Gauss-Newton Method
 
-To solve the NLS problem we use the Gauss-Newton (GN) method. Expand the residuals to first order about the current estimate $\mathbf{X}^{(0)}$:
+Because the residuals $\mathbf{r}_i$ are generally nonlinear, we solve the NLS objective iteratively using the **Gauss-Newton (GN)** method. At each iteration, we linearize every residual to first order around the current estimate $\mathbf{X}^{(0)}$:
 
 $$\mathbf{r}_i(\mathbf{X}^{(0)} \boxplus \Delta\mathbf{X}) \approx \mathbf{r}_i(\mathbf{X}^{(0)}) + \mathbf{J}_i \Delta\mathbf{X}$$
 
-Here $\mathbf{J}_i = \frac{\partial \mathbf{r}_i}{\partial \mathbf{X}}\big|_{\mathbf{X}^{(0)}}$ is the residual Jacobian, and $\boxplus$ is the increment operation on the manifold.
-
-Substituting:
+where $\mathbf{J}_i = \frac{\partial \mathbf{r}_i}{\partial \mathbf{X}}\big|_{\mathbf{X}^{(0)}}$ is the residual Jacobian and $\boxplus$ denotes the manifold update operator. Substituting this linear approximation back into the cost function gives a quadratic subproblem in $\Delta\mathbf{X}$:
 
 $$\sum_i \|\mathbf{r}_i + \mathbf{J}_i \Delta\mathbf{X}\|^2_{\boldsymbol{\Sigma}_i}$$
 
-Whitening via $\mathbf{r}_i' = \boldsymbol{\Sigma}_i^{-1/2} \mathbf{r}_i$, $\mathbf{J}_i' = \boldsymbol{\Sigma}_i^{-1/2} \mathbf{J}_i$ yields a standard least-squares problem:
+Whitening each residual and Jacobian by its inverse square-root covariance—$\mathbf{r}_i' = \boldsymbol{\Sigma}_i^{-1/2} \mathbf{r}_i$ and $\mathbf{J}_i' = \boldsymbol{\Sigma}_i^{-1/2} \mathbf{J}_i$—reduces the weighted objective to an unweighted least-squares problem:
 
 $$\sum_i \|\mathbf{r}_i' + \mathbf{J}_i' \Delta\mathbf{X}\|^2$$
 
-Differentiating with respect to $\Delta\mathbf{X}$ and setting to zero yields the **normal equation**:
+Differentiating with respect to $\Delta\mathbf{X}$ and setting the gradient to zero yields the **normal equation**:
 
 $$\underbrace{\left(\sum_i \mathbf{J}_i'^\top \mathbf{J}_i'\right)}_{\mathbf{H}} \Delta\mathbf{X} = -\underbrace{\sum_i \mathbf{J}_i'^\top \mathbf{r}_i'}_{\mathbf{b}}$$
 
 $$\boxed{\mathbf{H} \Delta\mathbf{X} = -\mathbf{b}}$$
 
-Here $\mathbf{H} = \mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{J} \in \mathbb{R}^{N \times N}$ is the approximate Hessian (information matrix), and $\mathbf{b} = \mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$ is the gradient.
+Here $\mathbf{H} = \mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{J} \in \mathbb{R}^{N \times N}$ is the Gauss-Newton approximate Hessian (information matrix) and $\mathbf{b} = \mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$ is the gradient vector.
 
-In SLAM problems $\mathbf{H}$ is **sparse**. Each factor's Jacobian $\mathbf{J}_i$ has nonzero entries only in the columns corresponding to the variables it connects, and zero elsewhere. Thus the nonzero blocks of $\mathbf{H}$ represent couplings between variables that share a factor. In SLAM problems where each factor connects only a few variables, this structure makes $\mathbf{H}$ sparse.
+Crucially, in SLAM factor graphs, $\mathbf{H}$ is **sparse**. Each factor's Jacobian $\mathbf{J}_i$ is nonzero only in the columns belonging to the variables $\mathbf{X}_i$ that factor touches, so an off-diagonal block $(a, b)$ in $\mathbf{H}$ is nonzero only if variables $a$ and $b$ co-occur in at least one factor. Since each observation connects only a handful of poses or landmarks, almost every block in $\mathbf{H}$ is zero.
 
-Gauss-Newton iteration:
+Solving the normal equation yields the update $\mathbf{X}^{(k+1)} = \mathbf{X}^{(k)} \boxplus \Delta\mathbf{X}^{(k)}$, after which we relinearize and repeat until convergence:
 
 $$\mathbf{X}^{(k+1)} = \mathbf{X}^{(k)} \boxplus \Delta\mathbf{X}^{(k)}$$
 
-Each iteration solves a normal equation. Sparse linear systems are solved with **sparse Cholesky decomposition** ($\mathbf{H} = \mathbf{L}\mathbf{L}^\top$, forward/back substitution); since the fill-in of $\mathbf{L}$ depends on the variable ordering, an approximate minimum-degree ordering such as COLAMD is used.
+To solve $\mathbf{H}\Delta\mathbf{X} = -\mathbf{b}$ without destroying sparsity, solvers apply **sparse Cholesky decomposition** ($\mathbf{H} = \mathbf{L}\mathbf{L}^\top$ followed by forward and back substitution). Because the amount of nonzero fill-in inside $\mathbf{L}$ depends heavily on elimination order, solvers precede factorization with a fill-reducing variable permutation such as approximate minimum-degree ordering (COLAMD).
 
 ### 4.5.4 Levenberg-Marquardt Method
 
-Gauss-Newton drops second derivatives of the residuals and approximates the Hessian with $\mathbf{J}^\top\mathbf{J}$. It may diverge from a poor initial estimate or under strong nonlinearity. **Levenberg-Marquardt (LM)** adds a damping term that shifts behavior between GN-like and gradient-descent-like steps:
+Because Gauss-Newton discards second-order residual derivatives and approximates the Hessian solely with $\mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{J}$, it can overshoot or diverge when initialized far from the solution or under strong nonlinearity. The **Levenberg-Marquardt (LM)** algorithm stabilizes optimization by adding an adaptive damping term to the normal equation:
 
 $$(\mathbf{H} + \lambda \mathbf{I}) \Delta\mathbf{X} = -\mathbf{b}$$
 
-- Small $\lambda$ → closer to GN (fast near a well-conditioned solution)
-- Large $\lambda$ → closer to gradient descent (small step, safe)
-
-Strategy for $\lambda$: if the update decreases the cost, decrease $\lambda$ (GN mode); if it increases the cost, increase $\lambda$ (conservative mode).
+Tuning $\lambda$ smoothly interpolates between two regimes: small $\lambda$ recovers fast, quadratic-like Gauss-Newton steps near the minimum, whereas large $\lambda$ shrinks the step and aligns it with steepest gradient descent for safety. At each step, if a candidate update lowers the cost, the solver accepts it and reduces $\lambda$ toward Gauss-Newton mode; if the cost rises, the solver rejects the step, increases $\lambda$, and tries a more conservative step.
 
 ### 4.5.5 Optimization on Manifolds
 
-When optimizing a 3D pose $\mathbf{T} \in SE(3)$, $SE(3)$ is a manifold, not Euclidean space, so we cannot use ordinary addition. The standard way to handle this is to use a **retraction** (or **exponential map**).
-
-Near the current estimate $\mathbf{T}^{(k)}$, define the increment $\boldsymbol{\xi} \in \mathbb{R}^6$ in the tangent space and set:
+Just as in the ESKF, robot poses $\mathbf{T} \in SE(3)$ do not live in a flat Euclidean vector space—they evolve on a curved Lie-group manifold where component-wise matrix addition breaks orthogonality and determinant constraints. Instead of adding updates directly to rotation matrices or quaternions, manifold optimization parameterizes local perturbations $\boldsymbol{\xi} \in \mathbb{R}^6$ in the flat **tangent space** (Lie algebra) around the current estimate $\mathbf{T}^{(k)}$ and maps them back onto $SE(3)$ through a **retraction** or the **exponential map**:
 
 $$\mathbf{T}^{(k+1)} = \mathbf{T}^{(k)} \cdot \text{Exp}(\boldsymbol{\xi})$$
 
-or:
+or equivalently using a left perturbation,
 
 $$\mathbf{T}^{(k+1)} = \text{Exp}(\boldsymbol{\xi}) \cdot \mathbf{T}^{(k)}$$
 
-(the choice of left/right increment depends on convention)
-
-Here $\text{Exp}: \mathbb{R}^6 \to SE(3)$ is the Lie group exponential map. In $\boldsymbol{\xi} = [\boldsymbol{\rho}^\top, \boldsymbol{\phi}^\top]^\top$, $\boldsymbol{\rho} \in \mathbb{R}^3$ is translation and $\boldsymbol{\phi} \in \mathbb{R}^3$ is rotation (angle-axis).
-
-Exponential map on SO(3) (Rodrigues' formula):
+depending on whether the solver adopts a right- or left-increment convention. Here $\text{Exp}: \mathbb{R}^6 \to SE(3)$ maps a 6-DoF twist $\boldsymbol{\xi} = [\boldsymbol{\rho}^\top, \boldsymbol{\phi}^\top]^\top$—comprising translation $\boldsymbol{\rho} \in \mathbb{R}^3$ and angle-axis rotation $\boldsymbol{\phi} \in \mathbb{R}^3$—onto a rigid transform, while its inverse $\text{Log}: SE(3) \to \mathbb{R}^6$ maps relative transforms back to the tangent space. On $SO(3)$, the exponential map is given in closed form by **Rodrigues' formula**:
 
 $$\text{Exp}(\boldsymbol{\phi}) = \mathbf{I} + \frac{\sin\theta}{\theta}[\boldsymbol{\phi}]_\times + \frac{1 - \cos\theta}{\theta^2}[\boldsymbol{\phi}]_\times^2 \in \mathbb{R}^{3 \times 3}$$
 
-where $\theta = \|\boldsymbol{\phi}\|$.
-
-Conversely, $\text{Log}: SE(3) \to \mathbb{R}^6$ is the logarithmic map.
-
-The Gauss-Newton/LM normal equation is solved for the tangent-space increment $\boldsymbol{\xi}$, and the manifold state is updated via the exponential map. Jacobians are computed with respect to the tangent space:
+where $\theta = \|\boldsymbol{\phi}\|$. At each Gauss-Newton or LM iteration, we compute residual Jacobians directly with respect to the minimal tangent perturbation at zero:
 
 $$\mathbf{J}_i = \frac{\partial \mathbf{r}_i}{\partial \boldsymbol{\xi}}\bigg|_{\boldsymbol{\xi}=\mathbf{0}}$$
 
+solve the sparse linear system for the 6-DoF tangent step $\boldsymbol{\xi}$, and retract onto the manifold via $\text{Exp}(\boldsymbol{\xi})$.
+
 ### 4.5.6 iSAM2: Incremental Smoothing
 
-Running batch optimization from scratch at every keyframe takes unrealistically long. **iSAM2** ([Kaess et al., 2012](https://doi.org/10.1177/0278364911430419)) uses the Bayes tree data structure to perform optimization incrementally.
+Solving the full sparse normal equation from scratch whenever a new keyframe arrives becomes prohibitively slow over long missions. **iSAM2** ([Kaess et al., 2012](https://doi.org/10.1177/0278364911430419)) avoids repeated batch solves by translating the factor graph into a **Bayes tree** and updating only the variables touched by new constraints.
 
-iSAM2 uses four mechanisms:
+Specifically, iSAM2 combines four mechanisms:
+1. **Bayes tree**: Converts the variable-elimination ordering of a factor graph into a directed tree whose nodes store conditional densities over variable cliques.
+2. **Incremental update**: When new factors arrive, only the affected cliques near the top of the tree are recomputed, leaving the rest of the solved factorization untouched.
+3. **Fluid relinearization**: Instead of running periodic full-graph relinearization passes, iSAM2 tracks linearization drift per variable and relinearizes only those variables whose estimates have moved noticeably.
+4. **Local variable reordering**: New variables and factors trigger local reordering confined to the modified subtree rather than a global COLAMD pass over the entire graph.
 
-1. **Bayes tree**: a directed-tree representation of the elimination result of a factor graph. Each node stores the conditional density over a clique (subset of variables).
+GTSAM provides the reference implementation of iSAM2, which powers backends such as [LIO-SAM](https://arxiv.org/abs/2007.00258), whereas sliding-window systems like VINS-Mono use Ceres Solver to optimize a bounded local window.
 
-2. **Incremental update**: when a new factor is added, only the affected cliques are recomputed. Most of the tree is unchanged.
-
-3. **Fluid relinearization**: only variables whose linearization point has drifted significantly from the current estimate are selectively relinearized. No periodic batch pass is needed.
-
-4. **Variable reordering**: when new variables/factors are added, no full reordering is performed; only the affected portion is locally reordered.
-
-GTSAM implements iSAM2, which serves as the backend of systems such as [LIO-SAM](https://arxiv.org/abs/2007.00258). VINS-Mono instead uses Ceres-based sliding-window optimization.
-
-> **Recent trends — continuous-time factor graph**: there is active research extending discrete keyframe-based factor graphs to **continuous time**. [Burnett et al. (2024)](https://arxiv.org/abs/2402.06174) use a Gaussian Process motion prior to unify radar-inertial and LiDAR-inertial odometry in a continuous-time factor graph, and show that asynchronous sensor measurements can be handled naturally.
+> **Recent trends — continuous-time factor graph**: Active research extends discrete keyframe factor graphs to **continuous-time** trajectories. For example, [Burnett et al. (2024)](https://arxiv.org/abs/2402.06174) employ a Gaussian Process motion prior to fuse asynchronous radar-inertial and LiDAR-inertial measurements inside a single continuous-time factor graph without forcing observations onto discrete keyframe timestamps.
 
 ### 4.5.7 GTSAM / Ceres / g2o Comparison
+
+In practice, three C++ optimization libraries underpin most modern SLAM backends, each reflecting a different trade-off between general-purpose NLS solving and incremental probabilistic inference:
 
 | Aspect | GTSAM | Ceres Solver | g2o |
 |------|-------|-------------|-----|
@@ -974,6 +895,8 @@ GTSAM implements iSAM2, which serves as the backend of systems such as [LIO-SAM]
 | Language | C++ (Python bindings) | C++ | C++ |
 | Representative users | LIO-SAM | Cartographer, VINS-Mono | ORB-SLAM3 and pose graphs in many SLAM systems |
 | Learning curve | Just define factors | Define cost functions | Define vertices/edges |
+
+To illustrate how a factor-graph backend works in code, the GTSAM example below builds a simple 2D square trajectory with four noisy odometry edges, closes the loop between the final pose and the origin, and solves incrementally with `ISAM2`.
 
 ```python
 # Simple pose graph optimization example using GTSAM
@@ -1026,33 +949,35 @@ for i in range(5):
     print(f"Pose {i}: x={pose_i.x():.3f}, y={pose_i.y():.3f}, theta={pose_i.theta():.3f}")
 ```
 
+In a real visual-inertial or LiDAR-inertial factor graph, however, odometry factors rarely arrive neatly at keyframe rate. An IMU streams measurements an order of magnitude faster than camera frames or LiDAR scans—raising the question of how to summarize dozens of high-rate inertial samples into a single factor without bogging down the optimizer.
+
 ---
 
 ## 4.6 IMU Preintegration
 
 ### 4.6.1 Why Preintegration Is Needed
 
-An IMU usually measures acceleration and angular velocity at 200 Hz to 1000 Hz, while camera/LiDAR keyframes are generated at 10 Hz to 30 Hz. At these rates, approximately 7–100 IMU measurements occur between two keyframes $i, j$.
+An IMU typically outputs linear acceleration and angular velocity at 200 Hz to 1000 Hz, whereas camera and LiDAR keyframes arrive at only 10 Hz to 30 Hz. Between any two consecutive keyframes $i$ and $j$, roughly 7 to 100 raw inertial measurements accumulate.
 
 **Naive approach: direct integration**
 
-Integrating the IMU measurements between two keyframes to obtain the relative pose gives:
+Integrating those IMU readings directly in the world frame propagates the navigation state from keyframe $i$ to keyframe $j$:
 
 $$\mathbf{R}_j = \mathbf{R}_i \prod_{k=i}^{j-1} \text{Exp}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g) \Delta t)$$
 $$\mathbf{v}_j = \mathbf{v}_i + \mathbf{g} \Delta t_{ij} + \sum_{k=i}^{j-1} \mathbf{R}_k (\tilde{\mathbf{a}}_k - \mathbf{b}_a) \Delta t$$
 $$\mathbf{p}_j = \mathbf{p}_i + \sum_{k=i}^{j-1}\left[\mathbf{v}_k \Delta t + \frac{1}{2}\left(\mathbf{R}_k(\tilde{\mathbf{a}}_k - \mathbf{b}_a) + \mathbf{g}\right)\Delta t^2\right]$$
 
-The problem: this integration depends on the state $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ at keyframe $i$ and on the biases $(\mathbf{b}_g, \mathbf{b}_a)$. In the optimization loop, whenever the estimates of $\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i$ change, all intermediate states must be re-integrated. The same is true when the bias estimates change. This means hundreds of exponential-map evaluations per optimization iteration.
+Notice the computational trap hidden inside these equations: every term in the velocity and position sums depends explicitly on the intermediate orientations $\mathbf{R}_k$ and velocities $\mathbf{v}_k$, which in turn depend on the initial navigation state $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ and biases $(\mathbf{b}_g, \mathbf{b}_a)$. Inside a nonlinear optimizer, $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ and the biases shift at every Gauss-Newton iteration, forcing the solver to re-integrate all 7–100 IMU steps—and evaluate hundreds of exponential maps—between every pair of keyframes on every single iteration.
 
-**Preintegration's remedy**: define the relative change in the body frame of keyframe $i$, so that this quantity is independent of keyframe $i$'s global pose. For biases, first-order Jacobian correction avoids re-integration.
+**Preintegration's remedy**: Express the integrated motion increment in the *body frame of keyframe $i$* instead of the world frame, cleanly decoupling the integral from keyframe $i$'s global pose and velocity; then handle small updates to the biases through a first-order Jacobian correction so re-integration is rarely needed.
 
 ### 4.6.2 On-Manifold Preintegration Derivation
 
-We derive the on-manifold preintegration of [Forster et al. (2017)](https://doi.org/10.1109/TRO.2016.2597321) step by step. The original paper is also available on [arXiv:1512.02363](https://arxiv.org/abs/1512.02363).
+Following [Forster et al. (2017)](https://doi.org/10.1109/TRO.2016.2597321) (also available as [arXiv:1512.02363](https://arxiv.org/abs/1512.02363)), we derive on-manifold IMU preintegration in five logical steps.
 
 #### Step 1: Define relative quantities
 
-Rearrange the integration equations in the global frame so they are expressed in the body frame of keyframe $i$. Move the global variables ($\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i$) to the left-hand side:
+To isolate the inertial measurements from the global navigation state, multiply the global propagation equations on the left by $\mathbf{R}_i^\top$ and collect all terms depending on $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ on the left-hand side:
 
 $$\Delta\mathbf{R}_{ij} \triangleq \mathbf{R}_i^\top \mathbf{R}_j = \prod_{k=i}^{j-1} \text{Exp}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g^i)\Delta t) \in SO(3)$$
 
@@ -1060,23 +985,21 @@ $$\Delta\mathbf{v}_{ij} \triangleq \mathbf{R}_i^\top (\mathbf{v}_j - \mathbf{v}_
 
 $$\Delta\mathbf{p}_{ij} \triangleq \mathbf{R}_i^\top (\mathbf{p}_j - \mathbf{p}_i - \mathbf{v}_i \Delta t_{ij} - \frac{1}{2}\mathbf{g}\Delta t_{ij}^2) = \sum_{k=i}^{j-1}\left[\Delta\mathbf{v}_{ik}\Delta t + \frac{1}{2}\Delta\mathbf{R}_{ik}(\tilde{\mathbf{a}}_k - \mathbf{b}_a^i)\Delta t^2\right] \in \mathbb{R}^3$$
 
-**The right-hand sides depend only on the IMU measurements and the bias estimates, and are independent of the global navigation state $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$ at keyframe $i$.** Therefore, when the keyframe navigation state changes during optimization, the right-hand sides do not need to be recomputed.
+**The right-hand sides depend solely on the raw IMU measurements and the bias estimates at keyframe $i$, completely independent of the global navigation state $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$.** Whenever the optimizer adjusts keyframe poses or velocities, the preintegrated sums stay untouched.
 
 #### Step 2: Recursive computation (on-manifold)
 
-The preintegrated measurements can be accumulated recursively:
+Because each new IMU measurement arrives sequentially between keyframes, the three relative increments can be accumulated incrementally as samples stream in:
 
 $$\Delta\mathbf{R}_{i,k+1} = \Delta\mathbf{R}_{ik} \cdot \text{Exp}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g)\Delta t) \in SO(3)$$
 $$\Delta\mathbf{v}_{i,k+1} = \Delta\mathbf{v}_{ik} + \Delta\mathbf{R}_{ik}(\tilde{\mathbf{a}}_k - \mathbf{b}_a)\Delta t \in \mathbb{R}^3$$
 $$\Delta\mathbf{p}_{i,k+1} = \Delta\mathbf{p}_{ik} + \Delta\mathbf{v}_{ik}\Delta t + \frac{1}{2}\Delta\mathbf{R}_{ik}(\tilde{\mathbf{a}}_k - \mathbf{b}_a)\Delta t^2 \in \mathbb{R}^3$$
 
-Initial values: $\Delta\mathbf{R}_{ii} = \mathbf{I}_{3\times 3}$, $\Delta\mathbf{v}_{ii} = \mathbf{0}$, $\Delta\mathbf{p}_{ii} = \mathbf{0}$.
-
-The meaning of "on-manifold": the rotation $\Delta\mathbf{R}_{ij}$ is accumulated directly on $SO(3)$. Rotation composition is handled with manifold operations and can be implemented using rotation matrices or unit quaternions.
+starting from $\Delta\mathbf{R}_{ii} = \mathbf{I}_{3\times 3}$, $\Delta\mathbf{v}_{ii} = \mathbf{0}$, and $\Delta\mathbf{p}_{ii} = \mathbf{0}$. Saying the scheme is "on-manifold" means $\Delta\mathbf{R}_{ij}$ evolves directly on $SO(3)$ via Lie-group composition (implemented with rotation matrices or unit quaternions) rather than Euler angles or unnormalized matrices.
 
 #### Step 3: First-order correction for bias change
 
-During optimization, the bias estimate changes as $\mathbf{b} \to \mathbf{b} + \delta\mathbf{b}$, and the preintegrated measurements change accordingly. To avoid full re-integration, we apply a first-order Taylor correction:
+Even though global poses no longer trigger re-integration, the optimizer still refines the bias estimates by $\mathbf{b} \to \mathbf{b} + \delta\mathbf{b}$. Rather than re-summing every sample each time a bias shifts slightly, we propagate a first-order Taylor expansion alongside the measurements:
 
 **Rotation correction**:
 $$\Delta\hat{\mathbf{R}}_{ij}(\mathbf{b}_g + \delta\mathbf{b}_g) \approx \Delta\hat{\mathbf{R}}_{ij}(\mathbf{b}_g) \cdot \text{Exp}\left(\frac{\partial \Delta\bar{\mathbf{R}}_{ij}}{\partial \mathbf{b}_g} \delta\mathbf{b}_g\right)$$
@@ -1087,27 +1010,27 @@ $$\Delta\hat{\mathbf{v}}_{ij}(\mathbf{b} + \delta\mathbf{b}) \approx \Delta\hat{
 **Position correction**:
 $$\Delta\hat{\mathbf{p}}_{ij}(\mathbf{b} + \delta\mathbf{b}) \approx \Delta\hat{\mathbf{p}}_{ij}(\mathbf{b}) + \frac{\partial \Delta\bar{\mathbf{p}}_{ij}}{\partial \mathbf{b}_g} \delta\mathbf{b}_g + \frac{\partial \Delta\bar{\mathbf{p}}_{ij}}{\partial \mathbf{b}_a} \delta\mathbf{b}_a$$
 
-The Jacobians $\frac{\partial \Delta\bar{\mathbf{R}}_{ij}}{\partial \mathbf{b}_g}$ and the like are accumulated recursively during preintegration. For example, the bias Jacobian of the rotation:
+These five bias Jacobians are updated recursively in the exact same loop as Step 2. For instance, the gyroscope bias Jacobian of the preintegrated rotation evolves via:
 
 $$\frac{\partial \Delta\bar{\mathbf{R}}_{i,k+1}}{\partial \mathbf{b}_g} = \Delta\bar{\mathbf{R}}_{k,k+1}^\top \frac{\partial \Delta\bar{\mathbf{R}}_{ik}}{\partial \mathbf{b}_g} - \text{Jr}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g)\Delta t) \Delta t$$
 
-where $\text{Jr}(\boldsymbol{\phi})$ is the right Jacobian of SO(3):
+where $\text{Jr}(\boldsymbol{\phi})$ is the right Jacobian of $SO(3)$:
 
 $$\text{Jr}(\boldsymbol{\phi}) = \mathbf{I} - \frac{1 - \cos\theta}{\theta^2}[\boldsymbol{\phi}]_\times + \frac{\theta - \sin\theta}{\theta^3}[\boldsymbol{\phi}]_\times^2, \quad \theta = \|\boldsymbol{\phi}\|$$
 
-When the bias change is small ($\|\delta\mathbf{b}\|$ is small), a first-order correction can be used. If the corrected residual or bias change exceeds the implementation's validity threshold, recompute preintegration from the stored IMU samples.
+So long as $\|\delta\mathbf{b}\|$ remains small, this linear update stays accurate; if the bias shift or corrected residual crosses an implementation's validity threshold, the estimator falls back to re-integrating the stored raw IMU samples around the new bias estimate.
 
 #### Step 4: Covariance propagation
 
-The IMU measurement noise $\mathbf{n}_g, \mathbf{n}_a \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Sigma})$ propagates through the preintegration. The covariance is also computed recursively:
+Raw gyroscope and accelerometer white noise $\mathbf{n}_g, \mathbf{n}_a \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Sigma})$ also accumulates across the interval. Tracking its $9 \times 9$ uncertainty recursively via
 
 $$\boldsymbol{\Sigma}_{k+1} = \mathbf{A}_k \boldsymbol{\Sigma}_k \mathbf{A}_k^\top + \mathbf{B}_k \boldsymbol{\Sigma}_\eta \mathbf{B}_k^\top$$
 
-Here $\mathbf{A}_k, \mathbf{B}_k$ are the Jacobians of the recursive propagation and $\boldsymbol{\Sigma}_\eta$ is the IMU noise covariance. The covariance $\boldsymbol{\Sigma}_{ij}$ is used as the information matrix $\boldsymbol{\Sigma}_{ij}^{-1}$ of the IMU factor in the factor graph.
+where $\mathbf{A}_k$ and $\mathbf{B}_k$ are the linearized error-propagation Jacobians and $\boldsymbol{\Sigma}_\eta$ is the discrete-time IMU noise covariance, yields the preintegrated covariance $\boldsymbol{\Sigma}_{ij}$ whose inverse weights the factor inside the graph.
 
 #### Step 5: IMU Factor in the Factor Graph
 
-Finally, the preintegrated measurement is inserted as a factor between two keyframes $i, j$. The residual:
+With relative increments, bias Jacobians, and covariance in place, the entire inertial interval between keyframes $i$ and $j$ collapses into a single factor comparing predicted and preintegrated increments:
 
 $$\mathbf{r}_{\Delta\mathbf{R}_{ij}} = \text{Log}\left(\Delta\hat{\mathbf{R}}_{ij}^\top \mathbf{R}_i^\top \mathbf{R}_j\right) \in \mathbb{R}^3$$
 
@@ -1115,9 +1038,11 @@ $$\mathbf{r}_{\Delta\mathbf{v}_{ij}} = \mathbf{R}_i^\top(\mathbf{v}_j - \mathbf{
 
 $$\mathbf{r}_{\Delta\mathbf{p}_{ij}} = \mathbf{R}_i^\top(\mathbf{p}_j - \mathbf{p}_i - \mathbf{v}_i\Delta t_{ij} - \frac{1}{2}\mathbf{g}\Delta t_{ij}^2) - \Delta\hat{\mathbf{p}}_{ij} \in \mathbb{R}^3$$
 
-This 9-dimensional residual is the IMU preintegration factor's residual, and its squared Mahalanobis distance $\|\mathbf{r}\|^2_{\boldsymbol{\Sigma}_{ij}}$ is added to the cost function.
+Concatenating these three vectors forms a 9-dimensional residual whose squared Mahalanobis norm $\|\mathbf{r}\|^2_{\boldsymbol{\Sigma}_{ij}}$ enters the factor-graph objective directly.
 
 ### 4.6.3 Preintegration in Code
+
+The code below translates the full Forster et al. (2017) pipeline into Python: Lie-group primitives (`skew`, `exp_so3`, `log_so3`, `right_jacobian_so3`), an `IMUPreintegration` class that recursively maintains relative motion, bias Jacobians, and the $9 \times 9$ covariance, and a brief GTSAM snippet showing how `PreintegratedImuMeasurements` and `ImuFactor` wire into a factor graph.
 
 ```python
 import numpy as np
@@ -1378,40 +1303,33 @@ def create_imu_factor_gtsam():
     return imu_factor
 ```
 
+With IMU preintegration summarizing dozens of inertial readings into a compact keyframe-to-keyframe factor, our factor graph stays lean over short horizons. Over a long mission, however, inserting new keyframes forever still pushes optimization cost upward—requiring a principled way to retire old states without forgetting what they taught us.
+
 ---
 
 ## 4.7 Marginalization & Sliding Window
 
 ### 4.7.1 Why Marginalization Is Needed
 
-Factor-graph-based SLAM/VIO systems add variables and factors whenever a new keyframe arrives. Keeping keyframes indefinitely causes the optimization cost to grow without bound.
+Every new keyframe in a factor-graph SLAM or VIO pipeline adds new poses, velocities, biases, and landmark factors. Left unchecked, the graph expands indefinitely until real-time optimization misses its frame budget. A **sliding window** caps compute by keeping only the latest $N$ keyframes and retiring older ones. Yet simply deleting an old keyframe—along with every factor attached to it—throws away hard-won information about scale, velocity, and landmark geometry, degrading accuracy.
 
-The sliding-window approach retains only the most recent $N$ keyframes and removes older ones. However, simple deletion loses all the observation information associated with those keyframes and degrades accuracy.
-
-**Marginalization** is the method for removing old variables from the graph while preserving the information they carried between the variables they connected. The information of the eliminated variable is converted into a **prior** on the remaining variables.
+**Marginalization** solves this cleanly: it eliminates old variables algebraically while summarizing all constraints they carried into an equivalent **prior factor** over the remaining variables in the window.
 
 ### 4.7.2 Schur Complement
 
-Marginalization uses the **Schur complement**. Partition the information matrix (Hessian) $\mathbf{H}$ into variables to marginalize ($\mathbf{x}_m$) and variables to retain ($\mathbf{x}_r$). Write the normal equation as $\mathbf{H}\Delta\mathbf{x} = \mathbf{b}$ (redefining the $-\mathbf{b}$ of §4.5.3 as $\mathbf{b}$, i.e., $\mathbf{b} \triangleq -\mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$):
+Algebraically, marginalizing Gaussian variables out of a linearized factor graph reduces to taking the **Schur complement** of the information matrix. Partition the state increment into variables to marginalize ($\mathbf{x}_m$) and variables to retain ($\mathbf{x}_r$), writing the normal equation as $\mathbf{H}\Delta\mathbf{x} = \mathbf{b}$ (redefining $-\mathbf{b}$ from §4.5.3 as $\mathbf{b} \triangleq -\mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$):
 
 $$\mathbf{H} \Delta\mathbf{x} = \mathbf{b}$$
 
 $$\begin{bmatrix} \mathbf{H}_{mm} & \mathbf{H}_{mr} \\ \mathbf{H}_{rm} & \mathbf{H}_{rr} \end{bmatrix} \begin{bmatrix} \Delta\mathbf{x}_m \\ \Delta\mathbf{x}_r \end{bmatrix} = \begin{bmatrix} \mathbf{b}_m \\ \mathbf{b}_r \end{bmatrix}$$
 
-Here:
-- $\mathbf{x}_m$: variables to marginalize (remove)
-- $\mathbf{x}_r$: variables to retain
-- $\mathbf{H}_{mm} \in \mathbb{R}^{n_m \times n_m}$: information block among the variables to remove
-- $\mathbf{H}_{mr} \in \mathbb{R}^{n_m \times n_r}$: cross-information block
-- $\mathbf{H}_{rr} \in \mathbb{R}^{n_r \times n_r}$: information block among the variables to retain
-
-Eliminating $\Delta\mathbf{x}_m$ from the block matrix above yields:
+Here $\mathbf{H}_{mm} \in \mathbb{R}^{n_m \times n_m}$ captures information among the variables being removed, $\mathbf{H}_{rr} \in \mathbb{R}^{n_r \times n_r}$ captures direct information among the retained variables, and $\mathbf{H}_{mr} \in \mathbb{R}^{n_m \times n_r}$ encodes their cross-couplings. Solving the top block row for $\Delta\mathbf{x}_m$ and substituting into the bottom row eliminates $\Delta\mathbf{x}_m$ cleanly:
 
 $$\underbrace{(\mathbf{H}_{rr} - \mathbf{H}_{rm} \mathbf{H}_{mm}^{-1} \mathbf{H}_{mr})}_{\mathbf{H}^*} \Delta\mathbf{x}_r = \underbrace{\mathbf{b}_r - \mathbf{H}_{rm} \mathbf{H}_{mm}^{-1} \mathbf{b}_m}_{\mathbf{b}^*}$$
 
-$\mathbf{H}^* = \mathbf{H}_{rr} - \mathbf{H}_{rm} \mathbf{H}_{mm}^{-1} \mathbf{H}_{mr}$ is the **Schur complement**, and it becomes the information matrix of the prior factor on the retained variables after marginalization.
+The matrix $\mathbf{H}^* = \mathbf{H}_{rr} - \mathbf{H}_{rm} \mathbf{H}_{mm}^{-1} \mathbf{H}_{mr}$ is the **Schur complement**, which serves as the information matrix of the new prior factor tying together the retained variables.
 
-**Intuitive meaning**: variables in $\mathbf{x}_r$ that were indirectly connected through $\mathbf{x}_m$ become directly connected (fill-in). $\mathbf{H}^*$ can become denser than $\mathbf{H}_{rr}$ through this fill-in, making previously indirect dependencies explicit as direct variable couplings.
+Notice what happens structurally: any two retained variables in $\mathbf{x}_r$ that previously interacted only indirectly through $\mathbf{x}_m$ now become directly coupled in $\mathbf{H}^*$. This **fill-in** makes $\mathbf{H}^*$ denser than $\mathbf{H}_{rr}$, converting indirect chains into explicit pairwise links. The short script below demonstrates this effect directly on a 3-pose chain where marginalizing `x0` propagates information into the surviving states.
 
 ```python
 import numpy as np
@@ -1485,76 +1403,50 @@ print("-> fill-in may appear between x1 and x2")
 
 ### 4.7.3 First-Estimate Jacobian (FEJ)
 
-There is an important caveat in marginalization. The marginalized factor (prior) is computed at a **fixed linearization point**. In subsequent optimization iterations, if the retained variables' estimates change, a mismatch arises between the marginalized prior's linearization point and the current one.
+Marginalization carries a subtle consistency trap. Because the Schur complement prior $(\mathbf{H}^*, \mathbf{b}^*)$ is baked from linearizations evaluated at the moment $\mathbf{x}_m$ is eliminated, its linearization point for the remaining variables is **frozen** from that step onward. On subsequent iterations, however, new measurements pull the retained variables to updated estimates, creating a mismatch between the linearization point locked inside the marginalization prior and the one used by active factors in the window.
 
-This mismatch can hurt the **consistency** of the filter/smoother. Specifically, the system's observability properties can change, so directions that are actually unobservable may be incorrectly treated as observable.
+That mismatch can silently break **consistency**: the null spaces of the old and new Jacobians no longer align, causing the estimator to hallucinate information along genuinely unobservable gauge directions (such as global position and yaw about gravity in VIO) and report overconfident covariances.
 
-The **FEJ (First-Estimate Jacobian)** strategy: Jacobians related to marginalization are always computed at the **first estimate** of the relevant variable, and are not updated even when the estimate later changes.
+The **First-Estimate Jacobian (FEJ)** strategy closes this gap by forcing every Jacobian linked to marginalization to be evaluated at each variable's **initial estimate** $\mathbf{x}^{(0)}$—the value when that variable was first introduced—and holding that linearization point fixed even as the state estimate improves:
 
 $$\mathbf{J}_{\text{FEJ}} = \left.\frac{\partial \mathbf{r}}{\partial \mathbf{x}}\right|_{\mathbf{x}^{(0)}}$$
 
-Here $\mathbf{x}^{(0)}$ is the value of the variable when it was first estimated.
-
-Advantages of FEJ:
-- Keeping linearization points consistent between marginalized priors and current factors suppresses spurious information gain along unobservable directions.
-- Used centrally in MSCKF/OpenVINS ([Li & Mourikis, 2013](https://doi.org/10.1177/0278364913481251)).
-
-Disadvantages of FEJ:
-- If the first estimate is inaccurate, convergence may slow down.
-- Implementation becomes more complex (the "first estimate" of each variable must be stored separately).
+By keeping linearization points consistent across the frozen prior and current factors, FEJ suppresses spurious information gain along unobservable directions and plays a central role in MSCKF and OpenVINS ([Li & Mourikis, 2013](https://doi.org/10.1177/0278364913481251)). The trade-off is practical: if the initial estimate $\mathbf{x}^{(0)}$ is poor, locking the Jacobian there can slow convergence, and storing a separate first estimate alongside the current iterate adds bookkeeping complexity.
 
 ### 4.7.4 Practical Issues of Sliding-Window Implementation
 
+Turning Schur-complement marginalization into a robust sliding-window estimator requires navigating four implementation details:
+
 #### Issue 1: Which keyframe to marginalize
 
-VINS-Mono uses two strategies:
-- **If the latest frame is a keyframe**: marginalize the oldest keyframe. The window remains spatially wide.
-- **If the latest frame is not a keyframe**: marginalize the immediately previous non-keyframe. Only the visual information is discarded, while the IMU information is forwarded to the neighboring keyframe.
+Dropping the wrong frame can starve triangulation of parallax. VINS-Mono therefore switches between two rules depending on motion: if the latest frame qualifies as a keyframe, it marginalizes the oldest keyframe so the window retains a wide spatial baseline; if the latest frame is not a keyframe, it marginalizes the immediately preceding non-keyframe instead, discarding redundant visual observations while forwarding the IMU preintegration factor onto the neighboring keyframe.
 
 #### Issue 2: Densification due to fill-in
 
-As marginalization is repeated, the prior factor becomes progressively denser, and what was originally a sparse information matrix can become dense. This severely degrades computational efficiency.
-
-Mitigations:
-- Limit the size of the prior factor (limit the number of connected variables)
-- Choose the marginalization order carefully
-- Accept some loss of information and simply delete certain factors. FAST-LIO2's local-map point deletion is a separate operation for controlling map size.
+Repeatedly taking Schur complements links ever more retained variables together inside the prior factor, turning a sparse information matrix into a dense block that slows down every solve. Practical systems counter this by capping the size of the prior (limiting how many variables remain connected), ordering marginalization to minimize fill-in, or selectively dropping weak factors—accepting minor information loss for bounded runtime. (By contrast, FAST-LIO2's local-map point deletion operates on the `ikd-tree` map rather than a Hessian prior.)
 
 #### Issue 3: Biases and marginalization
 
-The IMU bias is a slowly varying state that spans all keyframes. Marginalizing the bias together with a keyframe fixes the bias information in the prior, reducing the flexibility of subsequent bias estimation.
-
-When removing the oldest keyframe, VINS-Mono marginalizes that frame's velocity and biases along with its pose. Biases of the remaining keyframes continue to be estimated within the window and remain connected to the prior.
+Because IMU biases evolve slowly across the entire trajectory, marginalizing a bias alongside an outgoing keyframe bakes information about that bias into the prior and can stiffen later bias adaptation. In practice, systems like VINS-Mono marginalize the oldest keyframe's pose, velocity, and biases together when sliding the window, while keeping the remaining keyframes' biases active and linked through the prior.
 
 #### Issue 4: Numerical stability
 
-The Schur complement computation requires the inverse $\mathbf{H}_{mm}^{-1}$. If $\mathbf{H}_{mm}$ has a bad condition number, numerical instability can arise.
-
-Mitigations:
-- Add a small regularization term to $\mathbf{H}_{mm}$: $(\mathbf{H}_{mm} + \epsilon \mathbf{I})^{-1}$
-- Use LDL decomposition for numerical stability
-- After marginalization, check that $\mathbf{H}^*$ is positive semi-definite and, if not, project it onto the nearest PSD matrix
+Computing the Schur complement requires inverting $\mathbf{H}_{mm}$, which can become ill-conditioned when some eliminated variables (such as newly initialized or poorly constrained landmarks) carry near-zero information. To keep the solve well-behaved, implementations add a small diagonal regularizer $(\mathbf{H}_{mm} + \epsilon \mathbf{I})^{-1}$, prefer LDL decomposition over explicit matrix inversion, and verify after marginalization that $\mathbf{H}^*$ remains positive semi-definite—projecting onto the nearest PSD matrix if floating-point roundoff introduces tiny negative eigenvalues.
 
 ---
 
-## Chapter 4 Summary
+## Summary
 
-The state estimation methods relate as follows:
+Looking back across the chapter, the major state-estimation paradigms fit together as progressive trade-offs between expressiveness, accuracy, and compute:
 
-1. The **Bayesian Filtering Framework** is the prediction-update recursion for sequential filters. The Chapman-Kolmogorov equation and Bayes' rule are its basis, while general nonlinear systems require approximate integration. Batch smoothing and factor graphs solve related probabilistic models with a different computational structure.
+1. **Bayesian Filtering Framework**: Sequential filters alternate prediction via the Chapman-Kolmogorov integral with measurement updates via Bayes' rule, relying on Markov assumptions to keep history bounded; outside linear-Gaussian models, exact integration is intractable and requires approximation. Batch smoothing and factor graphs address related probabilistic models using a different, multi-step computational structure.
+2. **Kalman Filter family**: Gaussian filters track beliefs via mean and covariance—an exact MMSE/MAP/BLUE solution in linear-Gaussian systems. The EKF handles mild nonlinearity via first-order Taylor expansion; the ESKF moves linearization into a minimal tangent-space error state that respects $SO(3)$ manifolds cleanly for IMU fusion; the UKF propagates deterministic sigma points instead of deriving Jacobians; and the IEKF relinearizes iteratively inside the update step, bridging directly toward Gauss-Newton optimization.
+3. **Particle Filter**: Sequential Monte Carlo methods drop parametric Gaussian assumptions to capture strong nonlinearities and multimodal distributions, yet the curse of dimensionality limits full-state particle filtering in high-dimensional 3D navigation. Rao-Blackwellized formulations (such as FastSLAM) ease this scaling by analytically marginalizing conditionally Gaussian landmarks, leaving particle filters well suited to 2D occupancy-grid SLAM, global localization (MCL), and low-dimensional multimodal tasks.
+4. **Shift from Filtering to Optimization**: Modern SLAM largely moved from single-step EKF-SLAM to graph-based smoothing to gain iterative relinearization, Hessian sparsity, and seamless loop-closure constraints. Even so, bounded-compute filters such as MSCKF, OpenVINS, and FAST-LIO2 remain competitive when compute budgets and latency constraints demand them.
+5. **Factor Graphs on Manifolds**: Factor graphs express MAP inference as a modular Nonlinear Least Squares problem solved via Gauss-Newton or Levenberg-Marquardt updates in Lie-group tangent spaces, while iSAM2 exploits the Bayes tree for real-time incremental smoothing.
+6. **IMU Preintegration**: Transforming high-rate inertial integration into the starting keyframe's body frame decouples preintegrated factors from global poses during optimization, using first-order bias Jacobians for small bias adjustments and re-integrating raw samples only when shifts exceed a threshold.
+7. **Marginalization & FEJ**: Sliding-window estimators bound compute by condensing outgoing keyframes into a Schur-complement prior, while First-Estimate Jacobians keep linearization points aligned across the prior and active window to preserve unobservable gauge directions.
 
-2. The **Kalman Filter family** tracks the posterior via Gaussian approximation in terms of mean and covariance. The EKF linearizes to first order; the ESKF linearizes in the error state, handling manifold issues naturally; the UKF uses the sigma-point transform; and the IEKF uses iterated linearization to cope with strong nonlinearity. ESKF-family formulations are widely used in IMU-based filters.
+This estimation machinery drives the VIO, LIO, and multi-sensor fusion architectures developed later in the book (→ Chapters 6–8). Before any filter or factor graph can evaluate a measurement residual $\mathbf{z}_k - h(\mathbf{x}_k)$, however, the front-end must decide *which* observation corresponds to *which* physical point or landmark in the scene—the correspondence and data-association problem we examine next in Chapter 5.
 
-3. The **particle filter** can handle multimodal distributions and strong nonlinearity, but the curse of dimensionality makes it unsuitable for high-dimensional problems. The RBPF (FastSLAM) partially alleviates this, and the PF is still used in 2D SLAM and global localization.
-
-4. The **shift from filtering to optimization** has become the mainstream of modern SLAM thanks to benefits such as relinearization, exploitation of sparsity, and natural handling of loop closures. That said, filter-based approaches (MSCKF, FAST-LIO2) remain competitive under specific conditions.
-
-5. The **factor graph** modularly composes probabilistic inference and reduces MAP to NLS. Gauss-Newton or LM solves it on the manifold, while iSAM2 performs incremental smoothing in real time.
-
-6. **IMU preintegration** compresses high-rate IMU measurements into a factor between keyframes. The on-manifold derivation avoids reintegration when global poses change; small bias changes use a first-order correction, while large changes require reintegration.
-
-7. **Marginalization** transfers linearized information from removed variables into a prior through the Schur complement. FEJ is one way to preserve unobservable directions and reduce inconsistency.
-
-The same machinery appears in VIO (Ch.6), LIO (Ch.7), and multi-sensor fusion (Ch.8).
-
-> **2024-2025 research directions**: the Equivariant Filter and Invariant EKF exploit Lie-group symmetries to improve error dynamics, consistency, and convergence analysis for specific systems and assumptions. Continuous-time factor graphs with Gaussian-process motion priors support asynchronous multi-sensor fusion. Work such as [AI-Aided Kalman Filters (Shlezinger et al., 2024)](https://arxiv.org/abs/2410.12289) learns a gain or part of the model; distribution shift and safety validation remain open.
+> **2024–2025 research directions**: Equivariant Filters and Invariant EKFs exploit Lie-group symmetries to tighten error dynamics, consistency, and convergence guarantees for specific system classes. Continuous-time factor graphs backed by Gaussian-process motion priors provide a natural framework for fusing asynchronous multi-sensor streams. Meanwhile, learned estimators such as [AI-Aided Kalman Filters (Shlezinger et al., 2024)](https://arxiv.org/abs/2410.12289) replace or augment gains and system models with neural components, though generalization under distribution shift and safety validation remain open challenges.

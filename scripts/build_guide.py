@@ -105,9 +105,9 @@ OVERVIEW_JS = r"""
     var chapters = {};
 
     h1s.forEach(function(h1) {
-      var m = h1.textContent.trim().match(/(?:Chapter|Ch\.?)\s*(\d+)\s*[\u2014\u2013-]\s*(.+)/);
+      var m = h1.textContent.trim().match(/^(?:(?:Chapter|Ch\.?)\s*(\d+)\s*(?:[\u2014\u2013-]|\.)\s*|(\d+)장\s+)(.+)/);
       if (!m) return;
-      var chNum = parseInt(m[1], 10);
+      var chNum = parseInt(m[1] || m[2], 10);
       if (!h1.id) h1.id = 'chapter-' + chNum;
 
       var sections = [];
@@ -123,7 +123,7 @@ OVERVIEW_JS = r"""
         node = node.nextElementSibling;
       }
 
-      chapters[chNum] = { title: m[2].trim(), id: h1.id, sections: sections };
+      chapters[chNum] = { title: m[3].trim(), id: h1.id, sections: sections };
     });
 
     var total = Object.keys(chapters).length;
@@ -162,7 +162,7 @@ OVERVIEW_JS = r"""
         chLink.href = '#' + ch.id;
         var numSpan = document.createElement('span');
         numSpan.className = 'overview-chapter-num';
-        numSpan.textContent = 'Ch.' + chNum;
+        numSpan.textContent = state.lang === 'ko' ? chNum + '장' : 'Chapter ' + chNum;
         chLink.appendChild(numSpan);
         chLink.appendChild(document.createTextNode(ch.title));
         chWrap.appendChild(chLink);
@@ -917,11 +917,11 @@ mark.search-highlight {{
       topbarTitle: '센서 퓨전 심화 가이드',
       overviewTitle: '센서 퓨전 심화 가이드',
       groups: [
-        {{ label: '기초 (Foundations)', chapters: [1, 2, 3] }},
-        {{ label: '방법론 기초 (Methods)', chapters: [4, 5] }},
-        {{ label: 'Odometry & Fusion', chapters: [6, 7, 8] }},
-        {{ label: 'Place Recognition & Loop Closure', chapters: [9, 10] }},
-        {{ label: '표현 · 실전 · 미래', chapters: [11, 12, 13] }}
+        {{ label: '1부 센서와 보정', chapters: [1, 2, 3] }},
+        {{ label: '2부 상태 추정과 대응점', chapters: [4, 5] }},
+        {{ label: '3부 오도메트리와 융합', chapters: [6, 7, 8] }},
+        {{ label: '4부 장소 인식과 지도', chapters: [9, 10, 11] }},
+        {{ label: '5부 실전과 전망', chapters: [12, 13] }}
       ],
       searchPlaceholder: '섹션 검색... (Ctrl+K)',
       noResults: '검색 결과 없음',
@@ -932,11 +932,11 @@ mark.search-highlight {{
       topbarTitle: 'Sensor Fusion — Advanced Guide',
       overviewTitle: 'Sensor Fusion — Advanced Guide',
       groups: [
-        {{ label: 'Foundations', chapters: [1, 2, 3] }},
-        {{ label: 'Methods', chapters: [4, 5] }},
-        {{ label: 'Odometry & Fusion', chapters: [6, 7, 8] }},
-        {{ label: 'Place Recognition & Loop Closure', chapters: [9, 10] }},
-        {{ label: 'Representations · Systems · Frontiers', chapters: [11, 12, 13] }}
+        {{ label: 'Part 1. Sensors and Calibration', chapters: [1, 2, 3] }},
+        {{ label: 'Part 2. State Estimation and Correspondence', chapters: [4, 5] }},
+        {{ label: 'Part 3. Odometry and Fusion', chapters: [6, 7, 8] }},
+        {{ label: 'Part 4. Place Recognition and Maps', chapters: [9, 10, 11] }},
+        {{ label: 'Part 5. Practice and Outlook', chapters: [12, 13] }}
       ],
       searchPlaceholder: 'Search sections... (Ctrl+K)',
       noResults: 'No matching sections',
@@ -1075,8 +1075,8 @@ mark.search-highlight {{
     }});
 
     function getChapterNumber(text) {{
-      var m = text.trim().match(/(?:Chapter|Ch\\.?)\\s*(\\d+)/);
-      return m ? parseInt(m[1], 10) : null;
+      var m = text.trim().match(/^(?:(?:Chapter|Ch\\.?)\\s*(\\d+)|(\\d+)장)/);
+      return m ? parseInt(m[1] || m[2], 10) : null;
     }}
 
     headings.forEach(function(heading) {{

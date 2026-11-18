@@ -1,35 +1,35 @@
-# Ch.10 — Loop Closure & Global Optimization
+# Chapter 10. Loop Closure and Global Optimization
 
-In Ch.9 we covered place recognition — recognizing previously visited locations. Those recognition results must enter the SLAM system before they can correct accumulated drift.
+Place recognition (→ Chapter 9) answers whether the current observation matches a location seen earlier, yet retrieval alone does not fix accumulated drift. Before those candidate matches can bend a drifting trajectory back into global alignment, they must pass geometric scrutiny and enter the SLAM backend as constraints.
 
-In a SLAM system, odometry inevitably accumulates drift. No matter how precise the sensors are, small errors in relative pose estimation build up over time and break global consistency. Loop closure is the mechanism that recognizes "we have revisited a previously visited place" and uses that information to correct the accumulated drift.
+Every odometry or inertial-fusion frontend drifts over time. Even with tightly calibrated sensors, tiny frame-to-frame errors in rotation and translation compound with distance traveled and gradually warp the reconstructed environment. Loop closure breaks this open-loop error growth by recognizing a revisited place and tying the current pose back to an earlier point in the trajectory.
 
-The loop closure pipeline runs detection → verification → correction, and pose graph optimization sits at the center of the correction step. The same structure extends to global relocalization and multi-session SLAM.
+A complete loop-closure system runs in three stages—detection, verification, and correction—with pose graph optimization at the heart of the final step. The same machinery also underpins global relocalization against a prior map and multi-session map merging.
 
 ---
 
 ## 10.1 Loop Closure Pipeline
 
-Loop closure consists of three stages: **Detection** (candidate search), **Verification** (geometric verification), and **Correction** (graph correction). Missing a candidate loses an opportunity for correction, while accepting a false loop can break the consistency of the entire system.
+Closing a loop proceeds through three consecutive stages: **Detection** (finding candidate matches), **Verification** (testing geometric consistency), and **Correction** (optimizing the graph). The asymmetry between errors is stark: missing a valid loop merely leaves drift uncorrected for a little longer, whereas admitting a single false loop can fold the entire map onto itself.
 
 ### 10.1.1 Detection: Candidate Search
 
-Loop closure detection asks: "Which past observation is similar to the current sensor observation?" This is essentially the same problem as place recognition covered in Ch.9.
+Loop closure detection asks which past observation resembles the current sensor frame—essentially the same retrieval problem addressed by place recognition (→ Chapter 9).
 
-In **visual loop closure detection**, the global descriptor of the current image is compared against a descriptor database of past keyframes:
+In **visual loop closure detection**, the system encodes the current image into a global descriptor and queries a database of past keyframes:
 
-1. **BoW-based (traditional)**: DBoW2 is used to compare the visual word histograms of ORB keypoints. ORB-SLAM3 uses this approach. Each keyframe is represented as a bag-of-words vector $\mathbf{v}_i$, and its similarity to the current frame $\mathbf{v}_q$ is computed as $s(\mathbf{v}_q, \mathbf{v}_i) = 1 - \frac{1}{2} \left| \frac{\mathbf{v}_q}{\|\mathbf{v}_q\|} - \frac{\mathbf{v}_i}{\|\mathbf{v}_i\|} \right|$ (L1-score).
+1. **Bag-of-Words (traditional)**: Systems such as ORB-SLAM3 use DBoW2 to compare histograms of quantized ORB descriptors ("visual words"). Each keyframe is represented as a bag-of-words vector $\mathbf{v}_i$, and its similarity to the query vector $\mathbf{v}_q$ is measured by the L1-score $s(\mathbf{v}_q, \mathbf{v}_i) = 1 - \frac{1}{2} \left| \frac{\mathbf{v}_q}{\|\mathbf{v}_q\|} - \frac{\mathbf{v}_i}{\|\mathbf{v}_i\|} \right|$.
 
-2. **Learning-based**: global descriptors such as [NetVLAD](https://arxiv.org/abs/1511.07247) and [AnyLoc](https://arxiv.org/abs/2308.00688) are used. AnyLoc aggregates [DINOv2](https://arxiv.org/abs/2304.07193) dense features with VLAD and works across several domains without place-specific labels, but recall must be validated for a new sensor and environment. Candidates are ranked by cosine similarity:
+2. **Learning-based descriptors**: Learned global representations such as [NetVLAD](https://arxiv.org/abs/1511.07247) and [AnyLoc](https://arxiv.org/abs/2308.00688) capture broader appearance context. AnyLoc aggregates dense [DINOv2](https://arxiv.org/abs/2304.07193) features with VLAD and transfers across diverse domains without place-specific labels, though recall should still be validated whenever deploying on a new sensor or environment. Candidates are ranked by cosine similarity:
 
 $$s(\mathbf{d}_q, \mathbf{d}_i) = \frac{\mathbf{d}_q^\top \mathbf{d}_i}{\|\mathbf{d}_q\| \|\mathbf{d}_i\|}$$
 
-In **LiDAR loop closure detection**, 3D point cloud descriptors are used:
+In **LiDAR loop closure detection**, global descriptors summarize 3D scan geometry instead of image appearance:
 
-- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: A descriptor that directly preserves spatial structure by recording the maximum height per bin/sector in a sensor-centered polar coordinate system. Efficient candidate search is possible through a two-stage search — a ring-key-based kd-tree lookup narrows the candidates, then sector-shift alignment re-ranks them — and it is robust even to reverse revisits.
-- **[PointNetVLAD](https://arxiv.org/abs/1804.03492), [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: learned 3D place-recognition methods. Their recall relative to Scan Context depends on dataset, sensor pattern, and training domain.
+- **[Scan Context](https://doi.org/10.1109/IROS.2018.8593953)**: Preserves spatial layout directly by recording the maximum point height in each bin and sector of a sensor-centered polar grid. A two-stage lookup—a fast ring-key search in a kd-tree followed by sector-shift alignment—keeps retrieval efficient and handles reverse revisits reliably.
+- **[PointNetVLAD](https://arxiv.org/abs/1804.03492) and [OverlapTransformer](https://arxiv.org/abs/2203.03397)**: Learned 3D place-recognition networks whose recall relative to Scan Context varies with the dataset, scanning pattern, and training domain.
 
-**Temporal filtering**: matching recent frames is usually continuous tracking, so adjacent keyframes are excluded. Tune the time or travel-distance gap to platform speed, keyframe rate, and revisit pattern. The 30-second value below is illustrative.
+Before ranking descriptors, the detector must also apply **temporal filtering**. Adjacent keyframes naturally look alike because the robot has barely moved; matching against them reflects continuous tracking rather than a true loop revisit. The required time or travel-distance gap depends on platform speed, keyframe rate, and revisit patterns, so parameters such as the 30-second threshold in the example below should be tuned to the deployment. The function below illustrates this temporal mask combined with normalized cosine-similarity retrieval:
 
 ```python
 import numpy as np
@@ -82,21 +82,25 @@ def detect_loop_candidates(query_descriptor, database_descriptors,
 
 ### 10.1.2 Verification: Geometric Verification
 
-Candidates found in the detection stage are selected based on appearance similarity alone, so **false positives** (actually different places that merely look similar) can be included. Perceptual aliasing — visually similar but actually distinct places — is especially frequent in indoor environments (similar corridors, repetitive structures).
+Because candidate retrieval relies on compressed global descriptors, it discards fine-grained 3D layout and inevitably admits **false positives**—genuinely distinct places that happen to look similar. This perceptual aliasing is especially common indoors, where corridors, stairwells, and office bays repeat the same architectural patterns.
 
-A false positive loop closure is **catastrophic**. A single incorrect loop closure can warp the entire map. Verification must therefore be performed conservatively — maximize precision even at some cost to recall.
+In SLAM, a false positive loop closure is **catastrophic**: even one spurious edge can drag distant parts of the trajectory together and warp the entire map. Geometric verification therefore errs on the side of caution, trading some recall to keep precision as close to 100% as possible.
 
-**Geometric verification methods**:
+Depending on the sensor modality and available map structure, systems verify candidates through four complementary checks:
 
-1. **2D-2D: Essential-matrix verification**: match features and estimate $\mathbf{E}$ with RANSAC. Check inlier count and ratio together with spatial coverage, pose plausibility, and repeated detection. The 20-inlier and 50% settings below are examples to tune for the detector and scene.
+1. **2D–2D Essential-matrix verification**: Match local features between the query and candidate images and estimate the essential matrix $\mathbf{E}$ inside RANSAC under the epipolar constraint:
 
 $$\mathbf{p}_2^\top \mathbf{E} \mathbf{p}_1 = 0, \quad \mathbf{E} = [\mathbf{t}]_\times \mathbf{R}$$
 
-2. **3D-3D: Point cloud registration**: In LiDAR-based systems, the relative transform $\mathbf{T}_{ij} \in SE(3)$ between two scans is estimated with ICP or GeoTransformer. It is verified by the fitness score (ratio of registered points) and RMSE.
+Rather than trusting a raw inlier count alone, inspect the inlier ratio, spatial distribution across the image, plausibility of the recovered pose, and whether neighboring frames agree. Thresholds such as 20 inliers and a 50% inlier ratio in the code below serve only as starting points for a given detector and scene.
 
-3. **2D-3D: PnP**: Solve a PnP problem between the current 2D feature points and the 3D map points held by the candidate keyframe. If the 3D points are expressed in the candidate keyframe's frame, the solution is directly the relative transform $\mathbf{T}_{ij}$ the loop edge needs; if they are expressed in the map frame, the solution is the absolute pose of the query frame and must be composed with the candidate's pose.
+2. **3D–3D Point cloud registration**: In LiDAR systems, estimate the relative transform $\mathbf{T}_{ij} \in SE(3)$ between two scans with ICP or GeoTransformer, then gate acceptance on the registration fitness score (fraction of aligned points) and residual RMSE.
 
-4. **Temporal consistency**: Rather than a single match, check whether matches against the same place appear consistently across several consecutive frames. ORB-SLAM2 accepted a loop closure only when the same place was detected three times in a row. ORB-SLAM3 replaces that temporal condition with geometric verification over a local window: it accepts the loop when the transformation is supported by the query keyframe plus two keyframes covisible with it, three in total. Because those three are usually already in the map, there is no need to wait for new keyframes — which lets it close loops earlier.
+3. **2D–3D PnP**: Solve a Perspective-n-Point problem between 2D features in the current frame and 3D map points associated with the candidate keyframe. Notice the coordinate convention: if those 3D points are expressed in the candidate keyframe's local frame, PnP directly yields the relative transform $\mathbf{T}_{ij}$ needed for the loop edge; if they live in the global map frame, PnP returns the query frame's absolute pose, which must then be composed with the candidate's pose.
+
+4. **Temporal and covisibility consistency**: Single-frame checks are brittle, so systems require agreement across multiple views. ORB-SLAM2 demanded detections of the same place across three consecutive keyframes. ORB-SLAM3 replaces that sequential wait with geometric verification over a local covisibility window: a loop is accepted as soon as the query keyframe and two keyframes covisible with it (three in total) support the transform. Since those covisible neighbors already exist in the map, the system closes loops without waiting for new frames to arrive.
+
+The implementation below demonstrates 2D–2D essential-matrix verification using Sampson error inside RANSAC (remember that monocular essential geometry leaves translation scale normalized unless paired with depth, stereo, or map points):
 
 ```python
 import numpy as np
@@ -202,73 +206,62 @@ def sampson_error(E, pts1, pts2):
 
 ### 10.1.3 The Danger of False Positives and How to Prevent Them
 
-The corridor example below shows why a false positive loop closure is dangerous.
+To see how quickly a single bad match can unravel a map, consider a robot traversing two nearly identical corridors. If an erroneous loop closure links keyframe $i$ in corridor A to keyframe $j$ in corridor B, the optimizer pulls those two distant poses together, twisting every intermediate pose along the path and folding the map onto itself.
 
-**Scenario**: Suppose the robot traverses two similar-looking corridors. If an incorrect loop closure is formed between keyframe $i$ in corridor A and keyframe $j$ in corridor B, the pose graph optimizer pulls these two poses close together. As a result, all poses between the two corridors are distorted, and the entire map folds or twists.
+Because no single test catches every alias, practical SLAM systems stack defenses across both the front-end and back-end:
 
-**Prevention strategies**:
+1. **Multi-stage verification**: Require every candidate to pass appearance similarity, geometric consistency, and temporal or covisibility consistency in sequence before creating a loop edge.
 
-1. **Multi-stage verification**: The candidate must sequentially pass appearance similarity → geometric consistency → temporal consistency.
+2. **Robust kernels** (detailed in §10.2): Reshape the optimization cost so that large outlier residuals exert bounded influence rather than dominating the solver.
 
-2. **Use robust kernels** (detailed in §10.2): Make the optimizer itself less sensitive to outlier constraints.
+3. **[Switchable constraints (Sünderhauf & Protzel, 2012)](https://doi.org/10.1109/IROS.2012.6385590)**: Attach an explicit continuous switch variable to each loop closure factor, letting the optimizer turn off edges that conflict with the rest of the graph.
 
-3. **[Switchable constraints (Sünderhauf & Protzel, 2012)](https://doi.org/10.1109/IROS.2012.6385590)**: Add an on/off switch variable to each loop closure factor so that the optimizer automatically deactivates loop closures with poor consistency.
+4. **[DCS (Dynamic Covariance Scaling) (Agarwal et al., 2013)](https://doi.org/10.1109/ICRA.2013.6630733)**: Scale each loop edge's covariance dynamically according to its residual, automatically inflating the uncertainty of suspect matches.
 
-4. **[DCS (Dynamic Covariance Scaling) (Agarwal et al., 2013)](https://doi.org/10.1109/ICRA.2013.6630733)**: Dynamically adjust the covariance (uncertainty) of each loop closure so that the influence of outliers is attenuated automatically.
-
-5. **[PCM (Pairwise Consistency Maximization) (Mangelson et al., 2018)](https://doi.org/10.1109/ICRA.2018.8460217)**: Check pairwise consistency among multiple loop closure candidates and accept only the largest consistent subset.
+5. **[PCM (Pairwise Consistency Maximization) (Mangelson et al., 2018)](https://doi.org/10.1109/ICRA.2018.8460217)**: Test pairwise geometric agreement across multiple loop candidates and commit only to the largest mutually consistent subset.
 
 ### 10.1.4 Correction: Graph Correction
 
-A loop closure that passes verification is added to the pose graph as a new constraint. The loop closure edge encodes the relative transform $\mathbf{T}_{ij}$ between the two poses and its uncertainty $\boldsymbol{\Sigma}_{ij}$:
+Once a loop candidate survives verification, it enters the pose graph as a constraint encoding the measured relative transform $\mathbf{T}_{ij}$ and its uncertainty $\boldsymbol{\Sigma}_{ij}$, producing the residual error:
 
 $$e_{ij} = \text{Log}(\mathbf{T}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j)$$
 
-Once this edge is added, the pose graph optimizer (§10.2) re-optimizes the entire graph and corrects the drift. What gets adjusted is the pose variables, not the edges — the edges are measurements — and the result is a redistribution of each edge's residual. That redistribution is not uniform: it is set by each edge's information matrix $\boldsymbol{\Omega}_{ij}$ and by the graph topology, so odometry stretches with large information absorb less of the correction.
+With this new edge in place, the backend optimizer (§10.2) re-solves the graph to pull the drifting trajectory back into alignment. Notice that optimization adjusts the node poses rather than the edge measurements themselves, redistributing residuals across the entire loop. That redistribution is uneven by design: guided by graph topology and each edge's information matrix $\boldsymbol{\Omega}_{ij}$, high-confidence odometry segments deform very little while uncertain stretches absorb more of the correction.
 
 ---
 
 ## 10.2 Pose Graph Optimization
 
-Pose graph optimization improves the global consistency of the entire pose trajectory while satisfying the relative constraints produced by the frontend (odometry, loop closure).
+Pose graph optimization reconciles local incremental constraints from odometry with global loop-closure constraints, restoring global consistency across the full trajectory.
 
 ### 10.2.1 SE(3) Pose Graph
 
-The pose graph is represented as a graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$:
+Formally, the trajectory is modeled as a graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$, where the nodes $\mathcal{V} = \{\mathbf{T}_1, \mathbf{T}_2, \ldots, \mathbf{T}_n\}$ represent keyframe poses $\mathbf{T}_i \in SE(3)$ and the edges $\mathcal{E}$ encode relative pose measurements—both sequential odometry edges and long-range loop edges. Each edge $(i, j) \in \mathcal{E}$ carries a measured relative transform $\tilde{\mathbf{T}}_{ij}$ together with an information matrix $\boldsymbol{\Omega}_{ij} = \boldsymbol{\Sigma}_{ij}^{-1}$ reflecting measurement confidence.
 
-- **Nodes** $\mathcal{V} = \{\mathbf{T}_1, \mathbf{T}_2, \ldots, \mathbf{T}_n\}$: the pose of each keyframe, $\mathbf{T}_i \in SE(3)$.
-- **Edges** $\mathcal{E}$: relative constraints between two nodes, divided into odometry edges and loop closure edges.
-
-Each edge $(i, j) \in \mathcal{E}$ has a measured relative transform $\tilde{\mathbf{T}}_{ij}$ and an information matrix $\boldsymbol{\Omega}_{ij}$.
-
-**Error definition on SE(3)**: In a pose graph, the error is defined not on Euclidean space but on the Lie group SE(3):
+Because $SE(3)$ poses do not live in a flat vector space, edge residuals cannot be computed by simple subtraction. Instead, we compare the predicted relative pose $\mathbf{T}_i^{-1}\mathbf{T}_j$ against the measurement $\tilde{\mathbf{T}}_{ij}$ on the Lie group and map the discrepancy to the Lie algebra via the matrix logarithm:
 
 $$\mathbf{e}_{ij} = \text{Log}(\tilde{\mathbf{T}}_{ij}^{-1} \cdot \mathbf{T}_i^{-1} \cdot \mathbf{T}_j) \in \mathbb{R}^6$$
 
-Here, $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$ is the mapping to the Lie algebra via the matrix logarithm. This six-dimensional vector encodes three rotational and three translational error components.
-
-**Optimization objective**: Minimize the weighted sum of squared edge errors:
+Here $\text{Log}: SE(3) \to \mathfrak{se}(3) \cong \mathbb{R}^6$ produces a six-dimensional tangent vector packing three translational and three rotational error components. Summing the information-weighted squared errors across all edges gives the global optimization objective:
 
 $$\mathbf{T}^* = \arg\min_{\mathbf{T}_1, \ldots, \mathbf{T}_n} \sum_{(i,j) \in \mathcal{E}} \mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}$$
 
-This is a nonlinear least squares problem that can be solved with Gauss-Newton or Levenberg-Marquardt.
-
-**Gauss-Newton on manifold**: Since SE(3) is not a Euclidean space, we cannot use direct addition (+). Instead, we compute an increment $\boldsymbol{\delta}$ on the Lie algebra and apply it on the manifold via the exponential map:
+We solve this nonlinear least-squares problem iteratively with Gauss-Newton or Levenberg-Marquardt. Because adding a raw vector directly to a rotation matrix breaks orthogonality, each step computes a small tangent-space increment $\boldsymbol{\delta}_i \in \mathbb{R}^6$ and applies it back onto the manifold using the exponential map:
 
 $$\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$$
 
-The update at a single iteration:
+One Gauss-Newton iteration proceeds as follows:
 
-1. At the current estimate, compute the error $\mathbf{e}_{ij}$ and Jacobian $\mathbf{J}_{ij}$ for each edge.
-2. Form the normal equations: $\mathbf{H} \boldsymbol{\delta} = -\mathbf{b}$, where
+1. Linearize around the current pose estimates by evaluating each edge's error $\mathbf{e}_{ij}$ and Jacobian $\mathbf{J}_{ij}$.
+2. Assemble the sparse normal equations $\mathbf{H} \boldsymbol{\delta} = -\mathbf{b}$, where:
 
 $$\mathbf{H} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{J}_{ij}, \quad \mathbf{b} = \sum_{(i,j)} \mathbf{J}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}$$
 
-3. Since $\mathbf{H}$ is sparse, it can be solved efficiently by sparse Cholesky decomposition. With relative constraints alone, however, the objective is invariant to a global SE(3) transform, so $\mathbf{H}$ has a six-dimensional null space. Fixing one reference pose or adding a prior factor is what makes it positive definite and the decomposition valid.
-4. Apply the increment: $\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$.
-5. Iterate until convergence.
+3. Solve the linear system via sparse Cholesky decomposition—after addressing **gauge freedom**. Because every edge constrains only *relative* transforms between pairs of nodes, rigidly shifting and rotating the entire trajectory in $SE(3)$ leaves all residuals $\mathbf{e}_{ij}$ untouched. That global invariance gives $\mathbf{H}$ a six-dimensional null space, making it singular until one reference pose is held fixed or anchored with a prior factor so that $\mathbf{H}$ becomes positive definite.
+4. Retract each pose onto $SE(3)$ via $\mathbf{T}_i \leftarrow \mathbf{T}_i \cdot \text{Exp}(\boldsymbol{\delta}_i)$.
+5. Repeat until the cost change or step norm falls below a convergence tolerance.
 
-**[g2o (General Graph Optimization)](https://doi.org/10.1109/ICRA.2011.5979949)**: A framework developed by Kümmerle et al. (2011) that implements the above procedure for general graph optimization problems. The user defines only the vertex (node) and edge (constraint) types, and the sparse optimization engine handles the rest automatically.
+In practice, frameworks such as **[g2o (General Graph Optimization)](https://doi.org/10.1109/ICRA.2011.5979949)** (Kümmerle et al., 2011) automate this pipeline: you specify vertex and edge types along with their error functions, and the solver handles sparse linearization, ordering, and Cholesky factorization. The self-contained Python functions below make the underlying $SE(3)$ Lie-algebra operations and cost evaluation explicit:
 
 ```python
 import numpy as np
@@ -362,9 +355,9 @@ def pose_graph_cost(poses, edges, measurements, information_matrices):
 
 ### 10.2.2 Robust Kernel
 
-In practical SLAM systems, outlier measurements are unavoidable. Incorrect loop closures, sensor errors, dynamic objects, and more are the causes. The standard least squares cost function $\rho(x) = x^2$ is extremely sensitive to outliers — large errors dominate the cost and distort the whole solution.
+No front-end pipeline rejects 100% of bad measurements. Dynamic objects, registration slips, and perceptual aliasing inevitably leak occasional outliers into the pose graph. Under the standard quadratic penalty $\rho(s) = s$ (where $s = e^2$ is the squared Mahalanobis residual), the gradient grows linearly with the error—meaning a single grossly mismatched loop closure pulls the entire trajectory harder than dozens of valid odometry edges combined.
 
-A **robust kernel** (M-estimator) limits the influence of large residuals and reduces sensitivity to outliers:
+To prevent outliers from hijacking the solution, a **robust kernel** (or M-estimator) replaces the quadratic penalty with a sublinear or bounded function $\rho(s)$ that flattens as $s$ grows large:
 
 | Kernel | $\rho(s)$ ($s = e^2$) | Characteristics |
 |--------|----------------------|------|
@@ -373,23 +366,27 @@ A **robust kernel** (M-estimator) limits the influence of large residuals and re
 | Cauchy | $k^2 \log(1 + s/k^2)$ | Smooth attenuation |
 | Geman-McClure | $\frac{s}{k^2 + s}$ | Strong outlier suppression |
 
-Applying a robust kernel changes the cost function to:
+Substituting $\rho$ into the pose-graph objective bounds the cost of large edge discrepancies:
 
 $$\sum_{(i,j)} \rho\left(\mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij}\right)$$
 
-This can be solved via **IRLS (Iteratively Reweighted Least Squares)**: at each iteration, the weights are recomputed based on the residual magnitudes and a weighted least squares problem is solved.
+Rather than writing a bespoke solver for each robust function, we optimize this objective via **IRLS (Iteratively Reweighted Least Squares)**. Linearizing $\rho$ around the current squared residual converts each step back into a standard weighted least-squares problem whose edge weights depend on the residual magnitude:
 
 $$w_i = \rho'(s_i), \quad s_i = \mathbf{e}_i^\top \boldsymbol{\Omega}_i \mathbf{e}_i$$
 
-Here $\rho'$ is the derivative with respect to $s$ of the $\rho(s)$ defined in the table above. Outlier edges are assigned small weights so that their influence is reduced automatically.
+Here $\rho'$ denotes the derivative of $\rho(s)$ with respect to $s$ as defined in the table above. Because $\rho'(s_i)$ shrinks whenever $s_i$ becomes large, outlier edges automatically lose leverage in the normal equations while inlier edges keep weights near one.
 
-**[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel (2012) introduced a continuous switch variable $s_{ij} \in [0, 1]$ on each loop closure factor, allowing the optimizer to deactivate inconsistent loop closures ($s_{ij} \to 0$):
+Fixed robust kernels still have a blind spot: when an incorrect loop closure enters the graph early or carries strong local support, an IRLS solver can still get trapped in a distorted local minimum. Two dynamic mechanisms address this directly at the factor level:
+
+- **[Switchable constraints](https://doi.org/10.1109/IROS.2012.6385590)**: Sünderhauf & Protzel (2012) augment each loop closure factor with a continuous switch variable $s_{ij} \in [0, 1]$:
 
 $$\rho_{\text{switch}}(\mathbf{e}_{ij}, s_{ij}) = s_{ij}^2 \mathbf{e}_{ij}^\top \boldsymbol{\Omega}_{ij} \mathbf{e}_{ij} + \lambda (1 - s_{ij})^2$$
 
-The first term minimizes the error when the switch is on, and the second term is a penalty for turning the switch off. The optimizer automatically balances these two.
+  The first term drives the residual down when the switch is active, while the prior penalty $\lambda (1 - s_{ij})^2$ resists disabling valid loops. Whenever a loop edge conflicts violently with the surrounding odometry, paying the fixed penalty $\lambda$ becomes cheaper than distorting the trajectory, so the optimizer drives $s_{ij} \to 0$ and cleanly switches the outlier off.
 
-**[DCS (Dynamic Covariance Scaling)](https://doi.org/10.1109/ICRA.2013.6630733)** (Agarwal et al., 2013): Dynamically scales the covariance of each loop closure according to the residual magnitude. The covariance of an outlier automatically grows (= increased uncertainty), so its influence decreases.
+- **[DCS (Dynamic Covariance Scaling)](https://doi.org/10.1109/ICRA.2013.6630733)**: Agarwal et al. (2013) eliminate the extra switch variables by deriving a closed-form scaling factor from the residual magnitude, dynamically inflating the covariance of inconsistent loop edges so their weight fades without adding optimization state.
+
+The Python functions below implement the Huber and Cauchy robust kernels, the Huber IRLS weight $\rho'(s)$, and the resulting robust pose-graph cost:
 
 ```python
 def huber_kernel(s, k=1.345):
@@ -429,35 +426,27 @@ def robust_pose_graph_cost(poses, edges, measurements, info_matrices,
 
 ### 10.2.3 iSAM2: Incremental Smoothing and Mapping
 
-Most SLAM systems, rather than re-optimizing the entire graph in a batch fashion whenever a new keyframe is added, use an incremental approach that selectively updates only the affected parts. [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419) implements this incremental optimization.
+Re-solving the entire pose graph from scratch whenever a new keyframe arrives does not scale to long missions: almost all earlier variables and measurements remain unchanged between consecutive frames. Instead of running full batch optimization on every update, [iSAM2 (Kaess et al., 2012)](https://doi.org/10.1177/0278364911430419) maintains the matrix factorization incrementally, isolating and recomputing only the portion of the graph touched by new measurements.
 
-When a new variable or measurement is added, iSAM2 identifies the range over which its influence propagates and recomputes only that part.
-
-**Bayes tree**: iSAM2 uses this data structure. Variable elimination on a factor graph yields a clique tree, and the Bayes tree is this clique tree endowed with direction.
-
-The posterior distribution used for MAP estimation on a factor graph is decomposed as follows:
+The data structure that makes this selective update possible is the **Bayes tree**, which arises naturally by giving direction to the clique tree produced when eliminating variables in a factor graph. In MAP estimation, the joint posterior over all poses and landmarks factors into a product of local measurement factors $f_k(\mathbf{x}_k)$:
 
 $$p(\mathbf{x} | \mathbf{z}) \propto \prod_k f_k(\mathbf{x}_k)$$
 
-Here $f_k$ is each factor (odometry, loop closure, etc.) and $\mathbf{x}_k$ is the set of variables associated with that factor.
-
-Performing variable elimination yields:
+Eliminating variables one by one converts this undirected factor graph into a product of conditional densities:
 
 $$p(\mathbf{x} | \mathbf{z}) = \prod_i p(x_i | \text{Sep}(x_i))$$
 
-Here $\text{Sep}(x_i)$ is the separator of $x_i$ in the clique tree — that is, the conditioning variables that remain when this variable is eliminated. This conditional distribution structure forms the Bayes tree.
+where $\text{Sep}(x_i)$ denotes the separator of $x_i$ in the clique tree—the remaining conditioning variables still coupled to $x_i$ at the moment it is eliminated. Grouping variables that share the same elimination structure forms cliques organized into a rooted tree, the Bayes tree.
 
-**Incremental update procedure**:
+Because dependencies flow upward toward the root, an incremental update only disturbs the subtree along the path from the newly constrained variables to the root:
 
-1. When a new factor is added, identify only the affected cliques (typically a small number).
-2. Redo the QR decomposition only for those cliques and their ancestors.
-3. Keep the rest of the tree unchanged.
+1. **Affected clique detection**: Identify the cliques touched by the newly added factor—typically just a handful during normal odometry.
+2. **Partial re-factorization**: Re-run QR decomposition only for those affected cliques and their ancestors up to the root.
+3. **Tree reuse**: Leave all unaffected branches of the Bayes tree completely untouched.
 
-**Fluid relinearization**: selectively relinearize variables whose estimate has moved beyond a threshold. Unlike iSAM v1, this does not require a scheduled full-batch relinearization, although a large loop closure can affect a broad part of the Bayes tree.
+Two additional mechanisms keep iSAM2 both accurate and fast over long runs. Through **fluid relinearization**, it selectively re-linearizes only those variables whose estimates have drifted beyond a threshold, avoiding iSAM v1's periodic full-batch relinearization (though a large loop closure can still propagate across much of the tree). Through **incremental variable reordering**, it updates the elimination ordering locally around newly added variables rather than recomputing a global fill-reducing ordering for the entire graph.
 
-**Variable reordering**: When a new variable is added, the full elimination order is not recomputed; only the affected part is reordered incrementally.
-
-GTSAM provides iSAM2, and [LIO-SAM](https://arxiv.org/abs/2007.00258) uses it in the backend. ORB-SLAM3 instead performs nonlinear optimization with a modified version of g2o. By updating the affected part of the Bayes tree, iSAM2 avoids solving the full batch problem after every new factor.
+In practice, iSAM2 lives at the core of the GTSAM library and drives backends such as [LIO-SAM](https://arxiv.org/abs/2007.00258), whereas systems like ORB-SLAM3 rely on a customized g2o solver for bundle adjustment and pose-graph optimization. The simplified class below omits the Bayes tree's clique factorization to illustrate the core idea of tracking affected variables across odometry and loop-closure updates:
 
 ```python
 class SimpleIncrementalOptimizer:
@@ -531,42 +520,39 @@ class SimpleIncrementalOptimizer:
 
 ## 10.3 Global Relocalization
 
-Global relocalization is the problem of finding the robot's location on a pre-built map (prior map). If loop closure is about recognizing "a place I have visited before," relocalization asks, "Where am I within a pre-built map?"
+Whereas loop closure asks *"Have I been here before?"* during an active mapping run, **global relocalization** asks *"Where am I inside an already-built map?"* Whether a tracker has just lost lock or a vehicle is booting up in a mapped facility, the system must recover its 6-DoF or planar pose from scratch against the prior map.
 
 ### 10.3.1 Map-Based Localization
 
-When a pre-built map is available, the current pose is estimated by registering new sensor observations to this map.
+With a prior map in hand, relocalization registers live sensor observations back to that map:
 
-**Visual relocalization pipeline**: Extract feature points from the current image, find 2D-3D correspondences with the map's 3D points via visual words or direct matching, estimate the pose with PnP + RANSAC, and resume tracking from that pose.
-
-ORB-SLAM3 retrieves candidate keyframes with DBoW2, obtains 2D-3D correspondences via ORB matching, estimates the pose with MLPnP + RANSAC (EPnP was the method up through ORB-SLAM2; ORB-SLAM3 switched to MLPnP, which is independent of the camera model), and then finds additional matches through guided search to improve accuracy.
-
-**LiDAR relocalization**: Register the current LiDAR scan to a prior point-cloud map. First search for nearby regions with a global descriptor such as Scan Context or PointNetVLAD, then perform coarse registration with FPFH + RANSAC or GeoTransformer, and finally refine the alignment with ICP/GICP.
+- **Visual relocalization**: Extract local keypoints from the current camera image, retrieve candidate keyframes or map landmarks via visual words or descriptor matching, establish 2D–3D correspondences, and recover the pose with PnP inside RANSAC before resuming frame-to-frame tracking. ORB-SLAM3, for instance, retrieves candidate keyframes through DBoW2, matches ORB descriptors, solves pose with MLPnP + RANSAC (replacing the EPnP solver used through ORB-SLAM2 with a formulation independent of a specific camera model), and refines the estimate via guided local feature matching.
+- **LiDAR relocalization**: Register the live scan against a prior point-cloud map in three steps: narrow the search space with a global descriptor such as Scan Context or PointNetVLAD, compute a coarse alignment via FPFH + RANSAC or GeoTransformer, and refine the pose to centimeter accuracy with ICP or GICP.
 
 ### 10.3.2 Prior Map + Online Sensor
 
-In autonomous driving, it is common to localize in real time with live sensor data against a pre-built HD map. Three challenges follow:
+Production autonomous vehicles routinely localize in real time against pre-built HD maps using live onboard sensors. Deploying that pairing in the real world surfaces three persistent challenges:
 
-- **Discrepancies between the map and the current environment**: Over time, buildings change and foliage grows. We must handle differences between the prior map and current observations.
-- **Cross-modal matching**: The HD map may have been built with LiDAR while the current sensor is only a camera. Registration across heterogeneous sensors is required.
-- **No initial pose**: If the robot does not know where in the map it starts, place recognition against the entire map can be used to find the starting location.
+- **Map staleness and environmental change**: Construction, seasonal foliage, and parked vehicles alter scenes over time, so localizers must stay robust to discrepancies between the stored map and live observations.
+- **Cross-modal mismatch**: An HD map may have been surveyed with LiDAR while a fleet vehicle carries only cameras, demanding cross-modal registration across fundamentally different sensing modalities.
+- **Cold-start initialization**: When the vehicle wakes up with no prior pose estimate—for instance inside an underground garage where GNSS is unavailable—global place recognition over the entire map must bootstrap the initial pose.
 
 ### 10.3.3 Monte Carlo Localization (MCL)
 
-MCL is a particle-filter-based global localization method. It represents the robot's possible poses as particles and updates particle weights according to sensor observations.
+When a robot has no initial pose guess, a single Gaussian state estimate cannot represent competing hypotheses at once. **Monte Carlo Localization (MCL)** solves global localization with a particle filter, approximating the posterior pose distribution using a swarm of weighted candidate poses (particles).
 
-After initialization, MCL repeats prediction, update, and resampling.
+Once initialized, MCL cycles through prediction, measurement update, and resampling:
 
-1. **Initialization**: Distribute particles uniformly over the entire map (global uncertainty).
-2. **Prediction**: Move particles according to the robot's motion model:
+1. **Initialization**: Scatter particles uniformly across the map's free space to express complete global uncertainty.
+2. **Prediction**: Propagate each particle forward using the probabilistic motion model:
 $$x_t^{[k]} \sim p(x_t | u_t, x_{t-1}^{[k]})$$
-3. **Update**: Compute the weight of each particle by comparing the current sensor observation with the expected observation from the map:
+3. **Update**: Score each particle by comparing the live sensor scan against the observation expected at that pose on the map:
 $$w_t^{[k]} = p(z_t | x_t^{[k]}, m)$$
-4. **Resampling**: Resample particles in proportion to their weights. Particles with high weights (close to the true location) are duplicated, and low-weight particles are eliminated.
+4. **Resampling**: Draw a new particle generation with probability proportional to particle weights, replicating hypotheses that match the measurements and culling inconsistent ones.
 
-MCL can represent multi-modal distributions. When the robot does not know which of several places it might be in, it can maintain several hypotheses simultaneously. The hypotheses collapse to one only if the observations actually discriminate between the places and particles remain near the true pose. Where observations cannot tell places apart — a symmetric corridor, say — multiple modes persist; and if the particle count is too low or the likelihood too peaked, the correct mode is depleted and the estimate locks onto the wrong location.
+Because a particle set is non-parametric, MCL naturally maintains **multi-modal distributions** whenever multiple locations look plausible, collapsing onto a single pose only as distinct landmarks break the symmetry. In genuinely ambiguous layouts—such as long, symmetric corridors—multiple modes properly persist until a distinguishing junction appears; conversely, using too few particles or an overly peaked likelihood model can prematurely deplete the true mode and lock the filter onto the wrong location.
 
-**Example of LiDAR-based MCL**:
+The 2D LiDAR implementation below illustrates this full predict–update–resample loop on an occupancy grid:
 
 ```python
 import numpy as np
@@ -735,43 +721,42 @@ class MonteCarloLocalization:
 
 ## 10.4 Multi-Session SLAM & Map Merging
 
-In practical environments, SLAM is often not completed in a single run. The same building may be mapped over several days, multiple robots may simultaneously explore different areas, or tracking may fail and then resume from a different point. Multi-session SLAM integrates the maps from such separate sessions into a single globally consistent map.
+Real-world mapping rarely happens in one uninterrupted trajectory. A building may be surveyed over several days, a team of robots may explore different wings simultaneously, or tracking may drop out and restart elsewhere. **Multi-session SLAM** stitches those separate runs into a single, globally consistent coordinate frame.
 
 ### 10.4.1 Map Anchoring
 
-To integrate maps from multiple sessions, the coordinate frame of each map must be aligned. This is called **map anchoring**.
+Before separate sub-maps can be fused, their independent coordinate origins must be tied together—a step known as **map anchoring**. Depending on what overlaps or external signals exist, systems establish that relative transform in three ways:
 
-**Method 1: Based on shared landmarks**: If two sessions observe the same 3D points or feature points in an overlapping region, the relative transform ${}^{A}\mathbf{T}_{B}$ between the two maps is estimated from them.
+1. **Shared landmarks**: When two sessions observe common 3D map points or landmarks in an overlapping region, the relative transform ${}^{A}\mathbf{T}_{B}$ follows directly by aligning corresponding points:
 
 $${}^{A}\mathbf{T}_{B} = \arg\min_{\mathbf{T}} \sum_k \| \mathbf{p}_k^A - \mathbf{T} \cdot \mathbf{p}_k^B \|^2$$
 
-**Method 2: Based on place recognition**: Even when shared landmarks are not explicitly available, place recognition can find keyframe pairs from the two sessions that visited the same location, and alignment is performed from these pairs.
+2. **Place recognition**: Even without pre-associated landmarks, place recognition can match keyframes across sessions that revisited the same spot, providing anchor pairs for relative-pose estimation.
 
-**Method 3: Based on GNSS**: If both sessions have GNSS information, it can be used as a shared coordinate frame for direct alignment.
+3. **GNSS**: Outdoors, when both sessions log GNSS measurements, satellite coordinates anchor each map directly into a shared global reference frame.
 
 ### 10.4.2 Inter-Session Loop Closure
 
-Once map anchoring provides an initial alignment, inter-session loop closure performs the precise registration. The principle is the same as standard loop closure, but two additional challenges arise:
+Once anchoring yields a rough alignment, **inter-session loop closure** refines the registration between trajectories. The mechanics mirror single-session loop closure, except two hazards grow sharper across separate runs:
 
-1. **Appearance change**: Over time, lighting and seasons change. Foundation-model-based descriptors such as AnyLoc are robust to this problem.
+1. **Appearance change**: Hours, lighting, weather, and seasons shift between sessions. Foundation-model descriptors such as AnyLoc handle these visual shifts far better than brittle hand-crafted local descriptors.
 
-2. **Frame misalignment**: Because the initial alignment may be inaccurate, widen the candidate search instead. Open up the pose prior's gate, raise the number of candidates and RANSAC iterations, and enlarge the basin of initial guesses handed to registration. Do not loosen the residual acceptance criterion of geometric verification: relax that and false loops pass straight through and break the map.
+2. **Frame misalignment**: Because initial map anchoring may be coarse, widen the candidate search rather than relaxing verification standards. Open up the pose prior's search gate, retrieve more candidates, run additional RANSAC iterations, and broaden the basin of initial guesses passed to registration—but never loosen geometric verification's residual acceptance criteria, or false inter-session loops will pass straight through and corrupt both maps.
 
 ### 10.4.3 ORB-SLAM3 Multi-Map System
 
-The Atlas system of ORB-SLAM3 is a representative implementation of multi-session SLAM. It operates as follows:
+ORB-SLAM3's **Atlas** architecture gives a concrete blueprint for managing and merging multiple maps automatically:
 
-1. **Active map**: The map currently being tracked. When operating normally, keyframes and map points are added to this map.
-
-2. **Map creation**: If tracking fails (e.g., due to occlusion or a textureless environment), a new map is created and set as the active map. The previous map is kept in an inactive state inside Atlas.
-
-3. **Map merging**: When place recognition detects a common location between the current active map and an inactive map in Atlas, the two maps are merged:
-   - Estimate the relative transform $\mathbf{T}_{merge}$ from the common keyframe pair.
+1. **Active map**: Normal tracking appends new keyframes and map points to the single currently active map.
+2. **Map creation**: Whenever tracking fails (for example due to occlusion or a textureless wall), Atlas preserves the current map in an inactive pool and spawns a fresh active map from the new origin.
+3. **Map merging**: Whenever place recognition links the active map to an inactive map in Atlas, the two maps fuse seamlessly:
+   - Estimate the relative transform $\mathbf{T}_{merge}$ from the matched keyframe pair.
    - Transform all keyframes and map points of the inactive map by $\mathbf{T}_{merge}$.
-   - Fuse common map points.
-   - Ensure consistency in the merged region via welding bundle adjustment.
+   - Fuse duplicate map points across the overlap.
+   - Run welding bundle adjustment to restore local and global consistency across the seam.
+4. **Cross-session persistence**: A map saved from an earlier run can be reloaded as an inactive map in Atlas; as soon as the live session crosses an overlapping area, the old and new maps merge automatically.
 
-4. **Leveraging multi-session**: A map from a previous session can be loaded, and when the current session visits the same location, it is automatically merged. This allows the map to be extended incrementally across multiple sessions.
+The skeleton below captures Atlas's active/inactive map lifecycle and merge hook:
 
 ```python
 class MultiMapAtlas:
@@ -872,28 +857,28 @@ class MultiMapAtlas:
 
 ### 10.4.4 Multi-Robot Map Merging
 
-When multiple robots explore simultaneously, each robot's map must be integrated in real time. The additional constraints are:
+When a fleet of robots explores an environment in parallel, their individual maps must be reconciled in real time under three additional operational constraints:
 
-- **Communication bandwidth**: Full point clouds cannot be transmitted, so candidate search exchanges only compressed descriptors (Scan Context, compact visual descriptors). Geometric verification then additionally exchanges sparse features or subsampled point clouds, and distributed optimization exchanges boundary pose estimates and their uncertainties.
-- **Distributed optimization**: Robots must be able to merge maps autonomously without a central server. Kimera-Multi and Swarm-SLAM address this problem.
-- **Relative pose uncertainty**: Because the initial relative pose between robots is unknown, alignment must be achieved via inter-robot loop closures.
+- **Communication bandwidth**: Robots rarely have bandwidth to broadcast raw point clouds or dense images, so candidate search shares only compact global descriptors (such as Scan Context or compressed visual descriptors). Only after a candidate fires do robots exchange sparse local features or downsampled scans for geometric verification, and distributed optimization exchanges just the boundary poses and uncertainties adjacent to inter-robot links.
+- **Distributed optimization**: Without relying on a central server, robots must solve a joint pose graph autonomously—the setting addressed by systems such as Kimera-Multi and Swarm-SLAM.
+- **Unknown initial relative poses**: Because robots start in arbitrary, uncalibrated frames, global alignment must emerge directly from inter-robot loop closures.
 
-Distributed pose graph optimization can be written as:
+Formally, the distributed pose-graph objective splits into each robot's internal edges $\mathcal{E}_r$ plus the cross-robot loop edges $\mathcal{E}_{\text{inter}}$:
 
 $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} \rho(\mathbf{e}_{ij}) + \sum_{(i,j) \in \mathcal{E}_{\text{inter}}} \rho(\mathbf{e}_{ij})$$
 
-Each robot performs the optimization over its own edges $\mathcal{E}_r$ locally, and exchanges information for the boundary states touched by the inter-robot edges $\mathcal{E}_{\text{inter}}$. ADMM or Gauss-Seidel-style block coordinate descent is run in a distributed fashion. A pose graph objective containing rotations is non-convex, so ADMM's convex convergence guarantees cannot be applied directly. Convergence to a first-order critical point also requires checking the chosen algorithm's assumptions. For example, [non-convex ADMM convergence results](https://arxiv.org/abs/1410.1390) require conditions such as a particular problem structure and a sufficiently large penalty parameter. Using ADMM or Gauss-Seidel alone does not guarantee convergence for this objective. Initialization and the communication graph affect convergence and the solution obtained. [Certifiably correct methods such as DC2-PGO](https://arxiv.org/abs/1911.03721) solve their specified problems under the relevant conditions and use a posteriori verification to certify global optimality.
+Each robot optimizes over its own local edges $\mathcal{E}_r$ while exchanging boundary-state messages across $\mathcal{E}_{\text{inter}}$, typically via distributed ADMM or Gauss-Seidel block coordinate descent. Care is needed with theoretical guarantees, however: because pose graphs involve 3D rotations, the objective is non-convex, so convex ADMM convergence theorems do not apply off the shelf. Even reaching a first-order critical point depends on verifying the algorithm's specific hypotheses—for instance, [non-convex ADMM convergence results](https://arxiv.org/abs/1410.1390) require suitable problem structure and a sufficiently large penalty parameter, and both initialization and communication topology affect the final solution. Rather than relying on ADMM or Gauss-Seidel alone, [certifiably correct methods such as DC2-PGO](https://arxiv.org/abs/1911.03721) solve the formulated relaxation under its required conditions and verify global optimality a posteriori.
 
 ---
 
 ## 10.5 Recent Research
 
-**[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)** integrates [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605) into an incremental robust backend. The paper reports results above 90% outlier rate and comparisons with offline baselines under its synthetic and experimental setups; this is not a guarantee for other outlier structures or initializations.
+Recent backend research pushes robust incremental optimization and multi-robot outlier rejection even further:
 
-**[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)**: The next-generation version of the Kimera SLAM library, which replaces the backend's outlier rejection from PCM with GNC to improve robustness. It has been validated on diverse platforms such as drones and autonomous vehicles, and includes comprehensive improvements for the practical deployment of metric-semantic SLAM.
-
-**[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)**: Extends PCM's pairwise consistency to group-k consistency and applies a stricter outlier test. In multi-robot map merging, it further suppresses false positives relative to PCM.
+- **[riSAM (McGann et al., 2023)](https://arxiv.org/abs/2209.14359)** brings [Graduated Non-Convexity](https://arxiv.org/abs/1909.08605) (GNC) into an incremental robust backend. Under its synthetic and experimental benchmarks, the paper reports coping with outlier rates above 90% alongside competitive comparisons to offline baselines—though performance on arbitrary outlier structures or poor initializations still requires validation.
+- **[Kimera2 (Abate et al., 2024)](https://arxiv.org/abs/2401.06323)** upgrades the Kimera SLAM library by swapping PCM outlier rejection in the backend for GNC, improving resilience across drones, autonomous vehicles, and broader metric-semantic SLAM deployments.
+- **[Group-k Consistent Measurement Set Maximization (Forsgren & Kaess, 2022)](https://arxiv.org/abs/2209.02658)** strengthens PCM's pairwise consistency test to $k$-way group consistency, filtering out false positives more aggressively during multi-robot map merging.
 
 ---
 
-Through loop closure and global optimization, a SLAM system produces a globally consistent trajectory and map. But what form does this "map" take? Is it a point cloud or a neural network? That question leads to **spatial representation**, the final output of sensor fusion.
+Loop closure and global optimization turn drifting odometry into a globally consistent trajectory. Yet a trajectory alone is only the skeleton of a SLAM system—the robot still needs a lasting representation of the world around it. Should that map be a sparse voxel grid, a smooth triangle mesh, a neural radiance or Gaussian field, or a hierarchical scene graph? Answering that question brings us to **spatial representations** (→ Chapter 11).

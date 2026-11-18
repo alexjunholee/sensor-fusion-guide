@@ -1,73 +1,57 @@
-# Ch.8 — Multi-Sensor Fusion Architectures
+# Chapter 8. Multi-Sensor Fusion Architectures
 
-> A design discipline that goes beyond individual odometry to address **how multiple sensors are integrated**.
-> Combining Visual Odometry and LiDAR Odometry in one system requires choices about coupling level and estimator structure.
+> A design discipline that goes beyond individual odometry to address how multiple sensors are integrated.
+> Combining Visual Odometry and LiDAR Odometry in a single system requires deliberate choices about coupling level and estimator structure.
+
+Visual-inertial odometry (Chapter 6) and LiDAR-inertial odometry (Chapter 7) each deliver accurate local trajectories, yet any pipeline built around a single exteroceptive modality inherits its blind spots. Cameras lose tracking in the dark or against textureless walls, while LiDAR registration degrades in geometrically featureless corridors or heavy precipitation. Closing those gaps on a shared platform starts with two architectural decisions: how deeply the sensor streams couple, and what estimator structure solves the joint state.
 
 ---
 
 ## 8.1 Taxonomy of Fusion Architectures
 
-The first decision in designing a multi-sensor fusion system is **at what level the sensor data will be combined**. The depth of this coupling determines the system's complexity, performance, and failure modes.
+The first decision in designing a multi-sensor fusion system is where in the pipeline sensor data should merge—whether subsystems exchange summarized poses, pool raw measurements into one estimator, or feed state estimates back into hardware signal-tracking loops. That coupling depth governs system complexity, statistical optimality, and how failures propagate when one sensor degrades.
 
 ### 8.1.1 Loosely Coupled
 
-Each sensor is viewed as an independent "expert." Each expert produces an independent estimate (pose, velocity, etc.) from its own data, and a higher-level stage then combines the results.
-
-Concretely, the LiDAR odometry module independently estimates $\mathbf{T}_{L}$ from LiDAR scans and the Visual odometry module independently estimates $\mathbf{T}_{V}$ from images, and a higher-level fusion module combines these two estimates.
+In a loosely coupled architecture, each sensor subsystem acts as an independent estimator that reduces its own observations to a pose or velocity estimate before a higher-level fusion stage reconciles the outputs. Concretely, a LiDAR odometry module estimates $\mathbf{T}_{L}$ from point-cloud scans while a visual odometry module estimates $\mathbf{T}_{V}$ from images; the fusion layer then combines both estimates via covariance-weighted least squares:
 
 $$
 \hat{\mathbf{x}} = \arg\min_{\mathbf{x}} \left\| \mathbf{x} - \mathbf{x}_{LiDAR} \right\|^2_{\mathbf{P}_{L}^{-1}} + \left\| \mathbf{x} - \mathbf{x}_{Visual} \right\|^2_{\mathbf{P}_{V}^{-1}}
 $$
 
-Here $\mathbf{P}_{L}$ and $\mathbf{P}_{V}$ are the covariances reported by each subsystem.
+Here $\mathbf{P}_{L}$ and $\mathbf{P}_{V}$ denote the covariances reported by each subsystem, so their inverses act as information-matrix weights.
 
-**Advantages**:
-- High modularity. Each sensor module can be swapped or upgraded independently.
-- Easier debugging. It is easy to trace which module a problem came from.
-- If one sensor fails, the others continue to operate.
-
-**Disadvantages**:
-- Because fusion occurs only after each subsystem has already compressed its measurements into an output estimate, the full benefit of complementary interaction between sensors cannot be exploited. For example, LiDAR's precise geometric information can resolve a camera's scale ambiguity, but in a loosely coupled design this interaction is limited.
-- The consistency of the covariances reported by each subsystem is not guaranteed. If a subsystem reports an overly optimistic covariance, the fusion result is distorted.
+The main appeal of loose coupling is clean modularity. Individual sensor modules can be swapped, upgraded, or debugged independently, and if one sensor drops out, the remaining subsystems continue producing estimates. That isolation comes at the cost of information loss, however, because fusion happens only after each subsystem has compressed its raw measurements into a summary pose. Subsystems cannot assist each other at the measurement level—LiDAR's metric 3D geometry, for example, cannot directly resolve monocular camera scale inside the visual tracker. Equally important, covariance consistency is never guaranteed: if either subsystem reports an overly optimistic covariance, it pulls the fused state away from the truth.
 
 ### 8.1.2 Tightly Coupled
 
-All sensors' **raw measurements** directly constrain a single shared state. Instead of running "experts" and merging their outputs, the raw data enters the state estimate itself. What defines the level is where the measurements enter, not whether there is only one optimizer. A design in which two subsystems update one shared state (R3LIVE) or one that applies sequential updates (FAST-LIVO2) is tightly coupled as well. Even when two subsystems keep separate graphs, as in LVI-SAM, the design is classified at the same level if they exchange measurements (LiDAR depth) and state (initial guesses) directly with each other.
+Rather than merging summarized poses, a tightly coupled system constrains a single shared state directly with the raw measurements from all sensors. What defines tight coupling is where measurements enter the estimator, not whether the implementation uses a single monolithic optimizer. Architectures where two subsystems update one shared state (R3LIVE) or apply sequential updates (FAST-LIVO2) are tightly coupled, as are dual-graph designs like LVI-SAM that exchange raw measurements (LiDAR depth) and state estimates (initial guesses) directly between subsystems.
 
-From a factor graph perspective, each sensor's raw measurements are inserted as independent factors:
+Expressed as a factor graph, every sensor contributes its raw observations as residual factors over the shared state:
 
 $$
 \hat{\mathbf{x}} = \arg\min_{\mathbf{x}} \sum_{i} \left\| \mathbf{r}^{\text{IMU}}_i(\mathbf{x}) \right\|^2_{\boldsymbol{\Sigma}^{-1}_{\text{IMU}}} + \sum_{j} \left\| \mathbf{r}^{\text{LiDAR}}_j(\mathbf{x}) \right\|^2_{\boldsymbol{\Sigma}^{-1}_{\text{LiDAR}}} + \sum_{k} \left\| \mathbf{r}^{\text{cam}}_k(\mathbf{x}) \right\|^2_{\boldsymbol{\Sigma}^{-1}_{\text{cam}}}
 $$
 
-Here $\mathbf{r}^{\text{IMU}}_i$ is the IMU preintegration residual, $\mathbf{r}^{\text{LiDAR}}_j$ is the point-to-plane residual, and $\mathbf{r}^{\text{cam}}_k$ is the reprojection error.
+In this objective, $\mathbf{r}^{\text{IMU}}_i$ is the IMU preintegration residual, $\mathbf{r}^{\text{LiDAR}}_j$ is the point-to-plane residual, and $\mathbf{r}^{\text{cam}}_k$ is the visual reprojection error.
 
-**Advantages**:
-- Interactions between sensors are used directly. For example, the IMU corrects the LiDAR's motion distortion, and the LiDAR anchors the VIO's scale.
-- Fusion close to information-theoretic optimality is possible.
-
-**Disadvantages**:
-- System complexity is high. The observation models, noise models, and time synchronization of all sensors must be managed within a single framework.
-- Anomalous data from one sensor can contaminate the entire estimate (outlier handling is essential).
-- Achieving real-time performance is difficult.
-
-**Representative systems**: [LIO-SAM (Shan et al. 2020)](https://arxiv.org/abs/2007.00258) (LiDAR+IMU+GPS), VINS-Mono (Camera+IMU), [R3LIVE (Lin et al. 2022)](https://arxiv.org/abs/2109.07982) (Camera+LiDAR+IMU).
+By bringing raw residuals into one state space, sensors reinforce one another directly: high-rate IMU measurements undistort LiDAR scans, while LiDAR geometry anchors VIO scale, enabling fusion close to information-theoretic optimality. The trade-off is substantially higher engineering complexity. Observation models, noise covariances, and time synchronization across every sensor must be calibrated within a single framework, and because an unrejected outlier from one modality can corrupt the shared state, robust outlier rejection and careful compute budgeting for real-time execution become essential. Representative systems include [LIO-SAM (Shan et al. 2020)](https://arxiv.org/abs/2007.00258) (LiDAR+IMU+GPS), VINS-Mono (Camera+IMU), and [R3LIVE (Lin et al. 2022)](https://arxiv.org/abs/2109.07982) (Camera+LiDAR+IMU).
 
 ### 8.1.3 Ultra-Tightly Coupled (Signal-Level Coupling)
 
-Not the sensor's measurements but the **signals themselves** are combined. This is the most extreme form of integration.
-
-A representative example is GNSS-INS ultra-tight coupling. A typical tightly coupled GNSS-INS system combines receiver-derived pseudoranges with the inertial navigation solution, but in the ultra-tight approach the position and velocity estimated by the INS directly aid the GNSS receiver's code/carrier tracking loops. Doing so lets the receiver keep tracking GNSS signals longer even in weak-signal environments (urban canyons, right after entering indoors).
+At the deepest level of integration, fusion reaches past decoded measurements into the raw sensor signals themselves. The canonical example is GNSS-INS ultra-tight coupling. Whereas a tightly coupled GNSS-INS estimator combines receiver-decoded pseudoranges with inertial navigation, an ultra-tight design feeds INS-predicted position and velocity directly into the GNSS receiver's code and carrier tracking loops. Specifically, the receiver's Numerically Controlled Oscillator (NCO) adjusts its tracking frequency using the Doppler shift predicted by the INS:
 
 $$
 \text{NCO frequency} = f_{\text{nominal}} + \Delta f_{\text{INS-aided}}
 $$
 
-Here the frequency of the NCO (Numerically Controlled Oscillator) is corrected by the Doppler shift predicted by the INS, widening the receiver's tracking range.
+Compensating for platform motion inside the tracking loop narrows the effective dynamics the receiver must follow, letting it maintain lock through weak-signal environments such as urban canyons or immediately after entering indoors.
 
-**Implementation boundary**: ultra-tight coupling requires access to correlators or tracking loops and cannot be built from a generic measurement API alone. It appears in integrated GNSS/INS products and research platforms with receiver SDK, FPGA, or firmware access; ordinary robotics projects more readily use tightly coupled raw pseudorange, carrier, and Doppler measurements.
+In practice, ultra-tight coupling faces a sharp hardware boundary: it requires direct access to correlators or tracking loops and cannot be implemented through a standard measurement API. Such architectures appear mainly in integrated GNSS/INS products and research platforms with receiver SDK, FPGA, or firmware access; most robotics systems instead rely on tightly coupled pipelines built on raw pseudorange, carrier, and Doppler outputs.
 
 ### 8.1.4 Comparison of the Three Levels
+
+Comparing how sensor streams flow through an estimator makes the distinction between the three coupling regimes concrete:
 
 ```
 Measurement flow:
@@ -84,6 +68,8 @@ Measurement flow:
 
 [Ultra-Tight] Sensor A signal ←→ Sensor B estimate (bidirectional signal-level coupling)
 ```
+
+The Python function below implements the simplest case—loosely coupled fusion in information form—converting each subsystem covariance into an information matrix so the fused estimate naturally shifts toward the more certain sensor:
 
 ```python
 import numpy as np
@@ -133,11 +119,13 @@ print(f"Fused:  {x_fused}, P_diag: {np.diag(P_fused)}")
 
 <!-- DEMO: fusion_architecture_comparison.html -->
 
+With these coupling regimes established, the next section examines how modern robotics pipelines put tight coupling into practice across cameras, LiDAR, and IMUs.
+
 ---
 
 ## 8.2 Camera + LiDAR + IMU Fusion
 
-Camera, LiDAR, and IMU together provide texture and color, 3D range, and high-rate inertia. Cost, power, weather, range, and correlated failures still matter; installing all three does not by itself guarantee robustness:
+Pairing a camera, a LiDAR, and an IMU brings three complementary measurement types onto one rig: visual texture and color, metric 3D range, and high-rate inertial motion. Even with all three mounted, cost, power, weather, range limits, and correlated failures still shape system reliability, so installing every sensor does not automatically yield robustness. The table below summarizes where each modality holds up and where it fails:
 
 | Situation | Camera | LiDAR | IMU |
 |------|--------|-------|-----|
@@ -148,13 +136,11 @@ Camera, LiDAR, and IMU together provide texture and color, 3D range, and high-ra
 | Scale observability | ✗ (monocular) | ✓ | ✓ (acceleration is in metric units; requires motion excitation) |
 | Color/semantics | ✓ | ✗ | ✗ |
 
-The following systems integrate these three sensors.
+To exploit this complementarity in real time, modern Camera+LiDAR+IMU systems organize the estimator around different coupling patterns—a shared-state dual filter in R3LIVE, bidirectionally coupled subsystems in LVI-SAM, and sequential direct updates in FAST-LIVO2.
 
 ### 8.2.1 R3LIVE / R3LIVE++
 
-R3LIVE (Lin et al., 2022) is a system that tightly couples two subsystems: LiDAR-Inertial Odometry (LIO) and Visual-Inertial Odometry (VIO).
-
-R3LIVE adopts a **dual-subsystem** architecture. The LIO subsystem is responsible for geometry and the VIO subsystem is responsible for photometric (texture) information, and the two subsystems are tightly coupled by **sharing a single state**.
+R3LIVE (Lin et al., 2022) tightly couples LiDAR-Inertial Odometry (LIO) and Visual-Inertial Odometry (VIO) through a **dual-subsystem** architecture that converges on a **shared state vector**. The LIO subsystem handles 3D geometry while the VIO subsystem handles photometric texture, with IMU propagation linking both pipelines:
 
 ```
 LiDAR scan ──→ [LIO subsystem] ──→ state update (geometry)
@@ -164,9 +150,9 @@ LiDAR scan ──→ [LIO subsystem] ──→ state update (geometry)
 Camera image ──→ [VIO subsystem] ──→ state update (photometric)
 ```
 
-The LIO subsystem directly registers raw LiDAR points to an ikd-Tree-based map with point-to-plane matching, as FAST-LIO2 does. An iterated EKF updates the state.
+Following FAST-LIO2, the LIO subsystem registers raw LiDAR points directly against an ikd-Tree map using point-to-plane residuals and updates the shared state through an iterated EKF.
 
-The VIO subsystem distinguishes R3LIVE. A typical VIO minimizes the reprojection error of feature points, whereas R3LIVE uses the **photometric error**. Each point in the 3D map built by LIO is assigned an RGB color. When a new camera image arrives, these map points are projected into the image to minimize the **difference between the observed color and the color stored in the map**:
+Where typical VIO pipelines minimize feature reprojection error, R3LIVE's VIO subsystem minimizes **photometric error** directly against the colored 3D map. Each point in the LIO-built map stores an RGB color; as each new camera frame arrives, those map points project into the image and drive an update that reduces the discrepancy between the observed pixel intensity and the stored map color:
 
 $$
 \mathbf{r}^{\text{photo}}_i = \mathbf{I}(\pi(\mathbf{T}_{CW} \mathbf{p}^W_i)) - \mathbf{c}_i^{\text{map}}
@@ -174,17 +160,18 @@ $$
 
 Here $\mathbf{I}(\cdot)$ is the pixel intensity of the image, $\pi(\cdot)$ is the 3D→2D projection function, $\mathbf{T}_{CW}$ is the world-to-camera transformation, $\mathbf{p}^W_i$ is the 3D coordinate of a map point, and $\mathbf{c}_i^{\text{map}}$ is the color stored in the map for that point.
 
-R3LIVE's shared state can continue receiving valid updates when one modality temporarily contributes fewer usable residuals. The duration of visual updates during LiDAR blockage depends on visibility of the existing colored map; LIO during dark imagery depends on LiDAR geometry and IMU quality. The paper demonstrates online colored 3D mapping with this structure.
+Because both subsystems write to the same state vector, valid updates can continue even when one modality temporarily yields few usable residuals. How long visual updates sustain during a LiDAR outage depends on whether previously colored map points remain visible; conversely, LIO operation in dark imagery depends on LiDAR geometry and IMU quality. Using this structure, the paper demonstrates online colored 3D mapping alongside odometry.
 
 ### 8.2.2 LVI-SAM
 
-[LVI-SAM](https://arxiv.org/abs/2104.10831) (Shan et al., 2021) is an extension of LIO-SAM that couples a Visual-Inertial subsystem and a LiDAR-Inertial subsystem **bidirectionally**.
+[LVI-SAM](https://arxiv.org/abs/2104.10831) (Shan et al., 2021) extends LIO-SAM by coupling a visual-inertial subsystem (VIS) and a LiDAR-inertial subsystem (LIS) **bidirectionally** rather than merging them into one monolithic filter.
 
-**Bidirectional coupling**:
+Information flows both ways between the two pipelines:
 
-- **VIS → LIS direction**: The pose estimated by the Visual-Inertial subsystem is used as the initial guess for LiDAR scan matching. Especially when the LiDAR alone yields an inaccurate initial guess (high-speed rotation, featureless environments), VIS provides the initial guess and helps LiDAR registration converge.
+- **From VIS to LIS**, the pose estimated by the visual-inertial subsystem serves as the initial guess for LiDAR scan matching, helping registration converge under fast rotations or sparse geometry where LiDAR alone struggles.
+- **From LIS to VIS**, LiDAR depth is assigned to visual features with valid spatial and temporal correspondence. Given accurate extrinsics, synchronization, visibility checks, and occlusion handling, this supplies a metric depth prior without waiting for triangulation parallax.
 
-- **LIS → VIS direction**: assign LiDAR depth to visual features with valid spatial and temporal correspondence. With correct extrinsics, synchronization, visibility, and occlusion handling, this provides a metric-depth prior without waiting for triangulation parallax.
+The diagram below illustrates this exchange alongside the downstream factor graph:
 
 ```
          ┌─── VIS initial pose ───→ LIS initial guess
@@ -199,34 +186,20 @@ R3LIVE's shared state can continue receiving valid updates when one modality tem
               Final optimized pose
 ```
 
-**Factor graph design**: LVI-SAM consists of two subsystems, a visual-inertial system (VIS) and a LiDAR-inertial system (LIS), and the factor graph is maintained by the LIS, which inherits it from LIO-SAM. The factors it holds are:
-- IMU preintegration factor (between successive keyframes)
-- LiDAR odometry factor (scan matching result)
-- Loop closure factor (upon revisit detection)
-
-In the public implementation, rather than inserting its own odometry into this graph as a factor, the VIS couples in by supplying the LIS with an initial guess and by taking LiDAR depth to fix its own scale (the paper also adds visual-odometry constraints to the graph, but the public code disables that factor).
+On the backend, the LIS owns the GTSAM/iSAM2 factor graph inherited from LIO-SAM, maintaining IMU preintegration factors between successive keyframes, LiDAR odometry factors from scan matching, and loop closure factors when a revisit is detected. In the public implementation, rather than inserting visual odometry as an explicit graph factor, the VIS couples through the initial-guess handoff and LiDAR depth association (while the paper also describes visual-odometry graph constraints, the released code disables that factor).
 
 ### 8.2.3 FAST-LIVO / FAST-LIVO2
 
-[FAST-LIVO2](https://arxiv.org/abs/2408.14035) (Zheng et al., 2024) is a direct Camera+LiDAR+IMU fusion system developed by the FAST-LIO2 team (HKU MARS Lab). "Direct" means raw data is used without feature extraction.
+Developed by the FAST-LIO2 team (HKU MARS Lab), [FAST-LIVO2](https://arxiv.org/abs/2408.14035) (Zheng et al., 2024) takes a direct, feature-free approach to Camera+LiDAR+IMU fusion, operating straight on raw scans and pixel patches.
 
-**Design 1 — Sequential Update**:
-
-Measurements from heterogeneous sensors differ greatly in number and in nature. LiDAR provides one point-to-plane residual per point, while the camera provides one photometric residual per patch pixel; the two measurement sets differ in size, units, and noise magnitude, and the original paper cites this dimension mismatch as the reason for choosing sequential updates.
-
-FAST-LIVO2 solves this problem with **sequential Bayesian updates**:
-
-1. Predict the state with the IMU (prediction)
-2. Update the state with LiDAR measurements (first update)
-3. Update the state again with camera measurements (second update)
-
-Theoretically, if the measurements are independent, sequential updating gives the same result as simultaneous updating:
+Combining raw LiDAR and raw image measurements in one joint update creates a severe dimension, unit, and noise-scale mismatch: LiDAR yields one point-to-plane residual per point, whereas the camera yields one photometric residual per patch pixel. To avoid balancing heterogeneous blocks inside a single Jacobian solve, FAST-LIVO2 adopts **sequential Bayesian updates**—predicting the state with the IMU, updating first with LiDAR measurements, and updating again with camera measurements. Under conditional independence of the sensor noises, sequential updating produces the same posterior as simultaneous fusion:
 
 $$
 p(\mathbf{x} | \mathbf{z}_L, \mathbf{z}_C) = p(\mathbf{x} | \mathbf{z}_C, \mathbf{z}_L) \propto p(\mathbf{z}_C | \mathbf{x}) \cdot p(\mathbf{z}_L | \mathbf{x}) \cdot p(\mathbf{x})
 $$
 
-Sequentially:
+Factoring the update into two stages makes the post-LiDAR posterior $p(\mathbf{x} | \mathbf{z}_L)$ the prior for the camera step, yielding the same result as a simultaneous update:
+
 $$
 \underbrace{p(\mathbf{x} | \mathbf{z}_L)}_{\text{after LiDAR update}} \propto p(\mathbf{z}_L | \mathbf{x}) \cdot p(\mathbf{x})
 $$
@@ -234,19 +207,13 @@ $$
 \underbrace{p(\mathbf{x} | \mathbf{z}_L, \mathbf{z}_C)}_{\text{after camera update}} \propto p(\mathbf{z}_C | \mathbf{x}) \cdot p(\mathbf{x} | \mathbf{z}_L)
 $$
 
-In the second equation, $p(\mathbf{x} | \mathbf{z}_L)$ serves as the prior, and the final result is mathematically equivalent to the simultaneous update.
+Alongside sequential estimation, three map and imaging mechanisms keep the two modalities tightly aligned:
 
-**Design 2 — Unified adaptive voxel map**:
+- **Unified adaptive voxel map**: A single voxel structure backed by a hash table and an octree stores both LiDAR-derived geometry (3D coordinates and surface normals) and camera-attached image patches on the same map points, keeping geometry and texture consistent in one representation.
+- **Affine warping using LiDAR normals**: Direct photometric patch matching loses accuracy on slanted surfaces unless perspective tilt is modeled; FAST-LIVO2 reuses the planar normals estimated from LiDAR points to perform accurate affine patch warping without separate normal estimation.
+- **Real-time exposure compensation**: When illumination shifts abruptly—such as entering or exiting a tunnel—the estimator tracks exposure time online and adjusts the photometric residual accordingly.
 
-FAST-LIVO2 uses a single voxel map based on a hash table plus an octree. The LiDAR module builds the geometric structure (3D coordinates, normal vectors), and the Visual module attaches image patches to the same map points. Geometry and texture are thus managed consistently within a single map.
-
-**Design 3 — Affine warping using LiDAR normals**:
-
-When comparing image patches in a camera direct method, affine warping that accounts for surface tilt improves accuracy. FAST-LIVO2 leverages the planar normal vectors extracted from the LiDAR to perform accurate affine warping without any separate normal estimation. This illustrates LiDAR-camera complementarity.
-
-**Design 4 — Real-time exposure compensation**:
-
-In environments with rapidly changing illumination (entering/exiting a tunnel), FAST-LIVO2 estimates the exposure time online and corrects the photometric error accordingly.
+The function below implements the linear-algebraic core of this sequential EKF update in the LiDAR-then-camera order:
 
 ```python
 import numpy as np
@@ -290,7 +257,7 @@ def sequential_ekf_update(x_pred, P_pred, z_lidar, H_lidar, R_lidar, z_cam, H_ca
 
 ### 8.2.4 Comparison of Multimodal Factor Graph Designs
 
-We compare the designs of the three systems from a factor graph perspective:
+Comparing R3LIVE, LVI-SAM, and FAST-LIVO2 side by side clarifies how backend formulation, feature handling, and map structure trade off across these three systems:
 
 | Aspect | R3LIVE | LVI-SAM | FAST-LIVO2 |
 |------|--------|---------|------------|
@@ -303,39 +270,36 @@ We compare the designs of the three systems from a factor graph perspective:
 | Loop closure | None | Integrated as factor | None |
 | Embedded validation | Benchmark on target hardware | Benchmark on target hardware | ARM implementations reported; revalidate under the target setup |
 
-**Criteria for narrowing the candidates**:
-- Evaluate LVI-SAM when integrated loop closure is required. Also check the sensor configuration, ROS dependencies, and revisit performance on the target data.
-- Evaluate R3LIVE when direct photometric updates and colored mapping are required. Compare color, trajectory, and map-quality metrics in the target scenes.
-- Evaluate FAST-LIVO2 as an ARM deployment candidate, but measure throughput, worst-case latency, and memory at the target sensor resolution and configuration.
-- In environments with scarce visual or LOAM features, include direct methods such as R3LIVE and FAST-LIVO2 as candidates, then validate photometric calibration and sensitivity to dynamic objects.
+When narrowing candidates for a specific deployment, match the architecture to the operational requirements and verify assumptions on target data. LVI-SAM is the natural candidate when integrated loop closure is needed, provided its sensor layout, ROS dependencies, and revisit behavior are checked against the mission profile. R3LIVE fits workflows centered on direct photometric updates and online colored mapping, judged by color, trajectory, and map-quality metrics in the target scene. For ARM platforms, FAST-LIVO2 is a strong candidate, though throughput, worst-case latency, and memory still require measurement at the target resolution and configuration. In scenes with scarce visual corners or LOAM edges, direct pipelines such as R3LIVE and FAST-LIVO2 merit evaluation alongside checks on photometric calibration and sensitivity to dynamic objects.
 
 ---
 
 ## 8.3 GNSS Integration
 
-GNSS (Global Navigation Satellite System) provides an absolute position reference in a global coordinate frame. The IMU, LiDAR odometry, and visual odometry discussed here primarily provide **relative** motion, so drift accumulates over long-duration operation. GNSS can serve as an anchor that corrects this drift. Surveyed landmarks, UWB beacons, and motion-capture systems can also provide absolute references, so GNSS is not the only possible global sensor.
+Even tightly coupled visual-inertial and LiDAR-inertial pipelines observe only relative motion, so small estimation errors inevitably accumulate into drift over long distances. Global Navigation Satellite System (GNSS) receivers counter that drift by supplying absolute position references in a global coordinate frame. While surveyed landmarks, UWB beacons, and motion-capture systems can play an analogous anchoring role in bounded spaces, GNSS remains the primary global reference for outdoor robotics.
 
 ### 8.3.1 GNSS Factor in the Factor Graph (LIO-SAM Approach)
 
-[LIO-SAM](https://arxiv.org/abs/2007.00258) (Shan et al., 2020) connects each GNSS position report to a factor-graph pose node as a **unary factor**:
+[LIO-SAM](https://arxiv.org/abs/2007.00258) (Shan et al., 2020) anchors the local SLAM trajectory by attaching each GNSS position fix to the corresponding pose node as a unary residual factor:
 
 $$
 \mathbf{r}^{\text{GPS}}_i = \mathbf{T}_{\text{ENU→map}} \cdot \mathbf{p}^{\text{ENU}}_{\text{GPS}} - \mathbf{p}^{\text{map}}_i - \mathbf{R}^{\text{map}}_i \cdot \mathbf{l}_{\text{antenna}}
 $$
 
 where:
-- $\mathbf{p}^{\text{ENU}}_{\text{GPS}}$ is the ENU coordinate reported by the GNSS
-- $\mathbf{T}_{\text{ENU→map}}$ is the transformation from the ENU frame to the SLAM map frame. The equation above brings the GNSS position into the map frame for comparison, so this transformation is applied as is; the $\mathbf{T}^{-1}$ form is what one writes when using the opposite direction, $\mathbf{T}_{\text{map→ENU}}$
+- $\mathbf{p}^{\text{ENU}}_{\text{GPS}}$ is the ENU position reported by the GNSS receiver
+- $\mathbf{T}_{\text{ENU→map}}$ transforms coordinates from the ENU frame into the SLAM map frame; because this residual compares both positions in the map frame, this transformation applies directly (using the inverse $\mathbf{T}_{\text{map→ENU}}$ would require $\mathbf{T}^{-1}$)
 - $\mathbf{p}^{\text{map}}_i$ is the robot position estimated by SLAM
-- $\mathbf{l}_{\text{antenna}}$ is the lever-arm vector between the GNSS antenna and the robot's body frame
-- $\mathbf{R}^{\text{map}}_i$ is the robot's rotation
+- $\mathbf{l}_{\text{antenna}}$ is the lever-arm offset from the robot body frame to the GNSS antenna
+- $\mathbf{R}^{\text{map}}_i$ is the robot's rotation in the map frame
 
-**Frame alignment issue**: The SLAM local map frame and the GNSS global frame (WGS84/ENU) are different. At the first GNSS reception, the ENU origin is set, and the map↔ENU transformation is estimated using the initial poses. This transformation has 6-DoF (3 translation + 3 rotation), but because the IMU provides the gravity direction, only 4-DoF (yaw + 3 translation) need to be estimated in practice.
+Aligning those frames raises an initialization problem: the SLAM local map frame does not coincide with the GNSS global frame (WGS84/ENU). Upon receiving the first valid GNSS fix, the system fixes the ENU origin and estimates the map-to-ENU transform from the initial trajectory. Although a general rigid transform has 6 DoF (three translations and three rotations), gravity observed by the IMU already anchors roll and pitch, leaving only 4 DoF—yaw plus three translations—to be solved.
 
 ### 8.3.2 Loosely vs Tightly Coupled GNSS
 
-**Loosely Coupled GNSS-INS**:
-The position/velocity solution (PVT solution) already computed by the GNSS receiver is combined with the IMU estimate by an EKF. Most commercial systems use this approach.
+Just as with vision and LiDAR, GNSS can enter the state estimator either as a pre-solved position fix or as raw satellite measurements.
+
+In **loosely coupled GNSS-INS**, an EKF fuses the position-velocity-time (PVT) solution computed internally by the receiver with the inertial navigation state—the standard pattern in most commercial navigation units. The following function illustrates a single position update against a 15-state INS vector:
 
 ```python
 def gnss_loose_coupling_ekf_update(x_ins, P_ins, gnss_position, R_gnss):
@@ -367,57 +331,49 @@ def gnss_loose_coupling_ekf_update(x_ins, P_ins, gnss_position, R_gnss):
     return x_updated, P_updated
 ```
 
-**Tightly Coupled GNSS-INS**:
-Instead of the GNSS receiver's PVT solution, the raw pseudorange and Doppler measurements are used directly. The pseudorange to each satellite is inserted as an individual factor:
+**Tightly coupled GNSS-INS** bypasses the receiver's PVT solver and inserts raw pseudorange and Doppler observations directly as per-satellite factors:
 
 $$
 \rho_i = \| \mathbf{p}_{\text{sat},i} - \mathbf{p}_{\text{rx}} \| + c \cdot \delta t_{\text{rx}} + I_i + T_i + \epsilon_i
 $$
 
-Here $\rho_i$ is the pseudorange to satellite $i$, $c \cdot \delta t_{\text{rx}}$ is the receiver clock bias, and $I_i$ and $T_i$ are the ionospheric/tropospheric delays.
-
-The advantage of tight coupling is that even when fewer than four satellites are visible — so that GNSS cannot produce a solution on its own — the pseudoranges from the available satellites can still be exploited. Because buildings frequently occlude satellites in urban environments, this advantage is substantial in practice.
+Here $\rho_i$ is the pseudorange to satellite $i$, $c \cdot \delta t_{\text{rx}}$ is the receiver clock bias, and $I_i$ and $T_i$ denote the ionospheric and tropospheric delays. Unlike loose coupling—which stalls whenever fewer than four satellites are locked—tight coupling continues extracting information from whatever satellites remain visible, a decisive advantage in urban canyons where buildings routinely block half the sky.
 
 ### 8.3.3 Handling GNSS-Denied → GNSS-Available Transitions
 
-In real robot operation, GNSS signals are repeatedly lost and recovered (tunnels, underground parking lots, under overpasses). Handling these transitions reliably is a central challenge of system design.
+Field robots repeatedly cross between open sky and GNSS-denied environments such as tunnels, underground garages, and highway underpasses. Recovering cleanly when signals return requires guarding against three failure modes:
 
-**Transition considerations**:
-1. **Avoid coordinate jumps**: Immediately after GNSS recovery, there can be a large discrepancy between the GNSS position and the IMU/LiDAR-estimated position. Correcting this abruptly introduces discontinuities in the map. The solution is to initially set the GNSS uncertainty to a large value and decrease it gradually.
-
-2. **GNSS quality verification**: Measurements in the first few seconds after recovery can lose accuracy due to multipath and similar effects. Include them as factors only after verifying PDOP/HDOP, satellite count, carrier phase status, and the like to ensure sufficient reliability.
-
-3. **Map frame correction**: If drift has accumulated during a prolonged GNSS outage, the map frame itself may need to be corrected upon recovery. This is handled by pose graph optimization similar to loop closure.
+1. **Avoid coordinate jumps**: Immediately after GNSS returns, accumulated odometry drift can leave a sizable gap between the GNSS fix and the local INS/LiDAR pose. Applying a tight covariance right away snaps the trajectory abruptly and tears the map; starting with a large GNSS uncertainty and tightening it gradually prevents discontinuities.
+2. **Verify GNSS quality**: Measurements in the first few seconds after reacquisition are often degraded by multipath reflections. Gate new factors on PDOP/HDOP, satellite count, and carrier-phase fix status before trusting them.
+3. **Correct the map frame**: When a prolonged outage has accumulated significant drift across the local map, recovering global consistency requires re-optimizing the trajectory itself via pose graph optimization, much like a loop closure.
 
 ---
 
 ## 8.4 Radar Fusion
 
+Optical cameras and LiDARs both struggle when heavy fog, rain, or snow scatters visible and near-infrared light. Millimeter-wave radar penetrates those particulates far more effectively and measures radial velocity directly, offering an orthogonal failure mode for all-weather autonomy.
+
 ### 8.4.1 Radar and 4D Imaging
 
-Traditionally, automotive radar was considered unsuitable for SLAM/odometry because of its low resolution. However, the emergence of **4D imaging radar** is changing the situation.
+Conventional automotive radar measured only range, Doppler velocity, and azimuth—too coarse in elevation to support general 3D SLAM or odometry. Adding **elevation** transforms **4D imaging radar** into a 3D point-cloud sensor, albeit much sparser than LiDAR (hundreds to thousands of returns per scan versus hundreds of thousands).
 
-**What is 4D radar**: Whereas conventional automotive radars measured three quantities — range, Doppler velocity, and azimuth — 4D imaging radar adds **elevation** to produce a 3D point cloud. Its point count is lower than that of LiDAR (hundreds to thousands of points vs. hundreds of thousands).
+Three physical and economic characteristics govern how radar fits into a fusion stack:
 
-Radar provides the following properties:
-
-1. **Adverse-weather tolerance**: mm-wave radar is often less affected by fog, rain, and snow than visible cameras or some LiDARs. Heavy precipitation, wet-road multipath, attenuation, and clutter remain, so performance must be tested by condition.
-
-2. **Direct radial-velocity measurement**: FMCW Doppler gives the line-of-sight component of relative velocity from the phase change across the several chirps within one frame. A single chirp alone yields only range information, with velocity not yet separated out. It does not directly provide a point's full 3D velocity or an object's motion; multiple directions, time, tracking, or another sensor are needed.
-
-3. **Different cost structure**: mass-market radar chipsets can be inexpensive, but imaging-radar and LiDAR module prices overlap depending on channels, antennas, compute, and production volume. Compare current quotes against required performance rather than assuming a fixed ratio.
+1. **Adverse-weather tolerance**: Millimeter-wave radar typically suffers less attenuation in fog, rain, and snow than visible cameras or many LiDARs. Heavy precipitation, wet-road multipath, clutter, and attenuation still degrade returns, so performance must be verified condition by condition.
+2. **Direct radial-velocity measurement**: FMCW Doppler extracts the line-of-sight component of relative velocity from phase changes across multiple chirps within one frame; a single chirp yields range only, with velocity unresolved. Because one return measures only radial projection rather than full 3D target velocity, recovering full motion requires returns across multiple directions, temporal tracking, or an aiding sensor.
+3. **Cost structure**: Mass-market radar chipsets can be inexpensive, yet complete imaging-radar and LiDAR module prices overlap depending on channel count, antenna array, compute, and volume. Decisions should weigh actual vendor quotes against target specifications rather than assuming a fixed cost ratio.
 
 ### 8.4.2 Radar Odometry
 
-The number of papers on odometry using 4D radar has grown rapidly since 2022. These methods directly use radar Doppler measurements for ego-motion estimation.
-
-Each measurement point of an FMCW radar provides $(r, \theta, \phi, v_d)$ — range, azimuth, elevation, Doppler velocity. Given the robot's linear velocity $\mathbf{v}$ and angular velocity $\boldsymbol{\omega}$, the Doppler velocity observed at a point in direction $\mathbf{d}_i = [\cos\phi_i \cos\theta_i, \cos\phi_i \sin\theta_i, \sin\phi_i]^T$ is:
+Work on 4D radar odometry has expanded steadily since 2022, largely by exploiting Doppler velocity directly for ego-motion estimation. Each FMCW return provides $(r, \theta, \phi, v_d)$—range, azimuth, elevation, and Doppler velocity. Given a robot moving with linear velocity $\mathbf{v}$ and angular velocity $\boldsymbol{\omega}$, the Doppler velocity observed at a static return along unit direction $\mathbf{d}_i = [\cos\phi_i \cos\theta_i, \cos\phi_i \sin\theta_i, \sin\phi_i]^T$ satisfies:
 
 $$
 v_{d,i} = -\mathbf{d}_i^T \mathbf{v}_S + n_i
 $$
 
-Here $\mathbf{v}_S$ is the linear velocity of the radar phase center. If static returns span enough directions, the equations constrain $\mathbf{v}_S$. Point Doppler from a single monostatic radar does not independently determine angular velocity about the sensor origin; transform to a body origin with a known lever arm and angular rate from an IMU or scan registration.
+where $\mathbf{v}_S$ is the linear velocity of the radar phase center. Provided static returns span sufficiently diverse directions, stacking these scalar equations constrains $\mathbf{v}_S$. Point Doppler from a single monostatic radar does not independently observe angular velocity about the sensor origin, so transforming motion to the vehicle body frame requires a known lever arm paired with angular rates from an IMU or scan registration.
+
+The function below estimates ego linear velocity by solving this linear Doppler system with least squares; in deployment, RANSAC outlier rejection precedes the solve to strip out moving vehicles and pedestrians:
 
 ```python
 import numpy as np
@@ -450,7 +406,7 @@ def radar_ego_velocity(radar_points, doppler_velocities):
 
 ### 8.4.3 4D Radar + Camera Fusion
 
-Combining 4D radar with cameras can produce a "LiDAR-free" autonomous-driving system. The two sensors complement each other as follows:
+Pairing 4D radar with cameras targets a LiDAR-free perception stack by trading dense visual semantics against sparse metric depth and Doppler velocity:
 
 | Property | Camera | 4D Radar |
 |------|--------|----------|
@@ -461,50 +417,33 @@ Combining 4D radar with cameras can produce a "LiDAR-free" autonomous-driving sy
 | Semantic understanding | Strong | Weak |
 | Cost | Depends on lenses, camera count, and compute | Depends on antennas, channels, and compute |
 
-Fusion uses three approaches:
-- **Early fusion**: Project radar points into the image and use them as sparse depth cues. Used as scale anchors for monocular depth estimation.
-- **Mid-level fusion**: Combine camera features and radar features inside a network. Fusion in the BEV (Bird's Eye View) space is common.
-- **Late fusion**: Detect objects independently with each sensor and then combine the results.
+Architectures combine these streams at three stages: **early fusion** projects radar returns into the image plane as sparse metric depth anchors for monocular depth estimation; **mid-level fusion** merges camera and radar feature maps inside a neural network, commonly in Bird's Eye View (BEV) space; and **late fusion** runs object detection independently on each sensor before associating and merging the bounding outputs.
 
 ### 8.4.4 Boreas Benchmark
 
-[Boreas](https://arxiv.org/abs/2203.10168) (Burnett et al., 2023) repeats multi-sensor routes across clear, rainy, snowy, and seasonal conditions. It synchronizes cameras, a Velodyne Alpha Prime LiDAR, and a Navtech CIR304-H **planar scanning radar**, among other sensors. That Navtech unit is not an automotive 4D imaging radar with elevation, so Boreas radar-odometry results should not be presented as 4D-radar performance.
+[Boreas](https://arxiv.org/abs/2203.10168) (Burnett et al., 2023) records repeated multi-sensor traverses across clear weather, rain, snow, and seasonal change, synchronizing cameras, a Velodyne Alpha Prime LiDAR, and a Navtech CIR304-H **planar scanning radar**. Because that Navtech sensor provides 360-degree azimuth-range scans without elevation rather than an automotive 4D imaging radar, Boreas radar-odometry results should not be conflated with 4D-radar benchmarks.
 
 ---
 
 ## 8.5 Multi-Robot / Decentralized Fusion
 
-For **multiple robots to perceive the environment cooperatively**, they must address communication constraints, the absence of a common reference frame, and data association.
+Scaling fusion from one platform to a fleet introduces three coupled constraints: robots start without a shared coordinate frame, wireless links cannot carry full maps or raw sensor streams, and central servers create both communication bottlenecks and single points of failure.
 
 ### 8.5.1 Challenges of Multi-Robot SLAM
 
-1. **Inter-Robot Relative Pose**: Each robot runs SLAM in its own local frame. To merge the maps of two robots, their relative coordinate transformation must first be known. This is solved by cross-robot place recognition plus geometric verification.
-
-2. **Communication Constraint**: Transmitting the full map or raw sensor data is often impossible due to bandwidth limits. The system must therefore choose **what information to compress and share**.
-
-3. **Distributed Optimization**: Collecting all data at a central server for optimization has communication-bottleneck and single-point-of-failure problems. It is desirable for each robot to perform local optimization in a distributed fashion, exchanging only limited information with neighboring robots.
+Cooperative mapping therefore centers on three problems. First, because each robot runs SLAM in its own local coordinate frame, merging two maps requires recovering their **inter-robot relative pose** via cross-robot place recognition and geometric verification. Second, **communication constraints** prevent streaming raw scans or dense maps, forcing systems to compress what they share into compact descriptors and loop constraints. Third, **distributed optimization** replaces central aggregation so each robot solves its local graph while exchanging only minimal boundary variables with nearby peers.
 
 ### 8.5.2 Kimera-Multi
 
-[Kimera-Multi](https://arxiv.org/abs/2106.14386) (Tian et al., 2021) is a distributed multi-robot SLAM system developed by MIT's SPARK Lab.
+Developed by MIT's SPARK Lab, [Kimera-Multi](https://arxiv.org/abs/2106.14386) (Tian et al., 2021) addresses those constraints in a distributed metric-semantic SLAM pipeline. Each robot runs Kimera locally; upon rendezvous, **DBoW2**-based inter-robot place recognition identifies overlapping places, and detected inter-robot loop closures enter distributed pose graph optimization guarded by a **GNC (Graduated Non-Convexity)** solver that rejects outlier loops.
 
-**Architecture**:
-- Each robot runs Kimera and performs local metric-semantic SLAM
-- Upon rendezvous between robots, common places are detected by **DBoW2**-based inter-robot place recognition
-- Detected inter-robot loop closures are incorporated into the distributed pose graph optimization
-- A **GNC (Graduated Non-Convexity)** solver robustly rejects outlier loop closures
-
-**Distributed optimization**: Each robot maintains its own pose graph. When a loop is detected, the inter-robot factor is shared; from then on a distributed optimizer such as Riemannian block-coordinate descent converges by exchanging, at every iteration, the current estimates of the separator poses it shares with its neighbors. Sharing a constraint once and repeatedly exchanging optimization variables are two different kinds of communication.
+Each robot maintains its own pose graph. Once a loop is verified, the inter-robot factor is shared; from that point on, a distributed optimizer such as Riemannian block-coordinate descent iterates to convergence by exchanging current estimates of the separator poses shared with neighbors. Sharing a loop constraint once and repeatedly exchanging separator variables during optimization represent two distinct communication costs.
 
 ### 8.5.3 Swarm-SLAM
 
-[Swarm-SLAM](https://arxiv.org/abs/2301.06230) (Lajoie et al., 2024) is a distributed SLAM for large-scale robot swarms that places particular emphasis on communication efficiency.
+[Swarm-SLAM](https://arxiv.org/abs/2301.06230) (Lajoie et al., 2024) extends distributed SLAM to larger robot swarms with an explicit focus on bandwidth efficiency. Rather than transmitting full maps, robots broadcast compact place-recognition descriptors (such as NetVLAD or Scan Context) peer-to-peer to neighbors without a central server, exchanging minimal geometric data—selected keypoints or point clouds—only after descriptor matching flags a candidate inter-robot loop closure. Because the coordination layer decouples retrieval from sensing modality, camera-only, LiDAR-only, and mixed-sensor robots can participate in the same swarm.
 
-**Swarm-SLAM design**:
-- **Place recognition descriptor exchange**: Only place recognition descriptors (NetVLAD, Scan Context, etc.), rather than the full map, are exchanged to minimize bandwidth
-- **Inter-robot loop closure**: Candidates are found by descriptor matching, and only a minimal amount of geometric information (feature points or a point cloud) is exchanged for verification
-- **Peer-to-peer communication between neighboring robots**: Direct communication between adjacent robots without a central server
-- **LiDAR/Visual/Multimodal support**: Robots with camera-only, LiDAR-only, or mixed sensor configurations can participate simultaneously
+The class sketch below illustrates how each robot in a decentralized pose graph tracks its local trajectory while exchanging only separator poses tied to inter-robot factors:
 
 ```python
 # Conceptual implementation of distributed pose graph optimization
@@ -567,11 +506,11 @@ class DistributedPoseGraphNode:
 
 ## 8.6 System Design in Practice
 
-Designing and deploying a real multi-sensor fusion system also introduces problems beyond theory and algorithms.
+Even mathematically sound fusion estimators fail in deployment without careful hardware selection, clock synchronization, and fault handling.
 
 ### 8.6.1 Sensor Suite Selection Guide
 
-The following table is a starting point. Final selection depends on the operational environment, safety requirements, range, power and mass, and failure scenarios:
+The table below gives a practical baseline by operating environment; final hardware choices still depend on safety margins, range, power and mass budgets, and expected failure scenarios:
 
 | Environment | Recommended minimum | Optional additional sensors |
 |------|---------------|---------------|
@@ -583,30 +522,25 @@ The following table is a starting point. Final selection depends on the operatio
 | Aerial/drone | Camera + IMU + GNSS | LiDAR (for mapping) |
 | Adverse weather (rain/snow) | Radar + IMU | Camera, LiDAR |
 
-**Costing sequence**: sensor prices vary by date, region, and volume. First specify the required measurement, accuracy, rate, and FoV. Then price the complete system: sensors, cables, synchronization, GNSS corrections, compute, mounts, spares, and integration time. A low-cost prototype may begin with camera and IMU; add 2D or 3D LiDAR, RTK GNSS, radar, or redundancy only for failure modes and error budgets established by testing.
+Because sensor prices shift by date, region, and volume, budgeting should work backward from measurement requirements—accuracy, rate, and FoV—to total system cost, including cabling, synchronization hardware, GNSS correction services, compute, mounts, spares, and integration engineering. A prototype can start lean with a camera and IMU, adding 2D or 3D LiDAR, RTK GNSS, radar, or sensor redundancy only where testing uncovers concrete failure modes or error-budget shortfalls.
 
 ### 8.6.2 Timing Architecture (Time Synchronization Design)
 
-In a multi-sensor system, **time synchronization** directly affects accuracy. On a vehicle moving at 100 km/h, a 1 ms time error corresponds to roughly a 2.8 cm position error.
+In multi-sensor fusion, **time synchronization** directly bounds trajectory accuracy: on a vehicle traveling at 100 km/h, a 1 ms clock offset translates into roughly 2.8 cm of spatial error.
 
-**Hardware Sync**:
+Hardware synchronization eliminates the jitter of software receive timestamps by distributing a shared clock or trigger, though pulse precision still differs from end-to-end measurement-timestamp accuracy and must be validated across the full pipeline:
 
-A shared clock or trigger can make the latency path clearer than software receive timestamps. Pulse accuracy and measurement-timestamp accuracy are not identical, so validate the path end to end:
+- **PPS (Pulse Per Second)** uses a GNSS receiver's one-second pulse as a common clock edge, requiring verification of receiver pulse specs, cable and input delays, and the internal timestamp reference point.
+- **PTP (Precision Time Protocol, IEEE 1588)** aligns Ethernet clocks across sensors and hosts, with realized accuracy governed by hardware timestamping, network switches, PTP profile, path asymmetry, and lock stability.
+- **External trigger** links a microcontroller directly to both the camera shutter and IMU timestamp capture so exposure and inertial sampling align on hardware edges.
 
-- **PPS (Pulse Per Second)**: use a GNSS receiver's second-boundary pulse as a common clock reference. Check the receiver time-pulse specification, cable and input delay, and timestamp reference point.
-- **PTP (Precision Time Protocol, IEEE 1588)**: synchronize Ethernet clocks. Actual error depends on hardware timestamps, switches, PTP profile, path asymmetry, and lock state.
-- **External trigger**: A microcontroller simultaneously triggers the camera shutter and captures the IMU timestamp.
-
-**Software Sync**:
-
-When hardware synchronization is not possible, the time offset is estimated in software:
-
-- **Kalibr approach**: Represent the continuous-time trajectory with a B-spline and include the inter-sensor time offset as an optimization variable, estimating everything jointly.
-- **Correlation-based**: Estimate the time delay from the cross-correlation between two signals in which the sensors observed the same motion. Using acceleration requires removing gravity from the IMU measurement and bringing both signals into the same frame, and with a monocular camera the scale of the velocity is undetermined. Practice therefore mostly compares the magnitude (norm) of the gyro angular rate against that of the camera's rotation rate, which needs none of those three conditions. Comparing the angular-velocity vectors component by component would require rotating one of them by the camera-IMU extrinsic rotation, whereas the magnitude does not depend on the frame.
+When hardware synchronization is unavailable, software methods estimate the inter-sensor offset from recorded motion. The **Kalibr approach** parameterizes the continuous-time trajectory as a B-spline and jointly optimizes the time offset alongside calibration parameters. **Correlation-based** methods instead recover the delay by cross-correlating motion signals observed by both sensors. Matching linear acceleration requires removing gravity from the IMU and rotating signals into a common frame, while monocular cameras leave velocity scale unobservable; in practice, engineers therefore correlate the norm of the gyroscope angular rate against the norm of the camera rotation rate, avoiding gravity removal, scale ambiguity, and extrinsic frame alignment (whereas component-wise vector comparison would require rotating one signal by the camera-IMU extrinsic rotation):
 
 $$
 \hat{\tau} = \arg\max_{\tau} \int \left\| \boldsymbol{\omega}_{\text{IMU}}(t) \right\| \, \left\| \boldsymbol{\omega}_{\text{camera}}(t + \tau) \right\| \, dt
 $$
+
+The Python function below implements this discrete cross-correlation estimator after resampling both streams onto a common timeline:
 
 ```python
 import numpy as np
@@ -652,9 +586,7 @@ def estimate_time_offset(timestamps_a, signal_a, timestamps_b, signal_b, max_off
 
 ### 8.6.3 Failure Modes and Degradation Handling
 
-In real systems, sensors inevitably fail. A robust system must achieve **graceful degradation**: when one sensor fails, it must continue operating with the remaining sensors, even at reduced performance.
-
-**Failure modes and responses**:
+In field operation, sensors inevitably saturate, drop packets, or encounter degenerate scenes. Robust fusion requires **graceful degradation**—detecting impaired measurements early and continuing estimation on the remaining healthy modalities rather than letting one corrupted stream collapse the entire state. The table below pairs common sensor faults with practical detection signals and mitigation actions:
 
 | Failure mode | Symptom | Detection | Response |
 |-----------|------|-----------|------|
@@ -664,15 +596,13 @@ In real systems, sensors inevitably fail. A robust system must achieve **gracefu
 | GNSS multipath | Large error due to reflections from buildings | RAIM, residual check | Increase the covariance of the affected GNSS factor or remove it |
 | Total sensor dropout | No data received | Watchdog timer | Stop adding new factors. If the failure time is uncertain, down-weight or remove only the interval after the suspect point |
 
-**Detecting LiDAR geometric degeneracy**:
-
-In LiDAR scan matching, geometric degeneracy can be detected by eigenvalue analysis of the information matrix (Hessian) $\mathbf{H} = \mathbf{J}^T \mathbf{J}$. If the eigenvalue along one direction is significantly smaller than those along the others, the constraint in that direction is weak.
+Among these faults, LiDAR geometric degeneracy illustrates how complementary sensing rescues a single axis of observability. Eigen-decomposing the scan-matching information matrix (Hessian) $\mathbf{H} = \mathbf{J}^T \mathbf{J}$ reveals whether constraints along any motion direction have collapsed:
 
 $$
 \mathbf{H} = \mathbf{U} \boldsymbol{\Lambda} \mathbf{U}^T, \quad \lambda_{\min} / \lambda_{\max} < \epsilon \Rightarrow \text{degenerate}
 $$
 
-For instance, in a long corridor the constraint along the corridor axis becomes weak, so the LiDAR constraint in that direction is relaxed and complemented by the camera's optical flow.
+Inside a long corridor, for example, eigenvalues along the hallway axis drop sharply; the estimator can then relax the LiDAR constraint in that degenerate subspace while leaning on visual optical flow to hold longitudinal motion. The two functions below detect weak Hessian directions and scale LiDAR versus camera weights accordingly:
 
 ```python
 import numpy as np
@@ -733,12 +663,14 @@ def adaptive_fusion_weight(lidar_eigenvalues, camera_track_quality,
 
 ### 8.6.4 Recent Systems and Research (2024-2025)
 
-- **[Gaussian-LIC (Lang et al., ICRA 2025)](https://arxiv.org/abs/2404.06926)**: A system that integrates 3D Gaussian Splatting into tightly-coupled LiDAR-Inertial-Camera SLAM. By fusing the precise geometric information from the LiDAR with the camera's texture using a Gaussian representation, it achieves photo-realistic scene reconstruction concurrently with SLAM.
-- **[Snail-Radar (Huai et al., IJRR 2025)](https://arxiv.org/abs/2407.11705)**: A large-scale diversity benchmark for evaluating 4D radar SLAM. It systematically compares 4D radar-based odometry/SLAM algorithms across diverse environments (indoor/outdoor, urban/suburban) and platforms.
+Recent fusion work extends beyond sparse landmarks and voxel maps toward photorealistic scene reconstruction and standardized radar benchmarks:
+
+- **[Gaussian-LIC (Lang et al., ICRA 2025)](https://arxiv.org/abs/2404.06926)** embeds 3D Gaussian Splatting directly inside a tightly coupled LiDAR-inertial-camera SLAM pipeline, uniting metric LiDAR geometry with camera appearance for real-time photorealistic reconstruction alongside state estimation.
+- **[Snail-Radar (Huai et al., IJRR 2025)](https://arxiv.org/abs/2407.11705)** introduces a large-scale diversity benchmark for 4D radar SLAM, evaluating radar-based odometry and SLAM methods across varied indoor, outdoor, urban, and suburban platforms.
 
 ### 8.6.5 System Design Checklist
 
-Items that must always be checked when designing a real multi-sensor fusion system:
+Before deploying a multi-sensor fusion stack, verify each stage from calibration through runtime resource budgets:
 
 **Calibration**:
 - [ ] Extrinsic calibration completed for every sensor pair
@@ -765,12 +697,10 @@ Items that must always be checked when designing a real multi-sensor fusion syst
 
 ---
 
-## Chapter 8 Summary
+## Summary
 
-Multi-sensor fusion architectures are broadly classified as loosely/tightly/ultra-tightly coupled, and in modern robotics **tightly coupled** is the mainstream choice. Three-sensor fusion with camera, LiDAR, and IMU is implemented in systems such as R3LIVE, LVI-SAM, and FAST-LIVO2, which use a dual subsystem, factor graph, and sequential update, respectively.
+Multi-sensor fusion architectures span loose, tight, and signal-level coupling, with **tight coupling** serving as the standard choice across modern robotics pipelines. Combining cameras, LiDAR, and IMUs takes distinct engineering shapes across R3LIVE (shared-state dual filter), LVI-SAM (bidirectional factor graph), and FAST-LIVO2 (sequential direct updates).
 
-GNSS integration provides global-coordinate observations that constrain accumulated drift during long-distance travel. In adverse weather such as fog, rain, or snow, 4D radar can help measure Doppler-based radial velocity, but its errors must be checked under each condition. Multi-robot systems such as Kimera-Multi and Swarm-SLAM combine distributed estimation with cross-robot place recognition under communication constraints.
+When local odometry alone cannot bound long-range error, GNSS anchors trajectories in global coordinates, while 4D imaging radar adds Doppler-based radial velocity and weather resilience—provided its noise and multipath characteristics are validated per operating condition. Multi-robot systems such as Kimera-Multi and Swarm-SLAM extend these principles to decentralized fleets by coupling distributed graph optimization with cross-robot place recognition under tight bandwidth budgets. Across all of these architectures, sensor selection, clock synchronization, and graceful degradation matter just as much as the estimator math.
 
-In practical system design, sensor selection, time synchronization, and failure-mode handling matter as much as the algorithms. Engineering decisions in these areas affect deployment results.
-
-The odometry/fusion systems covered in Ch.6-8 are highly accurate locally, but drift accumulates over long-duration operation. Correcting that drift through loop closure requires the ability to recognize previously visited places: **Place Recognition**.
+Even tightly fused odometry accumulates drift whenever absolute references such as GNSS are unavailable. Eliminating that residual drift globally requires recognizing previously visited places and closing loops across the trajectory—the subjects of Chapter 9 and Chapter 10.
