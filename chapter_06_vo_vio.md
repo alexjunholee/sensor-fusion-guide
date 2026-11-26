@@ -2,19 +2,19 @@
 
 상태 추정 프레임워크(→ 4장)가 모션 모델과 관측 모델을 확률적으로 결합하는 수학적 뼈대이고, 특징점 매칭과 대응점 탐색(→ 5장)이 서로 다른 시점의 관측을 연결하는 감각 기관이라면, 이제 두 조각을 엮어 센서의 6자유도 궤적을 실시간으로 복원하는 실제 오도메트리 시스템을 조립할 차례다. Visual Odometry(VO)는 연속된 카메라 영상만으로 카메라의 자기 운동(ego-motion)을 추정하며, 여기에 IMU 관성 측정을 결합한 Visual-Inertial Odometry(VIO)는 단안 카메라가 놓치는 절대 스케일을 복원하고 빠른 회전이나 흐릿한 영상 구간에서도 추정을 지탱한다.
 
-VO라는 이름은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)의 논문에서 처음 등장했다. 바퀴 회전수로 주행 거리를 재는 휠 오도메트리처럼 카메라 영상으로 이동 궤적을 잰다는 뜻에서 붙은 명칭이다. 이 연구는 스테레오와 단안 카메라 각각에서 실시간 자기 운동 추정 파이프라인을 정립했다. 스테레오 구성에서는 좌우 카메라로 삼각측량한 3D 점에 3-point 알고리즘을 적용해 프레임 간 강체 변환을 구했고, 단안 구성에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 특징점 검출에서 매칭, RANSAC, 모션 추정으로 이어지는 이 골격은 20년이 지난 오늘날에도 feature-based VO의 기본 구조로 남아 있다.
+VO라는 이름은 [Nistér et al. (2004)](https://doi.org/10.1109/CVPR.2004.1315094)의 논문에서 처음 등장했다. 바퀴 회전수로 주행 거리를 재는 휠 오도메트리처럼 카메라 영상으로 이동 궤적을 잰다는 뜻에서 붙은 명칭이다. 이 연구에서는 스테레오와 단안 카메라 각각의 실시간 자기 운동 추정 파이프라인을 정립했다. 스테레오 구성에서는 좌우 카메라로 삼각측량한 3D 점에 3-point 알고리즘을 적용해 프레임 간 강체 변환을 구했고, 단안 구성에서는 5-point 알고리즘으로 Essential Matrix를 추정했다. 특징점 검출에서 매칭, RANSAC, 모션 추정으로 이어지는 이 골격은 20년이 지난 오늘날에도 feature-based VO의 기본 구조로 남아 있다.
 
-오늘날의 VO·VIO 시스템은 크게 세 가지 설계 축으로 갈라진다. 어떤 관측을 쓰느냐에 따라 기하학적 특징점(corner, edge)을 뽑아 매칭하는 **Feature-based** 방식과 픽셀 밝기를 그대로 활용하는 **Direct** 방식으로 나뉘고, 상태를 어떻게 풀느냐에 따라 칼만 필터 계열의 **Filter** 방식과 비선형 **Optimization** 방식으로 구분된다. 여기에 IMU를 쓰는 VIO에서는 카메라와 IMU를 독립적으로 처리한 뒤 결과만 합치는 **Loosely coupled** 구조와 원시 측정값(raw measurement)을 한 추정 프레임워크 안에 직접 엮는 **Tightly coupled** 구조의 선택지가 더해진다.
+오늘날의 VO·VIO 시스템은 크게 세 가지 설계 축으로 갈라진다. 어떤 관측을 쓰느냐에 따라 기하학적 특징점(corner, edge)을 뽑아 매칭하는 **Feature-based** 방식과 픽셀 밝기를 그대로 활용하는 **Direct** 방식으로 나뉘고, 상태를 어떻게 풀느냐에 따라 칼만 필터 계열의 **Filter** 방식과 비선형 **Optimization** 방식으로 구분된다. 여기에 IMU를 쓰는 VIO에서는 카메라와 IMU를 독립적으로 처리한 뒤 결과만 합치는 **Loosely coupled** 구조와 원시 측정값(raw measurement)을 한 추정 프레임워크 안에 직접 엮는 **Tightly coupled** 구조라는 선택지가 더해진다.
 
 ---
 
 ## 6.1 Feature-based Visual Odometry
 
-세 가지 축 가운데 가장 오랫동안 검증된 조합은 영상에서 기하학적 특징점을 뽑아 프레임 간 대응을 맞추는 feature-based VO다. 특징점 추출과 모션 추정이 깔끔하게 분리되어 있어 각 단계의 동작 원리와 실패 양상(failure mode)을 진단하기 쉽고, ORB-SLAM3 같은 대표적인 공개 시스템도 이 구조를 바탕으로 삼는다.
+세 가지 축 가운데 가장 오랫동안 검증된 조합은 영상에서 기하학적 특징점을 뽑아 프레임 간 대응을 맞추는 feature-based VO다. 특징점 추출과 모션 추정이 깔끔하게 분리되어 있어 각 단계의 동작 원리를 파악하고 실패 양상(failure mode)을 진단하기 쉽고, ORB-SLAM3 같은 대표적인 공개 시스템도 이 구조를 바탕으로 삼는다.
 
 ### 6.1.1 Frontend: Detection, Tracking, Outlier Rejection
 
-초당 수십 장씩 들어오는 영상 프레임에서 유의미한 기하 정보를 건져 올리는 일이 프런트엔드의 몫이다. 프런트엔드는 각 프레임에서 추적할 점을 고르는 **검출(detection)**, 다음 프레임에서 그 점의 새 위치를 찾아 잇는 **추적(tracking)**, 그리고 잘못 붙은 대응을 걸러 내는 **아웃라이어 제거(outlier rejection)**라는 세 단계를 거친다.
+초당 수십 장씩 들어오는 영상 프레임에서 유의미한 기하 정보를 건져 올리는 일이 프런트엔드의 몫이다. 프런트엔드는 각 프레임에서 추적할 점을 고르는 **검출(detection)**, 다음 프레임에서 그 점의 새 위치를 찾아 잇는 **추적(tracking)**, 잘못 붙은 대응을 걸러 내는 **아웃라이어 제거(outlier rejection)**라는 세 단계를 거친다.
 
 **특징점 검출 (Feature Detection)**
 
@@ -28,20 +28,20 @@ $$\mathbf{M} = \sum_{(x,y) \in W} w(x,y) \begin{bmatrix} I_x^2 & I_xI_y \\ I_xI_
 
 $$R = \det(\mathbf{M}) - k \cdot \text{tr}(\mathbf{M})^2 = \lambda_1\lambda_2 - k(\lambda_1 + \lambda_2)^2$$
 
-하지만 실시간 SLAM처럼 매 프레임 수천 개의 특징점을 밀리초 단위로 뽑아야 하는 환경에서는 그래디언트 행렬을 계산하는 비용마저 부담스럽다. FAST (Features from Accelerated Segment Test)는 후보 픽셀 주위 원 위의 16개 점과 중심 픽셀의 밝기만 단순 비교해 연산 속도를 극단적으로 끌어올렸다(원 논문의 $n$ 값과 사전 검사는 §5.2.1). OpenCV의 기본값은 $n=9$(`TYPE_9_16`)이며, 순수 FAST 자체에는 빠진 회전·스케일 불변성은 ORB 같은 확장 기법에서 보완한다.
+하지만 실시간 SLAM처럼 매 프레임 수천 개의 특징점을 밀리초 단위로 뽑아야 하는 환경에서는 그래디언트 행렬을 계산하는 비용마저 부담스럽다. FAST (Features from Accelerated Segment Test)는 후보 픽셀 주위 원 위의 16개 점과 중심 픽셀의 밝기만 단순 비교해 연산 속도를 극단적으로 끌어올렸다(원 논문의 $n$ 값과 사전 검사는 §5.2.1). OpenCV의 기본값은 $n=9$(`TYPE_9_16`)이다. 순수 FAST에서 빠진 회전·스케일 불변성은 ORB 같은 확장 기법에서 보완한다.
 
 ORB (Oriented FAST and Rotated BRIEF)는 실시간 SLAM의 요구에 맞춰 FAST 코너에 방향을 부여하고, 이진 디스크립터인 BRIEF를 그 방향에 맞춰 회전시킨 특징점이다. 패치의 밝기 중심(intensity centroid)으로 주방향을 계산하므로 회전이 섞인 카메라 움직임에도 디스크립터가 흔들리지 않는다.
 
 $$\theta = \text{atan2}(m_{01}, m_{10}), \quad m_{pq} = \sum_{x,y} x^p y^q I(x,y)$$
 
-여기에 카메라가 앞뒤로 이동할 때 생기는 스케일 변화까지 견디려면 여러 해상도의 이미지 피라미드에서 특징점을 추출해야 한다. [ORB-SLAM 논문 (Mur-Artal et al., 2015)](https://arxiv.org/abs/1502.00956)은 8레벨 피라미드에 스케일 팩터 1.2를 기본 설정으로 사용한다.
+여기에 카메라가 앞뒤로 이동할 때 생기는 스케일 변화까지 견디려면 여러 해상도의 이미지 피라미드에서 특징점을 추출해야 한다. [ORB-SLAM 논문 (Mur-Artal et al., 2015)](https://arxiv.org/abs/1502.00956)에서는 8레벨 피라미드에 스케일 팩터 1.2를 기본 설정으로 사용한다.
 
 **특징점 추적 (Feature Tracking)**
 
 검출한 특징점을 시간 축을 따라 다음 프레임과 연결하는 방법은 크게 두 갈래로 나뉜다.
 
 1. **디스크립터 매칭**: 프레임마다 독립적으로 특징점을 검출한 뒤, 디스크립터 벡터 사이의 거리(이진 디스크립터는 Hamming distance, 부동소수점 디스크립터는 L2)를 비교해 짝을 찾는다. ORB-SLAM3가 채택한 방식으로, DBoW2 어휘 트리(→ §9.2.1)로 탐색 후보를 미리 좁혀 매칭 속도를 확보한다.
-2. **광학 흐름 추적 (Optical Flow Tracking)**: 새 프레임에서 특징점을 다시 뽑지 않고, Lucas-Kanade (LK) 추적기로 이전 프레임의 점이 현재 프레임의 어디로 이동했는지 픽셀 패치를 직접 쫓아간다. VINS-Mono가 이 방식을 쓰며, 같은 3D 점이 짧은 시간 간격 동안 비슷한 밝기를 유지한다는 밝기 항상성 가정(brightness constancy assumption)에서 출발한다.
+2. **광학 흐름 추적 (Optical Flow Tracking)**: 새 프레임에서 특징점을 다시 뽑지 않고, Lucas-Kanade (LK) 추적기로 픽셀 패치를 직접 쫓아가 이전 프레임의 점이 현재 프레임에서 어디로 이동했는지 찾아낸다. VINS-Mono가 이 방식을 쓴다. 광학 흐름 추적은 같은 3D 점이 짧은 시간 간격 동안 비슷한 밝기를 유지한다는 밝기 항상성 가정(brightness constancy assumption)에서 출발한다.
 
 $$I(x + u, y + v, t + \Delta t) = I(x, y, t)$$
 
@@ -53,10 +53,10 @@ $$\begin{bmatrix} u \\ v \end{bmatrix} = \left(\sum_W \begin{bmatrix} I_x^2 & I_
 
 **아웃라이어 제거 (Outlier Rejection)**
 
-최소자승 기반의 모션 추정은 단 몇 퍼센트의 오매칭(outlier)만 섞여도 해가 크게 망가진다. 이를 막는 표준 도구가 RANSAC (Random Sample Consensus)으로, 기하 모델을 결정하는 최소 개수의 샘플만 무작위로 뽑아 가설 모델을 세운 뒤 전체 대응점에서 모델과 부합하는 인라이어 수를 세어 가장 지지를 많이 받는 모델을 택한다. VO에서는 확보한 대응의 형태에 따라 쓰는 최소 모델이 달라진다.
+최소자승 기반의 모션 추정은 단 몇 퍼센트의 오매칭(outlier)만 섞여도 해가 크게 망가진다. 이를 막는 표준 도구가 RANSAC (Random Sample Consensus)이다. RANSAC은 기하 모델을 결정하는 최소 개수의 샘플만 무작위로 뽑아 가설 모델을 세운 뒤, 전체 대응점에서 모델과 부합하는 인라이어 수를 세어 지지를 가장 많이 받는 모델을 택한다. VO에서는 확보한 대응의 형태에 따라 쓰는 최소 모델이 달라진다.
 
 - **2D-2D**: 5-point 알고리즘으로 Essential Matrix $\mathbf{E}$를 추정하고, $\mathbf{E} = [\mathbf{t}]_\times \mathbf{R}$로 분해해 상대 포즈 $(R, t)$를 복원한다.
-- **3D-2D**: 이미 삼각측량해 둔 3D 점과 현재 프레임의 2D 관측을 묶어 PnP (Perspective-n-Point) 알고리즘에 RANSAC을 결합하고, 절대 포즈를 추정한다.
+- **3D-2D**: 이미 삼각측량해 둔 3D 점과 현재 프레임의 2D 관측을 묶어 PnP (Perspective-n-Point) 알고리즘에 RANSAC을 결합해 절대 포즈를 추정한다.
 - **3D-3D**: 스테레오나 RGB-D처럼 두 프레임 모두 3D 좌표를 알 때는 ICP 변형으로 강체 변환을 구한다.
 
 2D-2D 대응에서 에피폴라 기하(epipolar constraint)로 아웃라이어를 걸러 낼 때는 다음 식이 기준이 된다.
@@ -73,7 +73,7 @@ $$\mathbf{p}_2^T \mathbf{E} \mathbf{p}_1 = 0$$
 
 **PnP (Perspective-n-Point)**
 
-이미 삼각측량해 둔 3D 맵포인트 $\mathbf{P}_j \in \mathbb{R}^3$와 현재 프레임에서 관측된 2D 좌표 $\mathbf{u}_j \in \mathbb{R}^2$의 짝을 알 때, 현재 카메라 포즈 $\mathbf{T} = (\mathbf{R}, \mathbf{t}) \in SE(3)$를 찾는 문제다.
+PnP는 이미 삼각측량해 둔 3D 맵포인트 $\mathbf{P}_j \in \mathbb{R}^3$와 현재 프레임에서 관측된 2D 좌표 $\mathbf{u}_j \in \mathbb{R}^2$의 짝을 알 때, 현재 카메라 포즈 $\mathbf{T} = (\mathbf{R}, \mathbf{t}) \in SE(3)$를 찾는 문제다.
 
 $$\mathbf{u}_j = \pi(\mathbf{R}\mathbf{P}_j + \mathbf{t})$$
 
@@ -85,7 +85,7 @@ PnP로 초기 포즈를 잡았다면 이제 모든 인라이어 관측을 반영
 
 $$\mathbf{T}^* = \underset{\mathbf{T}}{\arg\min} \sum_{j} \rho\left(\left\|\mathbf{u}_j - \pi(\mathbf{T} \cdot \mathbf{P}_j)\right\|^2_{\Sigma_j}\right)$$
 
-여기서 $\Sigma_j$는 관측 공분산이고, $\rho(\cdot)$는 큰 잔차의 영향력을 눌러 주는 robust kernel이다. 대표적인 Huber 함수는 오차가 임계값 $\delta$를 넘어가면 제곱 증가를 선형 증가로 꺾어, 남아 있을지 모를 잔여 아웃라이어가 전체 해를 끌어당기지 못하게 막는다.
+여기서 $\Sigma_j$는 관측 공분산이고, $\rho(\cdot)$는 큰 잔차의 영향력을 눌러 주는 robust kernel이다. 대표적인 예인 Huber 함수는 오차가 임계값 $\delta$를 넘어가면 제곱 증가를 선형 증가로 꺾어, 남아 있을지 모를 아웃라이어가 전체 해를 끌어당기지 못하게 막는다.
 
 $$\rho(s) = \begin{cases} s & \text{if } s \leq \delta^2 \\ 2\delta\sqrt{s} - \delta^2 & \text{if } s > \delta^2 \end{cases}$$
 
@@ -95,7 +95,7 @@ $$\mathbf{T} \leftarrow \exp(\boldsymbol{\xi}^{\wedge}) \cdot \mathbf{T}$$
 
 **Local Bundle Adjustment**
 
-카메라 포즈만 고정된 맵포인트에 맞추다 보면 맵포인트 자체에 쌓인 초기 삼각측량 오차가 궤적 드리프트로 번진다. 이를 막기 위해 키프레임이 추가될 때마다 최근 키프레임 $N$개와 이들이 함께 바라보는 맵포인트 전체를 묶어 동시에 최적화하는 Local BA를 실행한다.
+고정된 맵포인트에 카메라 포즈만 맞추다 보면 맵포인트 자체에 쌓인 초기 삼각측량 오차가 궤적 드리프트로 번진다. 이를 막기 위해 키프레임이 추가될 때마다 최근 키프레임 $N$개와 이들이 함께 바라보는 맵포인트 전체를 묶어 동시에 최적화하는 Local BA를 실행한다.
 
 $$\{\mathbf{T}_i^*, \mathbf{P}_j^*\} = \underset{\{\mathbf{T}_i, \mathbf{P}_j\}}{\arg\min} \sum_{i,j} \rho\left(\left\|\mathbf{u}_{ij} - \pi(\mathbf{T}_i \cdot \mathbf{P}_j)\right\|^2_{\Sigma_{ij}}\right)$$
 
@@ -103,7 +103,7 @@ $$\{\mathbf{T}_i^*, \mathbf{P}_j^*\} = \underset{\{\mathbf{T}_i, \mathbf{P}_j\}}
 
 $$\begin{bmatrix} \mathbf{H}_{cc} & \mathbf{H}_{cp} \\ \mathbf{H}_{pc} & \mathbf{H}_{pp} \end{bmatrix} \begin{bmatrix} \delta\boldsymbol{\xi} \\ \delta\mathbf{p} \end{bmatrix} = \begin{bmatrix} \mathbf{b}_c \\ \mathbf{b}_p \end{bmatrix}$$
 
-블록 대각 행렬 $\mathbf{H}_{pp}$의 역행렬은 각 $3 \times 3$ 점 블록을 개별적으로 뒤집는 것만으로 값싸게 구할 수 있으므로, Schur complement로 점 변수 $\delta\mathbf{p}$를 소거하면 선형 시스템이 카메라 변수 $\delta\boldsymbol{\xi}$만의 축소 방정식으로 압축된다.
+블록 대각 행렬 $\mathbf{H}_{pp}$의 역행렬은 각 $3 \times 3$ 점 블록을 개별적으로 뒤집기만 하면 적은 비용으로 구할 수 있으므로, Schur complement로 점 변수 $\delta\mathbf{p}$를 소거하면 선형 시스템이 카메라 변수 $\delta\boldsymbol{\xi}$만의 축소 방정식으로 압축된다.
 
 $$(\mathbf{H}_{cc} - \mathbf{H}_{cp}\mathbf{H}_{pp}^{-1}\mathbf{H}_{pc})\delta\boldsymbol{\xi} = \mathbf{b}_c - \mathbf{H}_{cp}\mathbf{H}_{pp}^{-1}\mathbf{b}_p$$
 
@@ -111,7 +111,7 @@ $$(\mathbf{H}_{cc} - \mathbf{H}_{cp}\mathbf{H}_{pp}^{-1}\mathbf{H}_{pc})\delta\b
 
 ### 6.1.3 ORB-SLAM3 아키텍처 상세 분석
 
-매 프레임 포즈를 추적하면서 동시에 새 맵포인트를 삼각측량해 Local BA까지 돌리려면, 느린 최적화 작업이 프레임 속도의 추적을 가로막지 않도록 스레드를 분리해야 한다. [ORB-SLAM3 (Campos et al., 2021)](https://doi.org/10.1109/TRO.2021.3075644)는 이 설계를 완성해 monocular·stereo·RGB-D 카메라와 IMU, 나아가 pinhole과 fisheye 렌즈 모델까지 단일 프레임워크로 아우르는 대표적인 공개 feature-based visual(-inertial) SLAM 시스템이다.
+매 프레임 포즈를 추적하면서 동시에 새 맵포인트를 삼각측량해 Local BA까지 돌리려면, 느린 최적화 작업이 프레임 속도의 추적을 가로막지 않도록 스레드를 분리해야 한다. [ORB-SLAM3 (Campos et al., 2021)](https://doi.org/10.1109/TRO.2021.3075644)는 이 설계를 완성한 대표적인 공개 feature-based visual(-inertial) SLAM 시스템으로, monocular·stereo·RGB-D 카메라와 IMU, 나아가 pinhole과 fisheye 렌즈 모델까지 단일 프레임워크로 아우른다.
 
 **전체 아키텍처**
 
@@ -128,11 +128,11 @@ ORB-SLAM3는 서로 다른 시간 규모로 움직이는 세 스레드를 병렬
 1. 직전 프레임의 속도를 이어받는 등속 모델(constant velocity model)이나 IMU preintegration으로 현재 포즈를 먼저 예측한다.
 2. 예측한 포즈로 로컬 맵의 3D 맵포인트를 현재 영상에 투영하고(projection), 투영 위치 주변의 작은 탐색 반경 안에서 ORB 디스크립터를 매칭한다.
 3. 확보한 대응으로 Motion-only BA를 풀어 포즈를 정제한다.
-4. 이 프레임을 새 키프레임으로 승격할지 판정한다. 마지막 키프레임 이후 일정 수 이상의 프레임이 지나거나 추적된 맵포인트 비율이 임계값 아래로 떨어졌을 때, 그리고 현재 프레임이 충분한 맵포인트를 관측하고 있을 때 키프레임으로 삽입한다.
+4. 이 프레임을 새 키프레임으로 승격할지 판정한다. 마지막 키프레임 이후 일정 수 이상의 프레임이 지나거나 추적된 맵포인트 비율이 임계값 아래로 떨어졌을 때, 그리고 현재 프레임에서 충분한 맵포인트가 관측될 때 키프레임으로 삽입한다.
 
 **Visual-Inertial 모드**
 
-IMU를 함께 쓰는 visual-inertial 모드에서는 [Forster et al. (2017)](https://doi.org/10.1109/TRO.2016.2597321)의 IMU preintegration과 MAP(Maximum-a-Posteriori) 추정을 채택한다. 시각 재투영 오차가 텍스처가 풍부한 구간에서 장기 드리프트를 잡아 주는 동안, IMU 적분 항은 빠른 회전이나 모션 블러 순간에 포즈를 지탱하도록 두 잔차를 하나의 비용 함수에 묶어 함께 최적화한다.
+IMU를 함께 쓰는 visual-inertial 모드에서는 [Forster et al. (2017)](https://doi.org/10.1109/TRO.2016.2597321)의 IMU preintegration과 MAP(Maximum-a-Posteriori) 추정을 채택한다. 텍스처가 풍부한 구간에서는 시각 재투영 오차가 장기 드리프트를 잡아 주고, 빠른 회전이나 모션 블러 순간에는 IMU 적분 항이 포즈를 지탱하도록 두 잔차를 하나의 비용 함수에 묶어 함께 최적화한다.
 
 $$\mathcal{C} = \sum_{i,j} \rho\left(\left\|\mathbf{e}_{ij}^{\text{vis}}\right\|^2_{\Sigma_{ij}}\right) + \sum_k \left\|\mathbf{e}_k^{\text{IMU}}\right\|^2_{\Sigma_k^{\text{IMU}}} + \left\|\mathbf{e}^{\text{prior}}\right\|^2_{\Sigma^{\text{prior}}}$$
 
@@ -156,7 +156,7 @@ $$\mathbf{e}^{\text{IMU}}_{\Delta p} = \mathbf{R}_k^T(\mathbf{p}_{k+1} - \mathbf
 
 1. 추적이 끊기면 현재 맵을 폐기하는 대신 보관해 두고 새 sub-map을 즉시 시작한다.
 2. 각 sub-map은 독립적으로 생성·유지된다.
-3. 이후 장소 인식(DBoW2)이 앞서 지나갔던 sub-map과의 재방문을 포착하면 두 sub-map을 자동으로 병합(merging)한다.
+3. 이후 장소 인식(DBoW2)으로 앞서 지나갔던 sub-map 재방문을 포착하면 두 sub-map을 자동으로 병합(merging)한다.
 4. 병합 시에는 단안 구성이면 스케일 보정을 포함한 Sim(3)로, 스테레오나 VI 구성이면 강체 변환 SE(3)로 두 맵을 정합한다.
 
 덕분에 단일 주행 중 추적 복구뿐 아니라, 지난 세션에 저장해 둔 지도를 불러와 이어 쓰는 multi-session SLAM도 같은 틀 안에서 동작한다.
@@ -225,7 +225,7 @@ $$e_{\text{photo}} = I_j\left(\pi(\mathbf{T}_j \mathbf{T}_i^{-1} \pi^{-1}(\mathb
 
 이 표의 비교 기준은 [DSO 논문(arXiv 1607.02565)](https://arxiv.org/abs/1607.02565) 1절의 direct/indirect 구분과 2.1절 calibration 논의에 바탕을 둔다. 조명 변화 행은 흔히 쓰는 feature extractor와 descriptor가 광도 변화에 불변이거나 매우 강건하다는 2.1절의 기술에 근거한다.
 
-Photometric error의 가장 큰 강점은 명시적 매칭 없이도 이미지 와핑(warping)만으로 데이터 연관이 자동으로 이뤄지며, 코너가 아닌 완만한 에지나 희미한 밝기 그래디언트까지 모두 모션 추정에 동원할 수 있다는 데 있다. 반대로 두 가지 구조적 약점도 따라온다.
+Photometric error를 쓰면 명시적 매칭 없이도 이미지 와핑(warping)만으로 데이터 연관이 자동으로 이뤄지고, 코너가 아닌 완만한 에지나 희미한 밝기 그래디언트까지 모두 모션 추정에 동원할 수 있다. 이 두 특성이 가장 큰 강점이다. 반대로 두 가지 구조적 약점도 따라온다.
 
 1. **밝기 항상성 위반**: 실제 카메라는 자동 노출로 셔터 속도를 바꾸고 렌즈 가장자리에는 비네팅(vignetting)이 생기므로, 조명이 바뀌거나 카메라 각도만 틀어져도 같은 3D 점의 픽셀 값이 달라진다. 이 왜곡을 보정하지 않으면 최적화 자체가 엉뚱한 방향으로 끌려가므로, DSO 같은 시스템은 노출 시간·비네팅·카메라 응답 함수를 정밀하게 모델링하는 photometric calibration을 필수 전처리로 둔다.
 2. **좁은 수렴 영역 (Basin of Convergence)**: 픽셀 밝기 공간은 고주파 텍스처 때문에 굴곡이 심해, 초기 포즈가 정답에서 조금만 벗어나도 이미지 그래디언트가 엉뚱한 로컬 미니멈으로 빠진다. 허용되는 초기 오차 폭은 이미지 피라미드 깊이, 텍스처 패턴, 시점·밝기 변화에 따라 달라지므로, 거친 해상도에서 먼저 정렬한 뒤 세밀한 해상도로 내려오는 coarse-to-fine 전략과 검증 잔차 확인이 뒤따라야 한다.
@@ -262,7 +262,7 @@ $$e_{\mathbf{p}j} = \sum_{\mathbf{p} \in \mathcal{N}_\mathbf{p}} w_\mathbf{p} \l
 
 **점 선택 전략**
 
-이미지를 그대로 쓰지 않고 균일한 격자(grid)로 쪼갠 뒤, 셀마다 밝기 그래디언트가 가장 큰 픽셀을 골라 점이 한쪽 텍스처 덩어리에 몰리지 않게 분산시킨다. 한 프레임당 대략 2,000개 안팎의 점을 유지하되, 블록의 평균 그래디언트에 맞춰 임계값을 지역적으로 낮춰 주므로 벽면처럼 텍스처가 빈약한 영역에서도 기하 정보를 빠짐없이 건져 올린다.
+이미지를 그대로 쓰지 않고 균일한 격자(grid)로 쪼갠 뒤, 셀마다 밝기 그래디언트가 가장 큰 픽셀을 골라 점이 한쪽 텍스처 덩어리에 몰리지 않게 분산시킨다. 한 프레임당 2,000개 안팎의 점을 유지하되, 블록의 평균 그래디언트에 맞춰 임계값을 지역적으로 낮춰 주므로 벽면처럼 텍스처가 빈약한 영역에서도 기하 정보를 빠짐없이 건져 올린다.
 
 **Sliding Window Optimization**
 
@@ -274,9 +274,9 @@ $$\boldsymbol{\theta} = \{\mathbf{T}_1, \ldots, \mathbf{T}_n, d_1^{-1}, \ldots, 
 
 **DSO의 한계와 확장**
 
-순수 오도메트리로 설계된 DSO에는 전역 드리프트를 되감아 주는 loop closure가 빠져 있다. 이 한계를 채우기 위해 LDSO (Loop-closing DSO)는 DBoW 어휘 트리와 direct 정합을 결합해 루프를 닫았고, VI-DSO는 여기에 IMU 측정을 엮어 스케일과 빠른 회전에 대한 내성을 확보했다. 한편 패치 기반 KLT 추적 프런트엔드와 Non-linear Factor Recovery를 갖춘 Basalt는 계열은 다르지만 효율적인 슬라이딩 윈도우 VIO로 발전했다(→ §6.3.5).
+순수 오도메트리로 설계된 DSO에는 전역 드리프트를 되감아 주는 loop closure가 빠져 있다. 이 한계를 보완하기 위해 LDSO (Loop-closing DSO)는 DBoW 어휘 트리와 direct 정합을 결합해 루프를 닫았고, VI-DSO는 여기에 IMU 측정을 엮어 빠른 회전에 대한 내성과 스케일을 확보했다. 한편 패치 기반 KLT 추적 프런트엔드와 Non-linear Factor Recovery를 갖춘 Basalt는 계열은 다르지만 효율적인 슬라이딩 윈도우 VIO로 발전했다(→ §6.3.5).
 
-다음 수도코드는 photometric 보정부터 피라미드 정합, 점 샘플링, 슬라이딩 윈도우 최적화와 마지널라이제이션으로 이어지는 DSO의 한 프레임 처리 흐름을 보여 준다.
+DSO에서 한 프레임을 처리하는 흐름은 photometric 보정부터 피라미드 정합, 점 샘플링, 슬라이딩 윈도우 최적화와 마지널라이제이션으로 이어진다. 이를 수도코드로 나타내면 다음과 같다.
 
 ```python
 # DSO 핵심 흐름 수도코드
@@ -331,7 +331,7 @@ Feature-based 방식은 매 프레임 특징점을 뽑고 디스크립터를 매
 
 ## 6.3 Tightly-Coupled Visual-Inertial Odometry
 
-지금까지 살펴본 feature-based VO와 direct VO는 모두 카메라 한 대만 쓸 때 근본적인 한계에 부딪힌다. 단안 영상만으로는 장면을 몇 배 축소·확대해도 픽셀 투영이 똑같기 때문에 절대 메트릭 스케일을 결정할 수 없고, 빠른 회전이나 모션 블러, 텍스처 없는 벽면을 지날 때는 시각 추적 자체가 끊긴다. 여기에 초당 수백에서 수천 번 가속도와 각속도를 내뱉는 IMU를 붙이면 이야기가 달라진다. 가속도계가 중력 방향과 미터 단위의 스케일을 되살려 주고, 자이로스코프가 영상이 흔들리는 짧은 공백 구간을 메워 준다. **Tightly-coupled VIO**는 카메라와 IMU를 따로 돌려 결과 포즈만 섞는 대신, 두 센서의 원시 측정값을 하나의 상태 추정 프레임워크 안에 직접 엮어 서로의 오차를 실시간으로 교정한다.
+지금까지 살펴본 feature-based VO와 direct VO는 모두 카메라 한 대만 쓸 때 근본적인 한계에 부딪힌다. 단안 영상만으로는 장면을 몇 배 축소·확대해도 픽셀 투영이 똑같기 때문에 절대 메트릭 스케일을 결정할 수 없고, 빠르게 회전하거나 모션 블러가 생길 때, 또는 텍스처 없는 벽면을 지날 때는 시각 추적 자체가 끊긴다. 여기에 초당 수백에서 수천 번 가속도와 각속도를 내뱉는 IMU를 붙이면 이야기가 달라진다. 가속도계가 중력 방향과 미터 단위의 스케일을 되살려 주고, 자이로스코프가 영상이 흔들리는 짧은 공백 구간을 메워 준다. **Tightly-coupled VIO**는 카메라와 IMU를 따로 돌려 결과 포즈만 섞는 대신, 두 센서의 원시 측정값을 하나의 상태 추정 프레임워크 안에 직접 엮어 서로의 오차를 실시간으로 교정한다.
 
 ### 6.3.1 VINS-Mono 아키텍처 상세
 
@@ -351,7 +351,7 @@ Feature-based 방식은 매 프레임 특징점을 뽑고 디스크립터를 매
 
 **Step 1: 순수 비전 SfM**
 
-먼저 처음 몇 개 프레임에 대해서는 IMU를 쓰지 않고 영상만으로 Structure from Motion(SfM)을 푼다. 5-point 알고리즘으로 Essential Matrix를 구하고 특징점을 삼각측량해 카메라 포즈와 3D 점 구조를 복원하는데, 이 시점의 궤적은 아직 임의의 상수배 스케일만 맞은 상태다.
+먼저 처음 몇 개 프레임에서는 IMU를 쓰지 않고 영상만으로 Structure from Motion(SfM)을 푼다. 5-point 알고리즘으로 Essential Matrix를 구하고 특징점을 삼각측량해 카메라 포즈와 3D 점 구조를 복원하는데, 이 시점의 궤적은 아직 임의의 상수배 스케일만 맞은 상태다.
 
 **Step 2: Visual-Inertial Alignment**
 
@@ -388,14 +388,14 @@ $$\mathbf{r}_{\mathcal{C}} = \begin{bmatrix} \bar{u}_l^{c_j} - u_l^{c_j} / z_l^{
 
 연산량을 일정하게 묶어 두려면 윈도우 크기를 10개 안팎으로 제한해야 한다(원 논문과 공개 구현의 기본값 기준). VINS-Mono는 새 프레임이 들어와 윈도우가 찰 때마다 뒤에서 두 번째 프레임(second latest frame)이 키프레임인지 아닌지에 따라 두 갈래로 상태를 정리한다.
 
-1. **뒤에서 두 번째 프레임이 키프레임인 경우**: 시차가 충분한 정보성 프레임이므로 윈도우에 남기고, 대신 가장 오래된 첫 번째 프레임을 내보낸다. 이때 그 프레임에 걸려 있던 시각·IMU 측정을 그냥 버리지 않고 §4.7.2의 Schur complement 마지널라이제이션으로 계산해 prior 항에 녹여 넣는다.
+1. **뒤에서 두 번째 프레임이 키프레임인 경우**: 시차가 충분한 정보성 프레임이므로 윈도우에 남기고, 대신 가장 오래된 첫 번째 프레임을 내보낸다. 이때 그 프레임에 걸려 있던 시각·IMU 측정을 그냥 버리지 않고 §4.7.2의 Schur complement 마지널라이제이션을 거쳐 prior 항에 녹여 넣는다.
 2. **뒤에서 두 번째 프레임이 키프레임이 아닌 경우**: 새 정보가 적은 프레임이므로 그 프레임을 윈도우에서 바로 뺀다. 다만 시각 측정만 버리고, 그 프레임을 가로지르던 IMU preintegration 구간은 다음 프레임까지 그대로 이어 붙여 관성 정보의 연속성은 끊어지지 않게 보존한다.
 
 **4-DoF 포즈 그래프 최적화**
 
 장시간 주행 뒤 루프가 닫히면 VINS-Mono는 6-DoF가 아닌 4-DoF(yaw와 3D 위치) 포즈 그래프 최적화를 돌린다. 충분한 가속·회전 운동과 올바른 중력·바이어스 모델이 주어지면 VIO는 중력 벡터를 기준 삼아 roll과 pitch를 절대적으로 관측할 수 있지만, 수직축 회전인 전역 yaw와 3D 위치에는 여전히 관측 불가능한 자유도(gauge freedom)가 남기 때문이다. 따라서 roll과 pitch는 로컬 VIO 추정에 맡겨 두고, 전역 루프 보정에서는 드리프트가 쌓이는 yaw와 위치만 교정한다.
 
-아래 수도코드는 지금까지 설명한 VINS-Mono 백엔드의 비용 함수 구성과 두 갈래 마지널라이제이션 로직을 압축해 보여 준다.
+아래 수도코드에는 지금까지 설명한 VINS-Mono 백엔드의 비용 함수 구성과 두 갈래 마지널라이제이션 로직이 압축되어 있다.
 
 ```python
 # VINS-Mono 슬라이딩 윈도우 최적화 수도코드
@@ -450,16 +450,16 @@ class VINSEstimator:
 
 ### 6.3.2 OKVIS
 
-VINS-Mono가 단안 VIO의 대중화를 이끌기 앞서, 키프레임 기반 슬라이딩 윈도우 최적화를 VIO에 일찍 정착시킨 시스템이 [OKVIS (Open Keyframe-based Visual-Inertial SLAM, Leutenegger et al., 2015)](https://doi.org/10.1177/0278364914554813)다. OKVIS는 스테레오 카메라를 기본 센서로 가정하며, 다음과 같은 구성으로 설계되었다.
+VINS-Mono가 단안 VIO의 대중화를 이끌기에 앞서, 키프레임 기반 슬라이딩 윈도우 최적화를 VIO에 일찍 정착시킨 시스템이 [OKVIS (Open Keyframe-based Visual-Inertial SLAM, Leutenegger et al., 2015)](https://doi.org/10.1177/0278364914554813)다. OKVIS는 스테레오 카메라를 기본 센서로 가정하며, 다음과 같은 구성으로 설계되었다.
 
 1. **Harris corner + BRISK descriptor**: KLT 추적 대신 Harris 코너와 이진 디스크립터인 BRISK를 조합해 매칭한다.
 2. **Keyframe-based marginalization**: VINS-Mono와 마찬가지로 슬라이딩 윈도우에서 오래된 키프레임 상태를 마지널라이즈해 연산량을 일정하게 묶는다.
-3. **IMU error term**: 초기 OKVIS는 두 프레임 사이의 IMU 운동학을 최적화 반복마다 재전파(repropagation)해 자세·속도·위치·바이어스 전체의 15차원 잔차를 세웠다(문헌에서 "speed and bias"는 상태 블록 $[\mathbf{v}, \mathbf{b}_g, \mathbf{b}_a]$를 가리킨다). 이후 후속판인 OKVIS2에서는 연산 효율을 높이기 위해 preintegration으로 전환했다.
+3. **IMU error term**: 초기 OKVIS는 두 프레임 사이의 IMU 운동학을 최적화 반복마다 재전파(repropagation)해 자세·속도·위치·바이어스 전체의 15차원 잔차를 세웠다(문헌에서 "speed and bias"는 상태 블록 $[\mathbf{v}, \mathbf{b}_g, \mathbf{b}_a]$를 가리킨다). 후속판인 OKVIS2에서는 연산 효율을 높이기 위해 preintegration으로 전환했다.
 4. **Ceres Solver 기반**: 비선형 최적화 백엔드 전체를 Google Ceres Solver 위에서 구동한다.
 
 ### 6.3.3 MSCKF: Multi-State Constraint Kalman Filter
 
-VINS-Mono와 OKVIS 같은 슬라이딩 윈도우 최적화 방식은 반복 재선형화로 높은 정확도를 내지만, 윈도우 크기가 커질수록 연산량이 불어나고 반복 수에 따라 지연시간도 들쑥날쑥해진다. 자원이 빠듯한 임베디드 플랫폼이나 일정한 프레임당 연산 예산이 중요한 시스템에서는 필터 기반 VIO가 강력한 대안이 되며, 그 계보의 출발점이 바로 [MSCKF (Mourikis & Roumeliotis, 2007)](https://doi.org/10.1109/ROBOT.2007.364024)다. 오늘날 널리 쓰이는 OpenVINS(→ §6.3.4) 역시 이 알고리즘을 토대로 한다.
+VINS-Mono와 OKVIS 같은 슬라이딩 윈도우 최적화 방식은 반복 재선형화로 높은 정확도를 내지만, 윈도우 크기가 커질수록 연산량이 불어나고 반복 수에 따라 지연 시간도 들쑥날쑥해진다. 자원이 빠듯한 임베디드 플랫폼이나 일정한 프레임당 연산 예산이 중요한 시스템에서는 필터 기반 VIO가 강력한 대안이 되며, 그 계보의 출발점이 바로 [MSCKF (Mourikis & Roumeliotis, 2007)](https://doi.org/10.1109/ROBOT.2007.364024)다. 오늘날 널리 쓰이는 OpenVINS(→ §6.3.4) 역시 이 알고리즘을 토대로 한다.
 
 **MSCKF는 랜드마크를 상태에 넣지 않는다**
 
@@ -615,18 +615,18 @@ MSCKF의 아이디어를 현대적인 오픈소스 코드베이스로 정교하�
 
 **Optimization 기반 (VINS-Mono, ORB-SLAM3, Basalt)**은 슬라이딩 윈도우 안의 여러 상태와 관측을 함께 쥐고 있다가 매 스텝 반복 재선형화(iterative re-linearization)를 거쳐 비선형 최적화를 푼다. 반복당 복잡도는 윈도우 크기 $N$에 대해 $O(N^3)$ 수준이지만 Schur complement로 랜드마크 변수를 소거해 계산을 줄인다. 여러 센서의 잔차를 자유롭게 엮어 넣기 좋고 재선형화로 선형화 오차를 크게 낮출 수 있는 반면, 연산 비용이 높고 윈도우 크기에 따라 지연시간이 민감하게 변한다.
 
-**실험적 비교**: 어느 패러다임이 절대적으로 우위에 있는지는 데이터셋과 센서 구성, 계산 예산을 동일하게 맞춘 실험 위에서 판단해야 한다(→ §4.4.4). 필터 계열 역시 FEJ나 관측 가능성 제약을 정교하게 걸어 주면 일관성 문제를 상당 부분 덜어 낼 수 있어, 연산 자원이 극도로 제한된 플랫폼에서는 필터가 지닌 일정한 연산 비용이 여전히 매력적인 무기가 된다.
+**실험적 비교**: 어느 패러다임이 절대적으로 우위에 있는지는 데이터셋과 센서 구성, 계산 예산을 동일하게 맞춘 실험을 바탕으로 판단해야 한다(→ §4.4.4). 필터 계열 역시 FEJ나 관측 가능성 제약을 정교하게 걸어 주면 일관성 문제를 상당 부분 덜어 낼 수 있어, 연산 자원이 극도로 제한된 플랫폼에서는 필터가 지닌 일정한 연산 비용이 여전히 매력적인 무기가 된다.
 
 ### 6.4.2 Keyframe Selection 전략
 
-슬라이딩 윈도우 최적화에서 키프레임을 너무 자주 넣으면 연산량만 키울 뿐 시차가 좁아 삼각측량 정밀도가 떨어지고, 반대로 너무 드물게 넣으면 시각 제약이 성겨져 추적 공백이 생긴다. 실제 시스템은 보통 다음 기준 가운데 하나 이상을 조합해 키프레임 삽입 시점을 정한다.
+슬라이딩 윈도우 최적화에서 키프레임을 너무 자주 넣으면 연산량만 키울 뿐이고, 시차가 좁아 삼각측량 정밀도도 떨어진다. 반대로 너무 드물게 넣으면 시각 제약이 성겨져 추적 공백이 생긴다. 실제 시스템은 보통 다음 기준 가운데 하나 이상을 조합해 키프레임 삽입 시점을 정한다.
 
-1. **시간 기반**: 마지막 키프레임 이후 일정 시간이나 프레임 수가 지나면 삽입한다.
+1. **시간 기반**: 마지막 키프레임 이후 일정 시간이 지나거나 일정 프레임 수에 도달하면 삽입한다.
 2. **시차(parallax) 기반**: 현재 프레임과 직전 키프레임 사이의 평균 특징점 시차가 임계값을 넘어설 때 새 키프레임을 세운다. VINS-Mono가 대표적으로 쓰는 기준으로, 카메라가 제자리에 서 있거나 회전만 할 때 불필요한 키프레임이 쌓이는 일을 막는다.
 3. **추적 품질 기반**: 추적 중인 특징점 수나 비율이 기준 아래로 떨어지면 새 관측을 보충하기 위해 키프레임을 넣는다. ORB-SLAM3가 이 전략을 쓴다.
-4. **Information gain 기반**: 새 키프레임이 상태 불확실성을 얼마나 줄여 주는지 정보 이득을 직접 추정해 결정한다. 이론적으로 가장 깔끔하지만 정보 행렬 계산 부담이 크다.
+4. **Information gain 기반**: 새 키프레임이 상태 불확실성을 얼마나 줄여 주는지, 즉 정보 이득을 직접 추정해 결정한다. 이론적으로 가장 깔끔하지만 정보 행렬 계산 부담이 크다.
 
-키프레임 선택 규칙은 곧바로 마지널라이제이션 정책과 맞물린다. 앞서 본 VINS-Mono의 two-way marginalization(→ §6.3.1)이 대표적으로, 새 프레임이 키프레임인지에 따라 가장 오래된 프레임을 마지널라이즈할지 직전 비키프레임을 덜어 낼지 방향을 가른다.
+키프레임 선택 규칙은 곧바로 마지널라이제이션 정책과 맞물린다. 앞서 본 VINS-Mono의 two-way marginalization(→ §6.3.1)이 대표적이다. 이 방식에서는 새 프레임이 키프레임인지에 따라 가장 오래된 프레임을 마지널라이즈할지, 직전 비키프레임을 덜어 낼지가 갈린다.
 
 ### 6.4.3 Feature Parameterization
 
@@ -649,7 +649,7 @@ VINS-Mono와 OpenVINS가 이 역깊이 파라미터화를 기본으로 채택한
 
 $$\mathbf{P} = \mathbf{T}_{\text{anchor}} \cdot \frac{1}{\rho} [\bar{u}, \bar{v}, 1]^T$$
 
-여기서 $(\bar{u}, \bar{v})$는 앵커 프레임 기준 정규화 이미지 좌표, $\rho$는 역깊이다. 궤적이 수정되어 앵커 프레임의 포즈가 움직이더라도 앵커 기준 역깊이 값 자체는 크게 흔들리지 않으므로 재선형화 오차를 줄이는 효과가 있다. OpenVINS는 장기 추적용 SLAM feature에 이 표현을 지원하며, 반대로 스테레오·RGB-D처럼 초기 깊이를 직접 재는 구성까지 포괄하는 ORB-SLAM3는 맵포인트를 전역 세계 좌표계의 3D 위치로 저장·최적화한다.
+여기서 $(\bar{u}, \bar{v})$는 앵커 프레임 기준 정규화 이미지 좌표, $\rho$는 역깊이다. 궤적이 수정되어 앵커 프레임의 포즈가 움직이더라도 앵커 기준 역깊이 값 자체는 크게 흔들리지 않으므로 재선형화 오차를 줄이는 효과가 있다. OpenVINS는 장기 추적용 SLAM feature에 이 표현을 지원한다. 반대로 ORB-SLAM3는 스테레오·RGB-D처럼 초기 깊이를 직접 재는 구성까지 포괄하며, 맵포인트를 전역 세계 좌표계의 3D 위치로 저장·최적화한다.
 
 ---
 
@@ -659,15 +659,15 @@ $$\mathbf{P} = \mathbf{T}_{\text{anchor}} \cdot \frac{1}{\rho} [\bar{u}, \bar{v}
 
 ### 6.5.1 Supervised: DeepVO 계열
 
-초기 학습 기반 VO를 연 [DeepVO (Wang et al., 2017)](https://doi.org/10.1109/ICRA.2017.7989236)는 연속 이미지 쌍을 입력받아 상대 포즈를 곧장 예측하는 end-to-end 지도 학습 네트워크를 제안했다. CNN이 두 영상에서 모션 특징을 뽑고 LSTM이 시간 축에 걸친 운동 연속성을 학습하는 구조였다. 하지만 명시적인 에피폴라 기하나 3D 투영 제약을 거치지 않고 순수 회귀에 의존한 탓에, 학습 데이터셋과 다른 환경에 투입하면 일반화 성능이 떨어지고 정확도 역시 전통 기하 파이프라인에 못 미쳤으며 스케일 드리프트도 심하게 남았다.
+초기 학습 기반 VO를 연 [DeepVO (Wang et al., 2017)](https://doi.org/10.1109/ICRA.2017.7989236)는 연속 이미지 쌍을 입력받아 상대 포즈를 곧장 예측하는 end-to-end 지도 학습 네트워크를 제안했다. CNN이 두 영상에서 모션 특징을 뽑고 LSTM이 시간 축에 걸친 운동 연속성을 학습하는 구조였다. 하지만 명시적인 에피폴라 기하나 3D 투영 제약을 적용하지 않고 순수 회귀에 의존한 탓에, 학습 데이터셋과 다른 환경에 투입하면 일반화 성능이 떨어지고 정확도 역시 전통 기하 파이프라인에 못 미쳤으며 스케일 드리프트도 심하게 남았다.
 
 ### 6.5.2 Self-supervised: 한계와 현재 위치
 
-정답 포즈 레이블을 구하기 어려운 한계를 넘기 위해 등장한 자기지도 학습 VO(SfMLearner, Monodepth2 등)는 한 시점의 예측 깊이와 상대 포즈로 옆 시점의 영상을 합성(view synthesis)한 뒤, 실제 영상과의 photometric loss를 줄이는 방식으로 깊이와 포즈를 동시에 학습한다. 별도의 정답 궤적 없이도 학습할 수 있다는 점이 돋보였으나, 정적 장면 가정을 깨는 움직이는 물체나 텍스처가 빈약한 영역, 시점 이동에 따른 가림(occlusion) 앞에서는 오차가 커지는 한계를 넘지 못했다. 오늘날 이 계열의 방법들은 완전한 오도메트리 엔진보다는 단안 깊이 추정(monocular depth estimation) 영역에서 주로 쓰인다.
+자기지도 학습 VO(SfMLearner, Monodepth2 등)는 정답 포즈 레이블을 구하기 어려운 한계를 넘기 위해 등장했다. 이 방식은 한 시점의 예측 깊이와 상대 포즈로 옆 시점의 영상을 합성(view synthesis)한 뒤, 실제 영상과의 photometric loss를 줄이는 방식으로 깊이와 포즈를 동시에 학습한다. 별도의 정답 궤적 없이도 학습할 수 있다는 점이 돋보였으나, 정적 장면 가정을 깨는 움직이는 물체나 텍스처가 빈약한 영역, 시점 이동에 따른 가림(occlusion) 앞에서는 오차가 커지는 한계를 넘지 못했다. 오늘날 이 계열의 방법들은 완전한 오도메트리 엔진보다는 단안 깊이 추정(monocular depth estimation) 영역에서 주로 쓰인다.
 
 ### 6.5.3 Hybrid: DROID-SLAM
 
-순수 신경망 회귀가 기하 정합의 정밀도를 따라잡지 못했던 벽을 깬 시스템이 [DROID-SLAM (Teed & Deng, 2021)](https://arxiv.org/abs/2108.10869)이다. DROID-SLAM은 대응점을 찾아 다듬는 일은 딥러닝 네트워크에 맡기되, 포즈와 깊이를 푸는 단계에는 전통적인 Bundle Adjustment를 미분 가능한 레이어 형태로 그대로 끼워 넣었다. 원 논문은 TartanAir, EuRoC, TUM-RGBD, ETH-3D 벤치마크에서 기존 학습 기반 방법은 물론 고전 기하 기반 방법보다도 오차를 크게 낮추고 추적이 완전히 무너지는 catastrophic failure를 현저히 줄였다고 보고했다.
+순수 신경망 회귀가 기하 정합의 정밀도를 따라잡지 못했던 벽을 깬 시스템이 [DROID-SLAM (Teed & Deng, 2021)](https://arxiv.org/abs/2108.10869)이다. DROID-SLAM은 대응점을 찾아 다듬는 일은 딥러닝 네트워크에 맡기되, 포즈와 깊이를 푸는 단계에는 전통적인 Bundle Adjustment를 미분 가능한 레이어 형태로 그대로 끼워 넣었다. 원 논문에서는 DROID-SLAM이 TartanAir, EuRoC, TUM-RGBD, ETH-3D 벤치마크에서 기존 학습 기반 방법은 물론 고전 기하 기반 방법보다도 오차를 크게 낮추고, 추적이 완전히 무너지는 catastrophic failure를 현저히 줄였다고 보고했다.
 
 **아키텍처**
 
@@ -677,7 +677,7 @@ DROID-SLAM의 미분 가능 파이프라인은 두 핵심 블록이 맞물려 �
 
 광학 흐름 모델인 RAFT (Recurrent All-Pairs Field Transforms, Teed & Deng, 2020)의 구조를 프레임 그래프 위로 옮겼다. 연결된 프레임 쌍 $(i, j)$마다 다음과 같이 correspondence를 점진적으로 교정한다.
 - 두 프레임의 특징 맵에서 모든 픽셀 쌍의 유사도를 담은 4D correlation volume을 미리 계산해 둔다.
-- 현재 추정 중인 포즈와 깊이로 계산한 correspondence field가 가리키는 위치 주변의 상관 특징을 correlation volume에서 읽어 온다.
+- 현재 추정 중인 포즈와 깊이로 correspondence field를 계산한 뒤, 이 필드가 가리키는 위치 주변의 상관 특징을 correlation volume에서 읽어 온다.
 - 3×3 Convolutional GRU가 상관 특징, 현재 flow, 문맥 특징(context)을 입력받아 픽셀별 flow 수정량 $\Delta\mathbf{f}_{ij}$와 이 대응을 얼마나 믿을지 나타내는 신뢰도 가중치 $\mathbf{w}_{ij}$를 출력한다.
 
 $$(\Delta\mathbf{f}_{ij}, \mathbf{w}_{ij}) = \text{ConvGRU}(\text{corr}_{ij}, \mathbf{f}_{ij}^{\text{curr}}, \text{context}_i)$$
@@ -702,27 +702,27 @@ $$\begin{bmatrix} \mathbf{B} & \mathbf{E} \\ \mathbf{E}^T & \mathbf{C} \end{bmat
 
 $$(\mathbf{B} - \mathbf{E}\mathbf{C}^{-1}\mathbf{E}^T)\boldsymbol{\xi} = \mathbf{v} - \mathbf{E}\mathbf{C}^{-1}\mathbf{w}$$
 
-깊이 블록 $\mathbf{C}$가 대각 행렬이므로 역행렬 $\mathbf{C}^{-1}$은 대각 성분의 역수를 취하는 것만으로 즉시 계산된다. 덕분에 축소된 선형 시스템의 크기는 픽셀 수가 아무리 많아도 키프레임 수에만 비례해 빠르게 풀린다. 게다가 이 Gauss-Newton 솔버 전체가 미분 가능하기 때문에, 학습 과정에서는 최종 포즈·깊이 손실로부터 솔버를 거꾸로 통과하는 역전파로 GRU가 "기하 최적화에 유리한 correspondence와 가중치"를 내뱉도록 종단간 학습한다.
+깊이 블록 $\mathbf{C}$가 대각 행렬이므로 역행렬 $\mathbf{C}^{-1}$은 대각 성분의 역수를 취하는 것만으로 즉시 계산된다. 덕분에 픽셀 수가 아무리 많아도 축소된 선형 시스템은 크기가 키프레임 수에만 비례해 빠르게 풀린다. 게다가 이 Gauss-Newton 솔버 전체가 미분 가능하기 때문에, 학습 과정에서는 최종 포즈·깊이 손실의 역전파를 솔버에 거꾸로 통과시켜 GRU가 "기하 최적화에 유리한 correspondence와 가중치"를 내뱉도록 종단 간 학습한다.
 
 **프레임 그래프와 loop closure**
 
-DROID-SLAM은 실행 중에 공시성(co-visibility) 기반의 프레임 그래프를 동적으로 가꾸어 나간다. 새 키프레임이 들어오면 인접 프레임과 엣지를 잇고, 과거 키프레임과 시야 겹침이 포착되면 장거리 엣지를 추가해 루프를 닫은 뒤 전체 키프레임 이력에 대해 전역 BA를 푼다.
+DROID-SLAM은 실행 중에 공시성(co-visibility) 기반의 프레임 그래프를 동적으로 가꾸어 나간다. 새 키프레임이 들어오면 인접 프레임과 엣지로 잇고, 과거 키프레임과 시야 겹침이 포착되면 장거리 엣지를 추가해 루프를 닫은 뒤 전체 키프레임 이력에 대해 전역 BA를 푼다.
 
 **다중 모달리티 지원**
 
-흥미로운 점은 단안 영상만으로 학습한 모델이 추론 시 스테레오와 RGB-D 입력도 별도 재학습 없이 그대로 받아들인다는 데 있다.
+단안 영상만으로 학습한 모델이지만 추론 시 스테레오와 RGB-D 입력도 별도 재학습 없이 그대로 받아들인다.
 - **스테레오**: 좌우 영상을 각각 별도 프레임 노드로 취급하되, 알려진 좌우 카메라 사이의 상대 포즈는 DBA 레이어 안에서 고정해 메트릭 스케일을 강제한다.
 - **RGB-D**: 센서가 준 깊이 맵에는 노이즈와 결측 영역이 섞여 있으므로 깊이를 상수로 못 박는 대신 변수로 열어 두고, 목적 함수(원 논문 식 4)에 측정 깊이와 예측 깊이 차이의 제곱 페널티 항을 더해 보강한다.
 
 **성능**
 
-원 논문이 보고한 정량 비교 결과는 다음과 같다.
+원 논문에서 보고한 정량 비교 결과는 다음과 같다.
 
 - TartanAir: 단안 트랙에서 기존 최고 성능 대비 오차 62% 감소(스테레오 트랙에서는 60% 감소)
 - EuRoC monocular: 추적 실패 없이 완주한 방법들과 비교해 오차 82% 감소(ORB-SLAM3와는 ORB-SLAM3가 추적에 성공한 10개 시퀀스 기준으로 43% 감소)
 - ETH-3D: RGB-D 시퀀스 32개 중 30개 추적 성공(차순위 방법은 19개)
 
-이 모든 수치들은 합성 데이터셋인 TartanAir의 단안 영상만으로 한 번 학습한 단일 모델에서 얻은 결과다.
+이 모든 수치는 합성 데이터셋인 TartanAir의 단안 영상만으로 한 번 학습한 단일 모델에서 얻은 결과다.
 
 **한계**
 
@@ -735,9 +735,9 @@ DROID-SLAM은 실행 중에 공시성(co-visibility) 기반의 프레임 그래�
 
 ### 6.5.4 2023–2025년 연구
 
-[DPVO (Teed, Lipson & Deng, 2023)](https://arxiv.org/abs/2208.04726)는 DROID-SLAM의 dense optical flow 계산을 이미지에서 무작위로 뽑은 희소 패치(sparse patch) 단위 매칭으로 과감하게 덜어 냈다. 패치 단위 recurrent update 연산자와 미분 가능 BA를 결합한 이 구조는 원 논문의 비교 설정에서 DROID-SLAM 대비 메모리 사용량을 약 1/3로 줄이고 실행 속도는 약 3배 끌어올리면서도 더 낮은 평균 오차를 기록했다.
+[DPVO (Teed, Lipson & Deng, 2023)](https://arxiv.org/abs/2208.04726)는 DROID-SLAM의 dense optical flow 계산을 과감하게 덜어 내고, 이미지에서 무작위로 뽑은 희소 패치(sparse patch) 단위 매칭으로 대체했다. 패치 단위 recurrent update 연산자와 미분 가능 BA를 결합한 이 구조는 원 논문의 비교 설정에서 DROID-SLAM 대비 메모리 사용량을 약 1/3로 줄이고 실행 속도는 약 3배 끌어올리면서도 더 낮은 평균 오차를 기록했다.
 
-[MAC-VO (Qiu et al., ICRA 2025)](https://arxiv.org/abs/2409.09479)는 학습된 매칭 불확실성(metrics-aware covariance)을 스테레오 VO 파이프라인에 직접 끌어들였다. 신경망이 예측한 공분산으로 추적할 키포인트를 선별하고 포즈 그래프 최적화의 잔차 가중치까지 정교하게 조절한 결과, 원 논문은 조명 급변과 텍스처 부족 구간을 포함한 공개 벤치마크에서 기존 방법보다 낮은 궤적 오차를 달성했으며 ICRA 2025 Best Paper Award on Robot Perception을 수상했다.
+[MAC-VO (Qiu et al., ICRA 2025)](https://arxiv.org/abs/2409.09479)는 학습된 매칭 불확실성(metrics-aware covariance)을 스테레오 VO 파이프라인에 직접 끌어들였다. 이 방법은 신경망이 예측한 공분산으로 추적할 키포인트를 선별하고 포즈 그래프 최적화의 잔차 가중치까지 정교하게 조절했다. 원 논문에 따르면 그 결과 조명 급변과 텍스처 부족 구간을 포함한 공개 벤치마크에서 기존 방법보다 낮은 궤적 오차를 달성했다. 이 논문은 ICRA 2025 Best Paper Award on Robot Perception을 수상했다.
 
 ---
 
@@ -758,4 +758,4 @@ DROID-SLAM은 실행 중에 공시성(co-visibility) 기반의 프레임 그래�
 | DPVO | Learned (sparse) | Differentiable BA | Mono | Sparse patch; 논문 설정에서 DROID-SLAM보다 낮은 연산·메모리 비용 보고 |
 | MAC-VO | Learned + Opt. | Pose graph opt. | Stereo | Metrics-aware covariance, ICRA 2025 Best Paper on Robot Perception |
 
-결국 카메라와 IMU의 결합은 시각 텍스처가 살아 있는 환경에서 가볍고 정밀한 6-DoF 오도메트리를 가능하게 하지만, 칠흑 같은 어둠이나 강렬한 역광, 혹은 수십 미터 너머의 3D 구조물을 즉각 측량해야 하는 실외 주행에서는 가시광 수동 센서의 물리적 한계가 드러난다. 센서를 능동적으로 3D 거리를 재는 LiDAR로 바꾸면 대응점 탐색과 오차 모델링, 심지어 스캔 도중 발생하는 모션 왜곡을 다루는 방식까지 근본적으로 달라진다. 이어지는 7장에서는 포인트 클라우드 정합에서 출발해 LOAM과 LIO-SAM, FAST-LIO 계열로 이어지는 LiDAR 오도메트리와 LIO 아키텍처를 살펴본다.
+결국 카메라와 IMU를 결합하면 시각 텍스처가 살아 있는 환경에서 가볍고 정밀한 6-DoF 오도메트리가 가능하다. 하지만 칠흑 같은 어둠이나 강렬한 역광이 있는 환경, 혹은 수십 미터 너머의 3D 구조물을 즉각 측량해야 하는 실외 주행에서는 가시광 수동 센서의 물리적 한계가 드러난다. 센서를 능동적으로 3D 거리를 재는 LiDAR로 바꾸면 대응점 탐색과 오차 모델링, 심지어 스캔 도중 발생하는 모션 왜곡을 다루는 방식까지 근본적으로 달라진다. 이어지는 7장에서는 포인트 클라우드 정합에서 출발해 LOAM과 LIO-SAM, FAST-LIO 계열로 이어지는 LiDAR 오도메트리와 LIO 아키텍처를 살펴본다.

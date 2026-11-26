@@ -1,6 +1,6 @@
 # 4장 상태 추정
 
-관측 모델로 센서 측정의 성질을 파악하고 캘리브레이션으로 센서 사이의 기하·시간 어긋남을 맞췄다면(→ 2장, 3장), 이제 그 데이터를 하나로 엮어 로봇의 위치·자세·속도·바이어스 같은 숨은 상태를 추정할 차례다. 실제 주행 환경에서는 어떤 센서도 참값을 그대로 건네주지 않는다. IMU는 높은 주기로 움직임을 포착하지만 적분할수록 오차가 쌓이고, 카메라나 LiDAR는 기하학적 단서를 주지만 주기가 느리거나 환경에 따라 관측이 끊긴다. 상태 추정(state estimation)은 이처럼 특성과 주기가 다른 불완전한 관측을 운동 모델과 확률적으로 결합해, 가장 그럴듯한 상태와 그 불확실성까지 함께 추적하는 과정이다. Odometry와 다중 센서 융합 시스템은 이 문제를 칼만 필터 계열의 재귀 필터링, 파티클 필터, 또는 factor graph와 IMU 사전적분(preintegration)을 결합한 비선형 최적화로 풀어낸다.
+관측 모델로 센서 측정의 성질을 파악하고 캘리브레이션으로 센서 사이의 기하·시간 어긋남을 바로잡았다면(→ 2장, 3장), 이제 그 데이터를 하나로 엮어 로봇의 위치·자세·속도·바이어스 같은 숨은 상태를 추정할 차례다. 실제 주행 환경에서는 어떤 센서도 참값을 그대로 건네주지 않는다. IMU는 높은 주기로 움직임을 포착하지만 적분할수록 오차가 쌓이고, 카메라나 LiDAR는 기하학적 단서를 주지만 주기가 느리거나 환경에 따라 관측이 끊긴다. 상태 추정(state estimation)은 이처럼 특성과 주기가 다른 불완전한 관측을 운동 모델과 확률적으로 결합해, 가장 그럴듯한 상태와 그 불확실성까지 함께 추적하는 과정이다. Odometry와 다중 센서 융합 시스템은 이 문제를 칼만 필터 계열의 재귀 필터링, 파티클 필터, 또는 factor graph와 IMU 사전적분(preintegration)을 결합한 비선형 최적화로 풀어낸다.
 
 ---
 
@@ -27,7 +27,7 @@ $$\mathbf{x}_k = f(\mathbf{x}_{k-1}, \mathbf{u}_k) + \mathbf{w}_k, \quad \mathbf
 
 $$p(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{u}_k)$$
 
-여기서 프로세스 노이즈 $\mathbf{w}_k$는 단순화한 운동 모델이 실제 물리 움직임을 온전히 담아내지 못해 생기는 불확실성을 뜻한다.
+여기서 프로세스 노이즈 $\mathbf{w}_k$는 단순화한 운동 모델이 실제 물리적 움직임을 온전히 담아내지 못해 생기는 불확실성을 뜻한다.
 
 **관측 모델(Observation Model, Measurement Model)**은 반대로 현재 상태 $\mathbf{x}_k$를 안다고 가정할 때 센서에서 어떤 관측값 $\mathbf{z}_k$가 나올지, 곧 우도(likelihood)를 정의한다.
 
@@ -35,7 +35,7 @@ $$\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k, \quad \mathbf{v}_k \sim \mathca
 
 $$p(\mathbf{z}_k \mid \mathbf{x}_k)$$
 
-관측 노이즈 $\mathbf{v}_k$는 센서 측정 자체에 섞여 들어오는 오차를 반영한다. 필터는 이 운동 모델과 관측 모델을 번갈아 적용하며 상태에 대한 확률 분포를 꾸준히 갱신해 나가는데, 이렇게 유지하는 확률 분포를 믿음(belief)이라고도 부른다.
+관측 노이즈 $\mathbf{v}_k$는 센서 측정 자체에 섞여 들어오는 오차를 반영한다. 필터는 이 운동 모델과 관측 모델을 번갈아 적용하며 상태의 확률 분포를 꾸준히 갱신해 나가는데, 이렇게 유지하는 분포를 믿음(belief)이라고도 부른다.
 
 ### 4.1.2 Markov 가정과 Recursive Estimation
 
@@ -60,7 +60,7 @@ $$\boxed{p(\mathbf{x}_k \mid \mathbf{z}_{1:k-1}, \mathbf{u}_{1:k}) = \int p(\mat
 이 식이 바로 Chapman-Kolmogorov 방정식이다. 직전 상태 $\mathbf{x}_{k-1}$이 가질 수 있는 모든 값에 대해 상태 전이 확률을 가중 평균한 것으로, 각 항의 역할은 다음과 같다.
 - $p(\mathbf{x}_{k-1} \mid \mathbf{z}_{1:k-1})$: 시각 $k-1$의 사후 확률 (이전 단계에서 얻은 믿음)
 - $p(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{u}_k)$: 상태 전이 확률 (운동 모델)
-- 적분 결과는 이전 믿음을 운동 모델로 밀어낸 현재 시각의 예측 분포가 된다
+- 적분 결과: 이전 믿음을 운동 모델로 전파한 현재 시각의 예측 분포
 
 **갱신 단계(Update Step)**에서는 새 관측 $\mathbf{z}_k$가 도착했을 때 Bayes 정리를 적용해 예측 분포를 사후 확률로 좁힌다.
 
@@ -79,9 +79,9 @@ $$\boxed{p(\mathbf{x}_k \mid \mathbf{z}_{1:k}, \mathbf{u}_{1:k}) = \frac{p(\math
 
 1. **비선형 운동·관측 모델**: $f(\cdot)$이나 $h(\cdot)$이 비선형이면 처음에 가우시안 분포에서 출발하더라도 변환을 거친 뒤에는 더 이상 가우시안 형태를 유지하지 못하고, 깔끔한 수식 하나로 적기 어려운 모양으로 찌그러진다.
 
-2. **고차원 상태 공간**: 해석적 적분 대신 상태 공간을 격자로 쪼개 수치 적분을 시도하면, 격자 점의 수와 계산량이 상태 차원에 따라 지수적으로 불어난다(차원의 저주).
+2. **고차원 상태 공간**: 해석적 적분 대신 상태 공간을 격자로 쪼개 수치 적분을 시도하면, 격자점의 수와 계산량이 상태 차원에 따라 지수적으로 불어난다(차원의 저주).
 
-3. **다봉(multimodal) 분포**: 생김새가 똑같은 복도가 여러 개 놓인 건물에서 로봇이 자신의 초기 위치를 찾는 상황(global localization)처럼 가능한 위치 후보가 여러 군데로 갈리면, 사후 분포 역시 봉우리가 여럿 솟은 복잡한 형태를 띤다.
+3. **다봉(multimodal) 분포**: 가능한 위치 후보가 여러 군데로 갈리면 사후 분포 역시 봉우리가 여럿 솟은 복잡한 형태를 띤다. 생김새가 똑같은 복도가 여러 개 놓인 건물에서 로봇이 초기 위치를 찾는 상황(global localization)이 이에 해당한다.
 
 이 때문에 실전 상태 추정기는 확률 분포나 비선형 모델을 저마다의 방식으로 근사(approximation)한다. 어떤 가정을 두고 어떻게 근사하는지에 따라 아래 표처럼 서로 다른 필터 계열로 갈라진다.
 
@@ -103,7 +103,7 @@ $$\boxed{p(\mathbf{x}_k \mid \mathbf{z}_{1:k}, \mathbf{u}_{1:k}) = \frac{p(\math
 
 ### 4.2.1 Kalman Filter: 유도와 최적성
 
-운동 모델과 관측 모델이 모두 선형이고, 프로세스 노이즈·관측 노이즈·초기 상태 분포가 전부 가우시안이라면 Bayesian filter의 적분은 근사 없이 닫힌 식으로 풀린다. 그 정확한 해가 바로 Kalman Filter(KF)다. Rudolf Kalman이 1960년 논문 ["A New Approach to Linear Filtering and Prediction Problems"](https://doi.org/10.1115/1.3662552)에서 이 정식화를 발표한 뒤, NASA Ames의 Stanley Schmidt 팀이 Apollo 우주선의 궤도 추정에 적용하면서 실제 항법 시스템의 핵심 도구로 자리 잡았다.
+운동 모델과 관측 모델이 모두 선형이고, 프로세스 노이즈·관측 노이즈·초기 상태 분포가 전부 가우시안이라면 Bayesian filter의 적분은 근사 없이 닫힌 식으로 풀린다. 그 정확한 해가 바로 Kalman Filter(KF)다. Rudolf Kalman이 1960년 논문 ["A New Approach to Linear Filtering and Prediction Problems"](https://doi.org/10.1115/1.3662552)에서 이 정식화를 발표한 뒤, NASA Ames의 Stanley Schmidt 팀이 이를 Apollo 우주선의 궤도 추정에 적용하면서 KF는 실제 항법 시스템의 핵심 도구로 자리 잡았다.
 
 #### 선형 시스템 모델
 
@@ -150,7 +150,7 @@ $$\mathbf{P}_{k|k-1} = \mathbb{E}[\tilde{\mathbf{x}}_{k|k-1} \tilde{\mathbf{x}}_
 
 **Step 2: Update — Bayes 정리 적용**
 
-관측 모델 $\mathbf{z}_k = \mathbf{H}_k \mathbf{x}_k + \mathbf{v}_k$ 역시 선형이므로, 예측 상태 $\mathbf{x}_k$와 아직 관측 전인 $\mathbf{z}_k$를 나란히 묶은 결합 분포(joint distribution) 역시 가우시안이 된다.
+관측 모델 $\mathbf{z}_k = \mathbf{H}_k \mathbf{x}_k + \mathbf{v}_k$도 선형이므로, 예측 상태 $\mathbf{x}_k$와 아직 관측 전인 $\mathbf{z}_k$를 나란히 묶은 결합 분포(joint distribution) 역시 가우시안이 된다.
 
 $$\begin{bmatrix} \mathbf{x}_k \\ \mathbf{z}_k \end{bmatrix} \sim \mathcal{N}\left( \begin{bmatrix} \hat{\mathbf{x}}_{k|k-1} \\ \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1} \end{bmatrix}, \begin{bmatrix} \mathbf{P}_{k|k-1} & \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \\ \mathbf{H}_k \mathbf{P}_{k|k-1} & \mathbf{S}_k \end{bmatrix} \right)$$
 
@@ -169,7 +169,7 @@ $$\boxed{\mathbf{K}_k = \mathbf{P}_{k|k-1} \mathbf{H}_k^\top \mathbf{S}_k^{-1} =
 - $\mathbf{P}_{k|k-1} \to \mathbf{0}$ (예측 자체의 확신이 매우 큼): $\mathbf{K}_k \to \mathbf{0}$이 되어 새 관측을 거의 무시하고 예측치를 유지한다.
 - 선형-가우시안 모델과 지정한 잡음 공분산이 실제 시스템과 일치한다면, 이 이득으로 계산한 갱신값이 정확한 조건부 평균이 된다.
 
-**혁신(Innovation)**은 실제 관측값에서 현재 예측 상태로 예상한 관측값을 뺀 차이다.
+**혁신(Innovation)**은 실제 관측값에서 현재 예측 상태로 예상한 관측값을 뺀 값이다.
 $$\tilde{\mathbf{y}}_k = \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_{k|k-1} \in \mathbb{R}^m$$
 
 이 잔차 벡터가 클수록 예측과 측정 사이에 어긋남이 크다는 뜻이지만, 반대로 혁신이 0이라고 해서 관측되지 않는 상태 성분이나 모델 오차까지 없다는 보장은 없다.
@@ -180,7 +180,7 @@ $$\boxed{\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}_k \tilde
 
 $$\boxed{\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}}$$
 
-수치 구현에서는 공분산 갱신식을 단순 형태 대신 Joseph form $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$으로 쓰는 편이 안전하다. 대칭 양의 준정부호 행렬 둘을 더하는 구조 덕분에, $\mathbf{P}_{k|k-1}$과 $\mathbf{R}_k$가 양의 준정부호인 한 수치 오차로 공분산이 음의 고윳값을 갖게 되는 일을 크게 줄여 준다. 물론 부동소수점 반올림이 오래 쌓이면 미세한 비대칭이 남을 수 있으므로, 실무 코드에서는 공분산을 주기적으로 대칭화하거나 $LDL^\top$ 분해 같은 제곱근·분해 형태를 함께 활용한다.
+수치 구현에서는 공분산 갱신식을 단순 형태 대신 Joseph form $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1} (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^\top + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^\top$으로 쓰는 편이 안전하다. 대칭 양의 준정부호 행렬 둘을 더하는 구조 덕분에, $\mathbf{P}_{k|k-1}$과 $\mathbf{R}_k$가 양의 준정부호인 한 수치 오차로 공분산에 음의 고윳값이 생기는 일이 크게 줄어든다. 물론 부동소수점 반올림이 오래 쌓이면 미세한 비대칭이 남을 수 있으므로, 실무 코드에서는 공분산을 주기적으로 대칭화하거나 $LDL^\top$ 분해 같은 제곱근·분해 형태를 함께 활용한다.
 
 #### KF 최적성 정리
 
@@ -189,7 +189,7 @@ $$\boxed{\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_
 2. **MAP (Maximum A Posteriori) 추정량**: 가우시안 분포에서는 평균과 최빈값이 일치하므로 MAP 추정과 MMSE 추정이 같아진다.
 3. **BLUE (Best Linear Unbiased Estimator)**: 노이즈가 가우시안이 아니더라도 평균·공분산만 맞으면 모든 선형 비편향 추정량 가운데 최소 분산을 달성한다.
 
-이처럼 Kalman의 1960년 원논문은 기존 Wiener 필터의 주파수 영역 해법을 상태 공간(state-space) 시간 영역으로 옮겨 오면서, 시변(time-varying) 시스템과 다변량 시스템까지 일관되게 다룰 수 있는 길을 열었다.
+이처럼 Kalman은 1960년 원논문에서 기존 Wiener 필터의 주파수 영역 해법을 상태 공간(state-space) 시간 영역으로 옮겨 오면서, 시변(time-varying) 시스템과 다변량 시스템까지 일관되게 다룰 수 있는 길을 열었다.
 
 #### Python 구현
 
@@ -358,7 +358,7 @@ $$\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_{k|k-1}
 
 EKF는 계산량이 적고 구현이 직관적이지만, 세 가지 구조적 약점을 안고 있다.
 
-1. **선형화 오차**: 비선형성이 강하거나 초기 추정 오차가 클수록 1차 테일러 근사가 실제 곡률을 따라가지 못한다. 이때 실제 추정 오차가 필터가 스스로 보고하는 공분산보다 커지는 현상이 벌어지는데, 이를 필터가 일관성(consistency)을 잃었다고 한다.
+1. **선형화 오차**: 비선형성이 강하거나 초기 추정 오차가 클수록 1차 테일러 근사가 실제 곡률을 따라가지 못한다. 이때 필터가 스스로 보고하는 공분산보다 실제 추정 오차가 커지는 현상이 벌어지는데, 이를 필터가 일관성(consistency)을 잃었다고 한다.
 
 2. **자코비안 계산 부담**: 매 스텝 현재 추정치에서 $\mathbf{F}_k$와 $\mathbf{H}_k$를 새로 계산해야 한다. 상태 차원이 커지고 관측 모델이 복잡해질수록 손으로 유도한 자코비안에 부호 실수나 누락이 섞이기 쉽다.
 
@@ -368,7 +368,7 @@ EKF는 계산량이 적고 구현이 직관적이지만, 세 가지 구조적 �
 
 ### 4.2.3 Error-State Kalman Filter (ESKF)
 
-3차원 공간에서 IMU를 결합한 항법·상태 추정에는 오차 상태를 추적하는 ESKF(Error-State Kalman Filter)가 널리 쓰인다. 필터 기반 VIO인 MSCKF·OpenVINS와 LiDAR-관성 오도메트리인 FAST-LIO 계열이 모두 이 구조를 채택하고 있으며, 반면 [VINS-Mono](https://doi.org/10.1109/TRO.2018.2853729)처럼 필터 대신 sliding-window 비선형 최적화를 쓰는 갈래도 있다.
+3차원 공간에서 IMU를 결합한 항법·상태 추정에는 오차 상태를 추적하는 ESKF(Error-State Kalman Filter)가 널리 쓰인다. 필터 기반 VIO인 MSCKF·OpenVINS와 LiDAR-관성 오도메트리인 FAST-LIO 계열이 모두 이 구조를 채택하고 있다. 반면 [VINS-Mono](https://doi.org/10.1109/TRO.2018.2853729)처럼 필터 대신 sliding-window 비선형 최적화를 쓰는 갈래도 있다.
 
 #### 왜 EKF 대신 ESKF를 쓰는가
 
@@ -386,13 +386,13 @@ ESKF는 추정할 대상을 전체 상태가 아니라 명목 상태와 참 상�
 
 **문제 3: 명목 상태와 오차 상태의 서로 다른 동역학**
 
-로봇이 빠르게 회전하고 가속하는 큰 움직임은 고주파 IMU 적분으로 명목 상태가 떠맡고, 오차 상태는 그 주변을 맴도는 비교적 완만한 오차 성분만 추적한다. 덕분에 평소에는 IMU만으로 명목 상태를 촘촘히 적분하다가, 그보다 낮은 주기로 카메라나 LiDAR 관측이 들어올 때 오차 상태를 갱신해 전체 추정을 바로잡는 다중 주기(multi-rate) 융합 구조가 깔끔하게 맞아떨어진다.
+명목 상태는 로봇이 빠르게 회전하고 가속할 때의 큰 움직임을 고주파 IMU 적분으로 떠맡고, 오차 상태는 그 주변을 맴도는 비교적 완만한 오차 성분만 추적한다. 덕분에 평소에는 IMU만으로 명목 상태를 촘촘히 적분하다가, 그보다 낮은 주기로 카메라나 LiDAR 관측이 들어올 때 오차 상태를 갱신해 전체 추정을 바로잡는다. 이처럼 다중 주기(multi-rate) 융합 구조가 깔끔하게 맞아떨어진다.
 
 #### ESKF 구조
 
 이 아이디어에 따라 ESKF는 전체 상태를 성격이 다른 두 부분으로 나누어 관리한다.
 
-1. **명목 상태(Nominal State)** $\hat{\mathbf{x}}$: 노이즈 항을 뺀 결정론적 비선형 운동 모델로 IMU 측정을 그대로 적분하는 상태다. 불확실성은 여기 담지 않고 오차 상태 쪽에 맡긴다.
+1. **명목 상태(Nominal State)** $\hat{\mathbf{x}}$: 노이즈 항을 뺀 결정론적 비선형 운동 모델로 IMU 측정을 그대로 적분해 구하는 상태다. 불확실성은 여기 담지 않고 오차 상태 쪽에 맡긴다.
 2. **오차 상태(Error State)** $\delta\mathbf{x}$: 명목 상태와 실제 상태 사이의 작은 차이로, 칼만 필터가 평균과 공분산을 추적하는 대상이다. 명목 상태가 참값 부근을 따라가는 동안에는 접선 공간의 선형 근사가 유효하다. 오차를 명목 상태에 주입한 직후에는 reset Jacobian을 곱해 오차 공분산의 기준 좌표를 새 명목 상태에 맞게 옮겨 준다.
 
 실제 상태는 명목 상태와 오차 상태를 매니폴드 연산 $\boxplus$로 합성해 복원한다.
@@ -439,7 +439,7 @@ $$\hat{\mathbf{b}}_{g,k+1} = \hat{\mathbf{b}}_{g,k}$$
 
 **2단계: 오차 상태 전파 (prediction)**
 
-다음으로 명목 상태에서 벗어난 오차가 시간에 따라 어떻게 자라는지 연속 시간 동역학을 세운다. 실제 IMU 측정 모델 $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$와 $\tilde{\mathbf{a}} = \mathbf{R}^\top(\mathbf{a}_W - \mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$를 참 상태 방정식에 대입한 뒤 명목 상태 방정식을 빼고 2차 이상의 미소항을 버리면 다음 선형 미분방정식을 얻는다.
+다음으로 명목 상태에서 벗어난 오차가 시간에 따라 어떻게 자라는지 나타내는 연속 시간 동역학을 세운다. 실제 IMU 측정 모델 $\tilde{\boldsymbol{\omega}} = \boldsymbol{\omega} + \mathbf{b}_g + \mathbf{n}_g$와 $\tilde{\mathbf{a}} = \mathbf{R}^\top(\mathbf{a}_W - \mathbf{g}) + \mathbf{b}_a + \mathbf{n}_a$를 참 상태 방정식에 대입한 뒤 명목 상태 방정식을 빼고 2차 이상의 미소항을 버리면 다음 선형 미분방정식을 얻는다.
 
 $$\delta\dot{\boldsymbol{\theta}} = -[\tilde{\boldsymbol{\omega}} - \hat{\mathbf{b}}_g]_\times \delta\boldsymbol{\theta} - \delta\mathbf{b}_g - \mathbf{n}_g$$
 $$\delta\dot{\mathbf{v}} = -\hat{\mathbf{R}}[\tilde{\mathbf{a}} - \hat{\mathbf{b}}_a]_\times \delta\boldsymbol{\theta} - \hat{\mathbf{R}} \delta\mathbf{b}_a - \hat{\mathbf{R}} \mathbf{n}_a$$
@@ -463,7 +463,7 @@ $$\mathbf{F}_c = \begin{bmatrix}
 \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3
 \end{bmatrix} \in \mathbb{R}^{15 \times 15}$$
 
-이 연속 시간 모델을 샘플링 간격 $\Delta t$로 1차 근사 이산화($\mathbf{F}_d \approx \mathbf{I} + \mathbf{F}_c \Delta t$)하면, 오차 공분산의 전파는 표준 칼만 예측과 같은 꼴로 계산된다. (직전 갱신 직후 오차 상태 평균이 0으로 리셋되므로 평균은 전파하지 않아도 계속 0으로 남는다.)
+이 연속 시간 모델을 샘플링 간격 $\Delta t$로 1차 근사 이산화($\mathbf{F}_d \approx \mathbf{I} + \mathbf{F}_c \Delta t$)하면, 오차 공분산의 전파는 표준 칼만 예측과 같은 꼴로 계산된다. (앞선 갱신 직후 오차 상태 평균이 0으로 리셋되므로 평균은 전파하지 않아도 계속 0으로 유지된다.)
 
 $$\mathbf{P}_{k+1|k} = \mathbf{F}_d \mathbf{P}_{k|k} \mathbf{F}_d^\top + \mathbf{G}_d \mathbf{Q}_d \mathbf{G}_d^\top$$
 
@@ -500,11 +500,11 @@ $$\mathbf{P} \leftarrow \mathbf{G} \mathbf{P} \mathbf{G}^\top$$
 
 여기서 $\mathbf{G} = \frac{\partial (\delta\mathbf{x} \boxminus \delta\hat{\mathbf{x}})}{\partial \delta\mathbf{x}}\big|_{\delta\hat{\mathbf{x}}}$이며, 회전 보정량 $\delta\hat{\boldsymbol{\theta}}$가 매우 작으면 $\mathbf{G} \approx \mathbf{I}$로 근사하고 넘어가는 구현도 적지 않다.
 
-이처럼 EKF와 ESKF는 모두 1차 미분(자코비안)으로 비선형성을 다룬다. 반면 관측 함수가 지나치게 복잡해 자코비안을 손으로 유도하기 어렵거나 1차 근사보다 더 높은 곡률 정확도가 필요할 때는, 미분 대신 대표 샘플을 통과시키는 UKF가 대안이 된다.
+이처럼 EKF와 ESKF는 모두 1차 미분(자코비안)으로 비선형성을 다룬다. 반면 관측 함수가 지나치게 복잡해 자코비안을 손으로 유도하기 어렵거나 1차 근사보다 더 높은 곡률 정확도가 필요할 때는, 미분하는 대신 대표 샘플을 함수에 통과시키는 UKF가 대안이 된다.
 
 ### 4.2.4 Unscented Kalman Filter (UKF)
 
-UKF(Unscented Kalman Filter)는 비선형 함수를 자코비안으로 잘라 근사하는 대신, 함수 자체는 손대지 않고 확률 분포를 소수의 대표점(sigma point)으로 뽑아 그대로 함수에 통과시키는 필터다. Julier와 Uhlmann은 임의의 비선형 함수 전체를 근사하기보다 확률 분포의 평균과 공분산을 근사하는 편이 훨씬 쉽다는 통찰에서 이 기법을 제안했다.
+UKF(Unscented Kalman Filter)는 비선형 함수를 자코비안으로 잘라 근사하는 대신, 함수 자체는 손대지 않은 채 확률 분포에서 소수의 대표점(sigma point)을 뽑아 그 함수에 그대로 통과시키는 필터다. Julier와 Uhlmann은 임의의 비선형 함수 전체를 근사하기보다 확률 분포의 평균과 공분산을 근사하는 편이 훨씬 쉽다는 통찰을 바탕으로 이 기법을 제안했다.
 
 #### Unscented Transform
 
@@ -515,14 +515,14 @@ $$\boldsymbol{\chi}_i = \hat{\mathbf{x}} + \left(\sqrt{(n+\lambda)\mathbf{P}}\ri
 $$\boldsymbol{\chi}_{n+i} = \hat{\mathbf{x}} - \left(\sqrt{(n+\lambda)\mathbf{P}}\right)_i, \quad w_{n+i} = \frac{1}{2(n+\lambda)}, \quad i = 1, \ldots, n$$
 
 각 기호가 뜻하는 바는 다음과 같다.
-- $\lambda = \alpha^2(n + \kappa) - n$: 스케일링 파라미터 ($\alpha$는 중심 주변으로 sigma point가 퍼지는 정도를 조절하고, $\kappa$는 보조 파라미터로 보통 $\kappa = 0$이나 $3-n$을 둔다)
-- $\left(\sqrt{(n+\lambda)\mathbf{P}}\right)_i$: 행렬 $(n+\lambda)\mathbf{P}$에 Cholesky 분해를 적용했을 때 얻어지는 제곱근 행렬의 $i$번째 열
+- $\lambda = \alpha^2(n + \kappa) - n$: 스케일링 파라미터 ($\alpha$는 중심 주변으로 sigma point가 퍼지는 정도를 조절하고, $\kappa$는 보조 파라미터로 보통 $\kappa = 0$이나 $3-n$을 쓴다)
+- $\left(\sqrt{(n+\lambda)\mathbf{P}}\right)_i$: 행렬 $(n+\lambda)\mathbf{P}$를 Cholesky 분해해 얻은 제곱근 행렬의 $i$번째 열
 
 생성한 sigma point를 하나씩 비선형 함수 $f$에 그대로 통과시킨 뒤,
 
 $$\boldsymbol{\gamma}_i = f(\boldsymbol{\chi}_i)$$
 
-변환된 점들의 가중 평균과 가중 공분산을 다시 모으면 출력 분포의 통계량을 얻는다.
+변환된 점들을 다시 모아 가중 평균과 가중 공분산을 구하면 출력 분포의 통계량을 얻는다.
 
 $$\hat{\mathbf{y}} = \sum_{i=0}^{2n} w_i^{(m)} \boldsymbol{\gamma}_i$$
 $$\mathbf{P}_y = \sum_{i=0}^{2n} w_i^{(c)} (\boldsymbol{\gamma}_i - \hat{\mathbf{y}})(\boldsymbol{\gamma}_i - \hat{\mathbf{y}})^\top$$
@@ -552,14 +552,14 @@ $$\mathbf{P}_y = \sum_{i=0}^{2n} w_i^{(c)} (\boldsymbol{\gamma}_i - \hat{\mathbf
 
 **장점**:
 - 해석적 자코비안을 구할 필요가 없다. 렌즈 왜곡 모델이 얽힌 카메라 투영처럼 편미분이 까다로운 관측 모델에서도 함수를 그대로 호출하기만 하면 된다.
-- 함수에 직접 통과시킨 sigma point의 퍼짐을 모으므로, 1차 접평면만 보는 EKF보다 비선형 함수의 곡률 효과를 더 잘 반영한다. 다만 실제 정확도 차수는 입력 분포와 함수의 성질, sigma point 파라미터 설정에 따라 달라진다.
+- 함수에 직접 통과시킨 sigma point의 퍼짐을 포착하므로, 1차 접평면만 보는 EKF보다 비선형 함수의 곡률 효과를 더 잘 반영한다. 다만 실제 정확도 차수는 입력 분포와 함수의 성질, sigma point 파라미터 설정에 따라 달라진다.
 
 **단점**:
 - 매 스텝 $2n+1$개의 sigma point를 전부 비선형 함수에 통과시켜야 하므로, 상태 차원 $n$이 커질수록 연산량이 빠르게 늘어난다.
 - $SO(3)$ 같은 매니폴드 위의 상태를 다루려면 sigma point 생성과 가중 평균 계산까지 모두 매니폴드 연산으로 다시 정의해야 해 구현이 복잡해진다.
 - 실제 IMU 기반 상태 추정에서 UKF보다 ESKF가 더 널리 쓰이는 이유도 여기에 있다. ESKF는 접선 공간 오차로 매니폴드를 자연스럽게 처리할 뿐 아니라, sigma point 여러 개를 반복 전파할 필요가 없어 계산 부담이 가볍기 때문이다. 물론 두 필터 가운데 어느 쪽이 더 높은 정확도를 내는지는 구체적인 모델, 초기 오차 크기, 파라미터 조정에 달려 있다.
 
-한편 관측 모델의 자코비안을 구할 수 있더라도, 예측과 실제 관측 사이의 거리가 멀면 한 번의 선형화만으로는 오차가 남는다. 갱신 단계에서 선형화 지점을 반복해서 옮겨 잡는 방식이 다음의 IEKF다.
+한편 관측 모델의 자코비안을 구할 수 있더라도, 예측과 실제 관측 사이의 거리가 멀면 한 번의 선형화만으로는 오차가 남는다. 이때 갱신 단계에서 선형화 지점을 반복해서 옮겨 잡는 방식이 IEKF다.
 
 ### 4.2.5 Iterated Extended Kalman Filter (IEKF)
 
@@ -567,7 +567,7 @@ IEKF(Iterated Extended Kalman Filter)는 EKF의 갱신 단계를 한 번의 선�
 
 #### 동기: EKF 갱신의 선형화 오차
 
-표준 EKF는 관측 자코비안 $\mathbf{H}_k$를 예측 추정치 $\hat{\mathbf{x}}_{k|k-1}$ 자리에서 계산한다. 그런데 새 관측의 정보가 강해서 갱신 후 추정치 $\hat{\mathbf{x}}_{k|k}$가 예측 $\hat{\mathbf{x}}_{k|k-1}$에서 꽤 멀리 이동한다면, 결국 자코비안을 엉뚱한 자리에서 평가해 갱신한 셈이 된다. IEKF는 방금 얻은 갱신 추정치로 선형화 기준점을 옮겨 자코비안과 칼만 이득을 다시 계산하는 반복 루프를 돈다.
+표준 EKF는 관측 자코비안 $\mathbf{H}_k$를 예측 추정치 $\hat{\mathbf{x}}_{k|k-1}$ 자리에서 계산한다. 그런데 새 관측의 정보가 강해서 갱신 후 추정치 $\hat{\mathbf{x}}_{k|k}$가 예측 $\hat{\mathbf{x}}_{k|k-1}$에서 꽤 멀리 이동한다면, 결국 자코비안을 엉뚱한 자리에서 구해 갱신한 셈이 된다. IEKF는 방금 얻은 갱신 추정치로 선형화 기준점을 옮겨 자코비안과 칼만 이득을 다시 계산하는 반복 루프를 돈다.
 
 #### IEKF 알고리즘
 
@@ -581,9 +581,9 @@ $$\mathbf{K}^{(j)} = \mathbf{P}_{k|k-1} \mathbf{H}^{(j)\top} (\mathbf{H}^{(j)} \
 
 $$\hat{\mathbf{x}}^{(j+1)} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}^{(j)} \left[\mathbf{z}_k - h(\hat{\mathbf{x}}^{(j)}) - \mathbf{H}^{(j)}(\hat{\mathbf{x}}_{k|k-1} - \hat{\mathbf{x}}^{(j)})\right]$$
 
-여기서 대괄호 안의 추가 항 $-\mathbf{H}^{(j)}(\hat{\mathbf{x}}_{k|k-1} - \hat{\mathbf{x}}^{(j)})$는 사전 평균 $\hat{\mathbf{x}}_{k|k-1}$에 대한 MAP 비용과 관측 잔차의 균형을 올바른 기준점에서 맞추기 위한 보정이다. 수렴한 뒤에는 마지막 반복 결과를 상태와 공분산에 반영한다: $\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}^{(j+1)}$, $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}^{(j)} \mathbf{H}^{(j)}) \mathbf{P}_{k|k-1}$.
+여기서 대괄호 안의 추가 항 $-\mathbf{H}^{(j)}(\hat{\mathbf{x}}_{k|k-1} - \hat{\mathbf{x}}^{(j)})$는 사전 평균 $\hat{\mathbf{x}}_{k|k-1}$에 대한 MAP 비용과 관측 잔차의 균형을 올바른 기준점에서 맞추기 위한 보정이다. 수렴한 뒤에는 마지막 반복 결과를 상태와 공분산에 반영한다($\hat{\mathbf{x}}_{k|k} = \hat{\mathbf{x}}^{(j+1)}$, $\mathbf{P}_{k|k} = (\mathbf{I} - \mathbf{K}^{(j)} \mathbf{H}^{(j)}) \mathbf{P}_{k|k-1}$).
 
-수학적으로 보면 IEKF의 반복 갱신은 단일 시점의 관측 갱신 문제를 Gauss-Newton 최적화로 푸는 것과 동치다(Bell & Cathey, 1993). 뒤에서 다룰 §4.5의 factor graph 최적화는 이 같은 Gauss-Newton 원리를 한 시점이 아닌 전체 궤적 위로 확장한 것으로 볼 수 있다. 실전 LiDAR-관성 오도메트리인 FAST-LIO2 역시 수백~수천 개의 LiDAR point-to-plane 잔차를 상태 갱신에 집어넣고 반복 재선형화하는 매니폴드 위 IEKF를 사용한다. 한 번만 선형화할 때보다 관측 잔차의 곡률을 훨씬 잘 따라가지만, 실제로 정확도가 얼마나 올라가고 몇 회 만에 수렴하는지는 초기 오차 크기, 주변 환경의 기하 구조, 수렴 판정 기준에 따라 달라진다.
+수학적으로 보면 IEKF의 반복 갱신은 단일 시점의 관측 갱신 문제를 Gauss-Newton 최적화로 푸는 것과 동치다(Bell & Cathey, 1993). 뒤에서 다룰 §4.5의 factor graph 최적화는 이 같은 Gauss-Newton 원리를 한 시점이 아니라 전체 궤적으로 확장한 것으로 볼 수 있다. 실전 LiDAR-관성 오도메트리인 FAST-LIO2 역시 매니폴드에서 동작하는 IEKF를 사용해, 수백~수천 개의 LiDAR point-to-plane 잔차를 상태 갱신에 집어넣고 반복해서 재선형화한다. 한 번만 선형화할 때보다 관측 잔차의 곡률을 훨씬 잘 따라가지만, 실제로 정확도가 얼마나 올라가고 몇 회 만에 수렴하는지는 초기 오차 크기, 주변 환경의 기하 구조, 수렴 판정 기준에 따라 달라진다.
 
 지금까지 살펴본 KF, EKF, ESKF, UKF, IEKF는 모두 사후 분포를 단 하나의 가우시안 $\mathcal{N}(\hat{\mathbf{x}}, \mathbf{P})$로 요약한다는 공통점이 있다. 하지만 로봇의 위치 후보가 여러 곳에 동시에 떠 있는 다봉 분포나, 가우시안 하나로 덮기 힘든 극심한 비선형 시스템 앞에서는 이 가정이 무너진다. 이때 분포 자체를 수식 대신 수많은 입자 샘플의 집합으로 직접 표현하는 방법이 Particle Filter다.
 
@@ -591,13 +591,13 @@ $$\hat{\mathbf{x}}^{(j+1)} = \hat{\mathbf{x}}_{k|k-1} + \mathbf{K}^{(j)} \left[\
 
 ## 4.3 Particle Filter
 
-앞선 칼만 필터 계열은 사후 분포가 하나의 봉우리만 갖는 가우시안이라는 전제 위에서 빠르게 동작한다. 하지만 로봇이 대칭적인 복도 어디쯤에 있는지 여러 가능성을 동시에 품어야 하는 전역 위치 추정(global localization)이나, 가우시안 하나로 감당하기 어려운 비선형 동역학을 만났을 때는 모수적 가정 자체를 내려놓아야 한다. Particle Filter는 확률 분포의 형태를 미리 가정하지 않고 수많은 표본(particle)의 집합으로 분포를 직접 표현한다.
+앞선 칼만 필터 계열은 사후 분포가 하나의 봉우리만 갖는 가우시안이라는 전제 위에서 빠르게 동작한다. 하지만 전역 위치 추정(global localization)에서 로봇이 대칭적인 복도 어디쯤에 있는지 여러 가능성을 동시에 품어야 하거나, 가우시안 하나로 감당하기 어려운 비선형 동역학을 만났을 때는 모수적 가정 자체를 내려놓아야 한다. Particle Filter는 확률 분포의 형태를 미리 가정하지 않고 수많은 표본(particle)의 집합으로 분포를 직접 표현한다.
 
 ### 4.3.1 Sequential Monte Carlo (SMC) 개요
 
 Particle Filter(PF), 곧 Sequential Monte Carlo(SMC) 방법은 사후 분포를 가중치가 붙은 샘플 집합으로 근사한다. 상태 공간 곳곳에 입자를 뿌려 두고 관측과 잘 맞는 입자에 높은 가중치를 주는 방식이므로, 가우시안 가정이 필요 없고 봉우리가 여러 개인 다봉(multimodal) 분포나 비선형성이 강한 시스템도 자연스럽게 다룬다.
 
-사후 분포에 대한 입자 근사는 디랙 델타 함수의 가중 합으로 적는다.
+사후 분포를 입자로 근사할 때는 디랙 델타 함수의 가중 합으로 적는다.
 
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k}) \approx \sum_{i=1}^{N} w_k^{(i)} \delta(\mathbf{x}_k - \mathbf{x}_k^{(i)})$$
 
@@ -607,11 +607,11 @@ $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k}) \approx \sum_{i=1}^{N} w_k^{(i)} \delta(
 - $w_k^{(i)}$: $i$번째 입자의 정규화된 가중치 ($\sum_{i=1}^N w_k^{(i)} = 1$)
 - $\delta(\cdot)$: 디랙 델타 함수
 
-입자 수 $N \to \infty$에 가까워질수록 이 경험적 분포는 실제 사후 분포에 수렴한다. 실제 구현에서는 연산 예산 안에서 유한 개의 입자만 유지하며, 필요한 입자 수는 상태 공간의 차원과 분포의 복잡도를 보고 정한다.
+입자 수가 무한히 커질수록($N \to \infty$) 이 경험적 분포는 실제 사후 분포에 수렴한다. 실제 구현에서는 연산 예산 안에서 유한 개의 입자만 유지하며, 필요한 입자 수는 상태 공간의 차원과 분포의 복잡도를 보고 정한다.
 
 ### 4.3.2 Importance Sampling
 
-이론적으로는 실제 사후 분포 $p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$에서 곧바로 샘플을 뽑고 싶지만, 그 분포 자체를 모르기 때문에 직접 샘플링할 수 없다. 대신 샘플을 뽑기 쉬운 제안 분포(proposal distribution) $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k)$에서 입자를 생성한 뒤, 실제 분포와 제안 분포 사이의 비율을 중요도 가중치(importance weight)로 곱해 분포의 편향을 보정한다.
+이론적으로는 실제 사후 분포 $p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$에서 곧바로 샘플을 뽑고 싶지만, 그 분포 자체를 모르기 때문에 직접 샘플링할 수 없다. 대신 샘플을 뽑기 쉬운 제안 분포(proposal distribution) $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k)$에서 입자를 생성한 뒤, 실제 분포와 제안 분포 사이의 비율인 중요도 가중치(importance weight)를 곱해 분포의 편향을 보정한다.
 
 입자의 가중치를 매 스텝 재귀적으로 갱신하는 규칙은 전체 궤적의 사후 확률에 Bayes 정리를 적용해 얻을 수 있다.
 
@@ -621,28 +621,28 @@ $$p(\mathbf{x}_{0:k} \mid \mathbf{z}_{1:k}) = \frac{p(\mathbf{z}_k \mid \mathbf{
 
 $$w_k^{(i)} \propto w_{k-1}^{(i)} \cdot \frac{p(\mathbf{z}_k \mid \mathbf{x}_k^{(i)}) \, p(\mathbf{x}_k^{(i)} \mid \mathbf{x}_{k-1}^{(i)})}{q(\mathbf{x}_k^{(i)} \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k)}$$
 
-**가장 간단한 제안 분포**: 실무에서 가장 널리 쓰이는 선택은 운동 모델의 전이 확률(transition prior) 자체를 제안 분포로 쓰는 방식, 곧 $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1})$로 두는 방법이다. 이렇게 하면 입자마다 운동 모델에 프로세스 노이즈를 더해 한 스텝 전파시키기만 하면 되고, 분자·분모의 전이 확률이 서로 약분되어 가중치 갱신식이 극도로 단순해진다.
+**가장 간단한 제안 분포**: 실무에서 가장 널리 쓰이는 방법은 운동 모델의 전이 확률(transition prior) 자체를 제안 분포로 삼아 $q(\mathbf{x}_k \mid \mathbf{x}_{k-1}, \mathbf{z}_k) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1})$로 두는 방식이다. 이렇게 하면 입자마다 운동 모델에 프로세스 노이즈를 더해 한 스텝 전파하기만 하면 되고, 분자·분모의 전이 확률이 서로 약분되어 가중치 갱신식이 극도로 단순해진다.
 
 $$w_k^{(i)} \propto w_{k-1}^{(i)} \cdot p(\mathbf{z}_k \mid \mathbf{x}_k^{(i)})$$
 
-결국 각 입자는 이전 가중치에 자신의 위치에서 평가한 관측 우도(likelihood)를 곱해 갱신한다. 이전 가중치가 같다면 방금 들어온 센서 측정과 잘 맞아떨어지는 입자일수록 더 큰 가중치를 받는다.
+결국 각 입자의 가중치는 이전 값에 그 입자의 위치에서 평가한 관측 우도(likelihood)를 곱해 갱신한다. 이전 가중치가 같다면 방금 들어온 센서 측정과 잘 맞아떨어지는 입자일수록 더 큰 가중치를 받는다.
 
 이론상 가중치 분산을 가장 작게 만드는 최적의 제안 분포는 $q^*(\mathbf{x}_k \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k) = p(\mathbf{x}_k \mid \mathbf{x}_{k-1}^{(i)}, \mathbf{z}_k)$이지만, 실제 비선형 관측 모델에서는 이를 닫힌 식으로 구해 샘플링하기가 쉽지 않다.
 
 ### 4.3.3 Resampling
 
-전파와 가중치 곱셈만 몇 단계 반복하면, 금세 가중치 대부분이 극소수 입자에게만 몰리고 나머지 입자들의 가중치는 0에 가까워지는 **가중치 퇴화(weight degeneracy)** 현상이 나타난다. 쓸모 있는 입자가 사실상 몇 개 남지 않게 되면 사후 분포 근사의 정확도가 급격히 무너진다.
+전파와 가중치 곱셈만 몇 단계 반복하면 금세 **가중치 퇴화(weight degeneracy)** 현상이 나타나는데, 가중치 대부분이 극소수 입자에게만 몰리고 나머지 입자의 가중치는 0에 가까워진다. 쓸모 있는 입자가 사실상 몇 개 남지 않게 되면 사후 분포 근사의 정확도가 급격히 무너진다.
 
 퇴화가 얼마나 진행되었는지는 유효 입자 수(effective sample size)로 진단한다.
 
 $$N_{\text{eff}} = \frac{1}{\sum_{i=1}^N (w_k^{(i)})^2}$$
 
-모든 입자의 가중치가 $1/N$으로 고르면 $N_{\text{eff}} = N$이 되고, 가중치가 한 입자에 쏠리면 $N_{\text{eff}} \approx 1$로 떨어진다. 보통 $N_{\text{eff}}$가 임계값(흔히 $N/2$) 아래로 내려가면 리샘플링(resampling)을 수행한다.
+모든 입자의 가중치가 $1/N$으로 고르면 $N_{\text{eff}} = N$이 되고, 가중치가 한 입자에 쏠리면 $N_{\text{eff}} \approx 1$로 떨어진다. 보통 $N_{\text{eff}}$가 임계값(흔히 $N/2$) 아래로 내려가면 리샘플링(resampling)을 한다.
 
 **리샘플링**은 가중치가 큰 입자는 여러 개로 복제하고 가중치가 미미한 입자는 걸러낸 뒤, 살아남은 $N$개 입자의 가중치를 다시 $1/N$로 균등하게 초기화하는 단계다. 대표적인 리샘플링 기법 세 가지는 난수를 추출하는 방식에 따라 분산 특성이 갈린다.
 
 - **Multinomial Resampling**: 현재 가중치를 이산 확률 분포로 보고 $N$번 독립적으로 복원 추출한다. 개념이 가장 단순하지만 추첨 편차(분산)가 크다.
-- **Systematic Resampling**: 균등 난수 단 하나 $U_0 \sim \text{Uniform}(0, 1/N)$을 뽑은 뒤, $U_i = U_0 + (i-1)/N$ 간격으로 누적 분포(CDF)를 훑어 입자를 선택한다. 구현이 간단하고 계산량도 적으며 대개 multinomial 방식보다 분산이 작다. 다만 가중치 배열 형태에 따라서는 다른 기법보다 분산이 더 크게 나올 수도 있다(Douc, Cappé & Moulines, 2005).
+- **Systematic Resampling**: 균등 난수 $U_0 \sim \text{Uniform}(0, 1/N)$을 단 하나만 뽑은 뒤, $U_i = U_0 + (i-1)/N$ 간격으로 누적 분포(CDF)를 훑어 입자를 선택한다. 구현이 간단하고 계산량도 적으며 대개 multinomial 방식보다 분산이 작다. 다만 가중치 배열 형태에 따라서는 다른 기법보다 분산이 더 크게 나올 수도 있다(Douc, Cappé & Moulines, 2005).
 - **Stratified Resampling**: Systematic처럼 $[0,1)$ 구간을 $N$등분하되, 각 소구간마다 독립적인 균등 난수를 하나씩 뽑아 입자를 고른다.
 
 아래 파이썬 코드는 `systematic_resampling`과 이를 결합한 가장 기본적인 Bootstrap Particle Filter(SIR: Sampling Importance Resampling)를 구현한 예제다. 운동 모델의 전이 분포에서 입자를 전파하고, 가우시안 관측 우도로 가중치를 갱신한 뒤 $N_{\text{eff}} < N/2$일 때만 리샘플링을 발동하는 전형적인 흐름을 확인할 수 있다.
@@ -730,18 +730,18 @@ def bootstrap_particle_filter(f, h, Q, R, z_seq, N=1000, x0_sampler=None):
     return x_est
 ```
 
-순수 Bootstrap PF는 어떤 비선형 모델에도 곧바로 적용할 수 있지만, 상태 차원이 조금만 높아져도 필요한 입자 수가 폭증하는 약점이 있다. 이 부담을 덜기 위해 상태 가운데 해석적으로 다룰 수 있는 부분을 칼만 필터로 떼어내는 기법이 다음의 RBPF다.
+순수 Bootstrap PF는 어떤 비선형 모델에도 곧바로 적용할 수 있지만, 상태 차원이 조금만 높아져도 필요한 입자 수가 폭증하는 약점이 있다. 이 부담을 덜기 위해 상태 가운데 해석적으로 다룰 수 있는 부분을 칼만 필터로 떼어내는 기법이 다음 절의 RBPF다.
 
 ### 4.3.4 Rao-Blackwellized Particle Filter (RBPF)
 
-RBPF(Rao-Blackwellized Particle Filter)는 전체 상태를 둘로 쪼개어, 비선형적이거나 다봉인 핵심 부분만 입자로 샘플링하고 나머지 조건부 선형·가우시안 부분은 칼만 필터 같은 해석적 추정기에 맡기는 혼합 기법이다. 입자가 덮어야 할 차원이 줄어드니 훨씬 적은 입자만으로도 쓸 만한 근사를 얻는다.
+RBPF(Rao-Blackwellized Particle Filter)는 전체 상태를 둘로 쪼개어 추정하는 혼합 기법이다. 비선형적이거나 다봉인 핵심 부분만 입자로 샘플링하고, 나머지 조건부 선형·가우시안 부분은 칼만 필터 같은 해석적 추정기에 맡긴다. 입자로 다루어야 할 차원이 줄어드니 훨씬 적은 입자만으로도 쓸 만한 근사를 얻는다.
 
 상태를 $\mathbf{x} = [\mathbf{x}_1, \mathbf{x}_2]$로 나눴을 때, $\mathbf{x}_1$의 값이 고정되면 나머지 $\mathbf{x}_2$의 조건부 분포가 가우시안처럼 닫힌 식으로 추적된다고 하자. 그러면 결합 사후 분포를 다음과 같이 두 인수의 곱으로 인수분해할 수 있다.
 
 $$p(\mathbf{x}_1, \mathbf{x}_2 \mid \mathbf{z}_{1:k}) = p(\mathbf{x}_2 \mid \mathbf{x}_1, \mathbf{z}_{1:k}) \cdot p(\mathbf{x}_1 \mid \mathbf{z}_{1:k})$$
 
 - $p(\mathbf{x}_1 \mid \mathbf{z}_{1:k})$: 입자 필터로 비모수 근사
-- $p(\mathbf{x}_2 \mid \mathbf{x}_1, \mathbf{z}_{1:k})$: 각 입자마다 딸려 있는 독립적인 칼만 필터로 해석적 추적
+- $p(\mathbf{x}_2 \mid \mathbf{x}_1, \mathbf{z}_{1:k})$: 각 입자에 딸린 독립적인 칼만 필터로 해석적 추적
 
 **Rao-Blackwell 정리**는 이렇게 조건부 해석 추정을 결합해 얻은 추정량의 분산이, 같은 수의 입자로 상태 전체를 샘플링하는 순수 Particle Filter의 분산보다 결코 크지 않음을 보장한다.
 
@@ -752,19 +752,19 @@ $$\text{Var}[\hat{\mathbf{x}}_{\text{RBPF}}] \leq \text{Var}[\hat{\mathbf{x}}_{\
 - $\mathbf{x}_1 = \mathbf{x}_{0:k}^{\text{robot}}$ (로봇 경로) → 입자 필터
 - $\mathbf{x}_2 = \{\mathbf{m}_1, \ldots, \mathbf{m}_M\}$ (랜드마크 집합) → 각 입자에 매달린 $M$개의 독립 2D EKF
 
-로봇 경로가 주어지면 서로 다른 랜드마크들의 위치 추정이 조건부 독립이 된다는 성질을 이용한 설계다. 어떤 관측이 어느 랜드마크에 해당하는지 데이터 연관을 이미 안다고 놓았을 때, 맵을 균형 이진 트리로 관리하는 FastSLAM은 입자가 $N$개, 랜드마크가 $M$개일 때 한 번의 갱신 비용이 $O(N \log M)$에 그친다. 거대한 단일 공분산 행렬을 갱신해야 하는 EKF-SLAM의 $O(M^2)$과 비교하면 랜드마크가 많을수록 격차가 크게 벌어진다.
+로봇 경로가 주어지면 서로 다른 랜드마크의 위치 추정이 조건부 독립이 된다는 성질을 이용한 설계다. 데이터 연관(어떤 관측이 어느 랜드마크에 해당하는지)을 이미 알고 있다고 가정하자. 이때 맵을 균형 이진 트리로 관리하는 FastSLAM은 입자가 $N$개, 랜드마크가 $M$개일 때 한 번의 갱신 비용이 $O(N \log M)$에 그친다. 거대한 단일 공분산 행렬을 갱신해야 하는 EKF-SLAM의 $O(M^2)$과 비교하면 랜드마크가 많을수록 격차가 크게 벌어진다.
 
 ### 4.3.5 Particle Filter의 한계와 현재 위치
 
-Particle Filter의 가장 근본적인 한계는 **차원의 저주(curse of dimensionality)**다. 상태 차원이 높아질수록 공간을 빈틈없이 메우는 데 필요한 입자 수가 기하급수적으로 불어난다. 3차원 VIO나 LIO의 상태 벡터만 해도 자세·위치·속도·자이로 바이어스·가속도계 바이어스까지 최소 15차원에 달한다. 정교한 제안 분포나 Rao-Blackwellization 없이 이 15차원 상태 전체를 순수 입자로 굴리면 실시간 처리가 사실상 불가능하다.
+Particle Filter의 가장 근본적인 한계는 **차원의 저주(curse of dimensionality)**다. 상태 차원이 높아질수록 공간을 빈틈없이 메우는 데 필요한 입자 수가 기하급수적으로 불어난다. 3차원 VIO나 LIO의 상태 벡터만 해도 자세·위치·속도·자이로 바이어스·가속도계 바이어스까지 최소 15차원에 달한다. 정교한 제안 분포나 Rao-Blackwellization 없이 이 15차원 상태 전체를 순수 입자만으로 추정하면 실시간 처리가 사실상 불가능하다.
 
-이런 특성 때문에 오늘날 로보틱스 현장에서 Particle Filter는 모든 추정을 도맡기보다 자신의 강점이 뚜렷한 세 영역에 주로 배치된다.
+이런 특성 때문에 오늘날 로보틱스 현장에서 Particle Filter는 모든 추정을 도맡기보다 강점이 뚜렷한 세 영역에서 주로 쓰인다.
 
 - **2D SLAM (RBPF 기반)**: GMapping처럼 로봇의 3-DoF 평면 자세만 입자로 두고, 각 입자가 저마다 2D 점유 격자 지도를 유지하는 구조.
 - **Global Localization (MCL)**: 이미 지도를 갖고 있는 상태에서 로봇이 어디서 출발했는지 모를 때 유용하다. 닮은 복도가 여럿 있어 사후 분포에 봉우리가 여럿 솟아도 입자들이 자연스럽게 여러 가설을 동시에 유지하기 때문이다. 운용 도중 누군가 로봇을 들어 다른 곳으로 옮기는 상황(kidnapped robot problem)에 대비해 입자를 다시 퍼뜨리는 복구 로직을 함께 넣기도 한다.
 - **저차원 비선형 추정**: 상태 차원은 낮지만 비선형성이 극심하거나 노이즈가 비가우시안인 특수 문제.
 
-반면 3차원 공간의 고차원 상태 추정과 정밀한 궤적 복원에는 주로 앞서 본 Kalman 필터 계열(특히 ESKF)이나, 이제부터 살펴볼 비선형 최적화 기반 스무딩이 주력으로 쓰인다.
+반면 3차원 공간의 고차원 상태 추정과 정밀한 궤적 복원에는 앞서 본 Kalman 필터 계열(특히 ESKF)이나, 이제부터 살펴볼 비선형 최적화 기반 스무딩이 주력으로 쓰인다.
 
 ---
 
@@ -782,15 +782,15 @@ $$p(\mathbf{x}_k \mid \mathbf{z}_{1:k})$$
 **Smoothing**은 시각 $k$ 이후에 들어온 관측까지 모두 동원해 과거 시점의 상태까지 함께 되돌아보며 추정한다.
 $$p(\mathbf{x}_k \mid \mathbf{z}_{1:T}), \quad k < T$$
 
-확률 모델이 정확하고 동일한 손실 함수를 쓴다면, 미래 관측까지 추가 정보로 조건지은 smoother의 평균 Bayes risk는 filter보다 클 수 없다. 물론 개별 궤적 하나의 실제 오차나 근사 최적화 결과에서는 smoother 쪽 오차가 더 크게 나오는 경우도 있다. 실시간 시스템에서는 용도와 지연 허용 범위에 따라 한 스텝씩 갱신하는 필터와 함께 incremental smoother나 fixed-lag smoother를 널리 쓰며, 전체 주행 데이터를 다 모은 뒤 최고 정밀도가 필요한 후처리에서는 batch smoother를 돌린다.
+확률 모델이 정확하고 동일한 손실 함수를 쓴다면, 미래 관측까지 추가 정보로 조건지은 smoother의 평균 Bayes risk는 filter보다 클 수 없다. 물론 개별 궤적 하나의 실제 오차나 근사 최적화 결과에서는 smoother 쪽 오차가 더 크게 나오는 경우도 있다. 실시간 시스템에서는 용도와 지연 허용 범위에 따라 한 스텝씩 갱신하는 필터뿐 아니라 incremental smoother나 fixed-lag smoother도 널리 쓴다. 전체 주행 데이터를 다 모은 뒤, 최고 정밀도가 필요한 후처리에서는 batch smoother를 돌린다.
 
 ### 4.4.2 Fixed-Lag Smoother
 
-실시간 주행에서는 주행이 다 끝날 때까지 기다릴 수 없다. Fixed-lag smoother는 현재 시각 $k$까지의 관측을 모두 반영하되, $L$단계 앞선 시각 $k-L$까지의 상태나 최근 $L$개 구간을 추정하는 타협점을 택한다.
+실시간 주행에서는 주행이 다 끝날 때까지 기다릴 수 없다. Fixed-lag smoother는 현재 시각 $k$까지의 관측을 모두 반영하되, $L$단계 이전 시각 $k-L$까지의 상태나 최근 $L$개 구간을 추정하는 타협점을 택한다.
 
 $$p(\mathbf{x}_{k-L} \mid \mathbf{z}_{1:k})$$
 
-결과 확정에 $L$단계만큼의 지연(latency)을 감수하거나 최근 창 안의 상태만 유지하는 대신, 그사이에 새로 들어온 관측으로 직전 상태들의 선형화 오차를 바로잡을 수 있어 순수 filtering과 full smoothing의 중간 역할을 맡는다.
+Fixed-lag smoother는 순수 filtering과 full smoothing의 중간 역할을 한다. 결과 확정에 $L$단계만큼의 지연(latency)을 감수하거나 최근 창 안의 상태만 유지하는 대신, 그사이에 새로 들어온 관측으로 직전 상태들의 선형화 오차를 바로잡을 수 있기 때문이다.
 
 VINS-Mono나 ORB-SLAM3 같은 슬라이딩 윈도우 기반 최적화 시스템도 이 fixed-lag smoothing 철학과 궤를 같이한다. 정해진 윈도우 안에 살아 있는 최근 키프레임들의 포즈와 특징점을 함께 다시 선형화하며 최적화하기 때문이다. 다만 필터와 슬라이딩 윈도우 최적화 가운데 어느 쪽이 더 정확한지를 공정하게 따지려면 계산 예산, 관측 모델, 평가 데이터셋을 동일하게 맞춘 비교가 필요하다.
 
@@ -800,7 +800,7 @@ Full smoothing(batch optimization)은 전체 주행이 끝났을 때, 혹은 충
 
 $$p(\mathbf{x}_{0:T} \mid \mathbf{z}_{1:T})$$
 
-이 사후 확률을 최대화하는 단일 최적 궤적을 구하면 MAP(Maximum A Posteriori) 추정 문제가 된다.
+이 사후 확률을 최대화하는 단일 최적 궤적을 구하는 문제는 MAP(Maximum A Posteriori) 추정에 해당한다.
 
 $$\mathbf{x}_{0:T}^* = \arg\max_{\mathbf{x}_{0:T}} p(\mathbf{x}_{0:T} \mid \mathbf{z}_{1:T})$$
 
@@ -814,21 +814,21 @@ $$\mathbf{x}_{0:T}^* = \arg\max_{\mathbf{x}_{0:T}} p(\mathbf{x}_{0:T} \mid \math
 
 기본 EKF는 시각 $k$의 관측이 들어왔을 때 그 시점의 추정치에서 자코비안을 딱 한 번 계산해 상태를 갱신한 뒤, 그 결정을 영구히 굳혀 버린다. 나중에 훨씬 정확한 관측이 들어와 궤적 추정치가 개선되더라도 이미 지나간 시점의 자코비안을 소급해 고치지 않는다. 반면 batch optimization은 반복 단계마다 최신 추정치 전체에서 자코비안을 다시 계산(relinearize)해 1차 근사 오차를 꾸준히 깎아 나간다.
 
-실제로 [Strasdat et al. (2012) "Visual SLAM: Why Filter?"](https://doi.org/10.1016/j.imavis.2012.02.009)는 monocular와 stereo SLAM 실험에서 같은 계산 시간 예산이 주어졌을 때 프레임 수를 늘리기보다 한 프레임당 추적하는 특징점 수를 늘리는 편이 정확도 향상에 훨씬 효과적임을 보였다. 그런데 특징점 수를 $M$이라 할 때 bundle adjustment(최적화)의 계산 비용은 특징점 수에 선형으로 늘어나는 반면, 공분산 행렬 전체를 들고 다니는 EKF-SLAM은 3제곱에 비례해 폭증한다. 따라서 특징점을 많이 쓸수록 최적화 쪽이 압도적으로 유리해진다.
+실제로 [Strasdat et al. (2012) "Visual SLAM: Why Filter?"](https://doi.org/10.1016/j.imavis.2012.02.009)는 monocular와 stereo SLAM 실험에서 같은 계산 시간 예산이 주어졌을 때 프레임 수를 늘리기보다 한 프레임당 추적하는 특징점 수를 늘리는 편이 정확도 향상에 훨씬 효과적임을 보였다. 그런데 특징점 수를 $M$이라 할 때 bundle adjustment(최적화)의 계산 비용은 특징점 수에 선형으로 늘어나는 반면, 공분산 행렬 전체를 들고 다니는 EKF-SLAM은 계산 비용이 3제곱에 비례해 폭증한다. 따라서 특징점을 많이 쓸수록 최적화 쪽이 압도적으로 유리해진다.
 
 **2. 일관성(Consistency) 문제**
 
-GPS 같은 절대 외부 기준이 없는 SLAM이나 VIO에서는 추정된 궤적과 지도를 전역 좌표계 채로 통째로 평행 이동하거나 회전시켜도 센서 관측값 자체는 전혀 변하지 않는다. 이렇게 관측만으로 결정되지 않는 전역 자유도를 **gauge freedom**이라 부르며, 이 방향은 시스템의 관측 불가능 방향(unobservable direction)이 된다. 차원은 문제마다 달라서 2D SLAM은 3개, 3D SLAM은 6개, 중력 방향이 관측되는 VIO는 전역 위치 3축과 중력축 둘레의 yaw 회전까지 모두 4개의 gauge freedom을 갖는다. 실제 구현에서는 첫 번째 포즈를 고정하는 식으로 이 자유도를 묶어 둔다.
+GPS 같은 절대 외부 기준이 없는 SLAM이나 VIO에서는 추정된 궤적과 지도를 전역 좌표계와 함께 통째로 평행 이동하거나 회전시켜도 센서 관측값 자체는 전혀 변하지 않는다. 이렇게 관측만으로 결정되지 않는 전역 자유도를 **gauge freedom**이라 부르며, 이 방향은 시스템의 관측 불가능 방향(unobservable direction)이 된다. 차원은 문제마다 달라서 2D SLAM은 3개, 3D SLAM은 6개, 중력 방향이 관측되는 VIO는 전역 위치 3축과 중력축 둘레의 yaw 회전까지 모두 4개의 gauge freedom을 갖는다. 실제 구현에서는 첫 번째 포즈를 고정하는 식으로 이 자유도를 묶어 둔다.
 
-문제는 EKF가 매 스텝 서로 다른 추정치에서 선형화를 반복할 때 불거진다. 선형화 지점이 달라지면 원래는 관측 불가능해야 할 gauge 방향으로 가짜 정보가 스며들어 필터가 실제보다 불확실성을 과소평가하게 되는데, 이를 필터가 일관성(consistency)을 잃었다고 한다. 이를 막으려면 선형화를 수행한 뒤에도 관측 불가능 방향이 그대로 영공간(nullspace)에 남도록 강제하는 FEJ(First-Estimate Jacobian)나 observability-constrained 기법을 써야 한다.
+문제는 EKF가 매 스텝 서로 다른 추정치에서 선형화를 반복할 때 불거진다. 선형화 지점이 달라지면 원래는 관측 불가능해야 할 gauge 방향으로 가짜 정보가 스며들어 필터가 불확실성을 실제보다 과소평가하게 되는데, 이를 필터가 일관성(consistency)을 잃었다고 한다. 이를 막으려면 선형화한 뒤에도 관측 불가능 방향이 그대로 영공간(nullspace)에 남도록 강제하는 FEJ(First-Estimate Jacobian)나 observability-constrained 기법을 써야 한다.
 
 **3. 스케일러빌리티(Scalability)**
 
-EKF-SLAM은 랜드마크가 $M$개일 때 랜드마크 사이의 상호 상관관계를 모두 저장해야 하므로 공분산 행렬이 빽빽해(dense)지고, 원소 수와 한 번 갱신하는 비용이 모두 $O((n + 3M)^2)$로 커진다. 반대로 graph-based SLAM이 다루는 정보 행렬(information matrix, 근사 Hessian)은 본질적으로 희소(sparse)하다. 각 포즈나 랜드마크가 실제로 관측이나 odometry로 직접 이어진 이웃 변수하고만 엮여 있어 행렬의 원소 대부분이 0이기 때문이다. 이 희소 구조를 살려 풀면 dense 행렬 연산보다 계산량을 극적으로 줄일 수 있다. 다만 실제로 얼마나 빨라지는지는 그래프의 연결 구조, 변수 소거(elimination) 순서, 그리고 변수 제거 과정에서 새로 생기는 비영(non-zero) 항인 fill-in이 얼마나 억제되는지에 따라 달라진다.
+EKF-SLAM은 랜드마크가 $M$개일 때 랜드마크 사이의 상호 상관관계를 모두 저장해야 하므로 공분산 행렬이 빽빽해(dense)지고, 원소 수와 한 번 갱신하는 비용이 모두 $O((n + 3M)^2)$로 커진다. 반대로 graph-based SLAM이 다루는 정보 행렬(information matrix, 근사 Hessian)은 본질적으로 희소(sparse)하다. 각 포즈나 랜드마크가 실제로 관측이나 odometry로 직접 이어진 이웃 변수와만 엮여 있어 행렬의 원소 대부분이 0이기 때문이다. 이 희소 구조를 살려 풀면 dense 행렬 연산보다 계산량을 극적으로 줄일 수 있다. 다만 실제로 얼마나 빨라지는지는 그래프의 연결 구조, 변수 소거(elimination) 순서, 그리고 변수 제거 과정에서 새로 생기는 비영(non-zero) 항인 fill-in이 얼마나 억제되는지에 따라 달라진다.
 
 **4. Loop closure 처리**
 
-로봇이 한참을 돌다가 예전에 지나왔던 장소로 되돌아왔을 때(loop closure), 필터로 과거 궤적 전체를 고치려면 지나온 모든 상태와 공분산 상관을 계속 유지하고 있어야 해 계산 부담이 크게 불어난다. 반면 그래프 기반 시스템에서는 두 시점의 포즈를 잇는 loop closure factor(제약 조건) 하나만 그래프에 꽂아 넣고 다시 최적화하면 오차가 전체 궤적에 자연스럽게 분배된다.
+로봇이 한참을 돌다가 예전에 지나왔던 장소로 되돌아왔을 때(loop closure), 필터로 과거 궤적 전체를 고치려면 지나온 모든 상태와 공분산 상관을 계속 유지해야 하므로 계산 부담이 크게 불어난다. 반면 그래프 기반 시스템에서는 두 시점의 포즈를 잇는 loop closure factor(제약 조건) 하나만 그래프에 꽂아 넣고 다시 최적화하면 오차가 전체 궤적에 자연스럽게 분배된다.
 
 두 패러다임의 핵심 차이를 정리하면 아래 표와 같다.
 
@@ -837,7 +837,7 @@ EKF-SLAM은 랜드마크가 $M$개일 때 랜드마크 사이의 상호 상관�
 | 선형화 | 기본 EKF는 갱신 시 한 번 | batch/smoother는 반복 재선형화 가능 |
 | 과거 상태 | 기본 필터는 제거하지만 상태 증강 가능 | full smoothing은 유지, fixed-lag는 마지널라이즈 |
 | Loop closure | 과거 상태·상관을 유지해야 함 | 새 factor를 추가한 뒤 영향 구간 갱신 |
-| 행렬 구조 | 공분산은 대체로 dense | factor/Hessian의 희소성을 활용 가능 |
+| 행렬 구조 | 공분산은 대체로 dense | factor/Hessian의 희소성 활용 가능 |
 | 계산량 | 상태와 관측 구조에 의존 | 그래프 구조·소거 순서·fill-in에 의존 |
 | 일관성 | 선형화·관측 가능성 처리가 필요 | 재선형화만으로 보장되지 않으며 gauge·마지널라이제이션 처리가 필요 |
 
@@ -859,7 +859,7 @@ $$p(\mathbf{X} \mid \mathbf{Z}) \propto \prod_{i} f_i(\mathbf{X}_i)$$
 
 이 식의 각 요소는 다음을 나타낸다.
 - $\mathbf{X} = \{\mathbf{x}_0, \mathbf{x}_1, \ldots, \mathbf{x}_T, \mathbf{l}_1, \ldots, \mathbf{l}_M\}$: 추정해야 할 변수 노드들의 집합 (로봇 포즈, 랜드마크 위치, 센서 바이어스 등)
-- $f_i(\mathbf{X}_i)$: $i$번째 factor. 자신에게 연결된 변수 부분집합 $\mathbf{X}_i$를 받아, 그 값들이 관측 데이터나 사전 정보와 얼마나 잘 들어맞는지 음이 아닌 수로 돌려주는 포텐셜 함수(potential function)다
+- $f_i(\mathbf{X}_i)$: $i$번째 factor이자 포텐셜 함수(potential function)다. 이 factor에 연결된 변수 부분집합 $\mathbf{X}_i$를 받아, 그 값들이 관측 데이터나 사전 정보와 얼마나 잘 들어맞는지 나타내는 음이 아닌 수를 반환한다.
 - $\mathbf{Z}$: 지금까지 수집한 모든 관측
 
 요컨대 factor 하나가 곧 센서 관측 하나 또는 사전 제약 하나에 대응한다. 센서나 제약의 종류에 따라 그래프에 올라가는 factor의 연결 구조와 의미도 달라진다.
@@ -878,7 +878,7 @@ $$p(\mathbf{X} \mid \mathbf{Z}) \propto \prod_{i} f_i(\mathbf{X}_i)$$
 
 ### 4.5.2 MAP Inference = Nonlinear Least Squares
 
-노이즈가 가우시안 분포를 따른다고 놓으면, 확률 추론 문제가 놀랄 만큼 깔끔한 최적화 문제로 바뀐다. 가우시안 오차 아래에서 각 factor는 다음과 같은 지수 함수 꼴을 띤다.
+노이즈가 가우시안 분포를 따른다고 놓으면, 확률 추론 문제가 놀랄 만큼 깔끔한 최적화 문제로 바뀐다. 가우시안 오차 가정에서 각 factor는 다음과 같은 지수 함수 꼴을 띤다.
 
 $$f_i(\mathbf{X}_i) \propto \exp\left(-\frac{1}{2} \|\mathbf{r}_i(\mathbf{X}_i)\|^2_{\boldsymbol{\Sigma}_i}\right)$$
 
@@ -886,11 +886,11 @@ $$f_i(\mathbf{X}_i) \propto \exp\left(-\frac{1}{2} \|\mathbf{r}_i(\mathbf{X}_i)\
 
 $$\mathbf{r}_i = \mathbf{z}_i - h_i(\mathbf{X}_i), \quad \boldsymbol{\Sigma}_i = \mathbf{R}_i \text{ (관측 노이즈 공분산)}$$
 
-이제 전체 사후 분포를 최대화하는 MAP 추정을 구하면 factor들의 곱을 최대화하는 문제와 같아진다.
+이제 전체 사후 분포를 최대화하는 MAP 추정은 factor들의 곱을 최대화하는 문제와 같아진다.
 
 $$\mathbf{X}^* = \arg\max_\mathbf{X} p(\mathbf{X} \mid \mathbf{Z}) = \arg\max_\mathbf{X} \prod_i f_i(\mathbf{X}_i)$$
 
-곱셈을 덧셈으로 바꾸기 위해 양변에 자연로그를 취하고 부호를 뒤집어 최소화 문제로 바꾸면, 지수 함수가 벗겨지면서 다음과 같은 목적 함수를 얻는다.
+곱셈을 덧셈으로 바꾸기 위해 양변에 자연로그를 취하고 부호를 뒤집어 최소화 문제로 전환하면, 지수 함수가 벗겨지면서 다음과 같은 목적 함수를 얻는다.
 
 $$\boxed{\mathbf{X}^* = \arg\min_\mathbf{X} \sum_i \|\mathbf{r}_i(\mathbf{X}_i)\|^2_{\boldsymbol{\Sigma}_i}}$$
 
@@ -920,9 +920,9 @@ $$\boxed{\mathbf{H} \Delta\mathbf{X} = -\mathbf{b}}$$
 
 여기서 $\mathbf{H} = \mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{J} \in \mathbb{R}^{N \times N}$은 근사 Hessian(정보 행렬)이고, $\mathbf{b} = \mathbf{J}^\top \boldsymbol{\Sigma}^{-1} \mathbf{r}$은 비용 함수의 gradient에 해당한다.
 
-이 식에서 factor graph가 왜 빠른지 결정적인 성질이 드러난다. factor $i$의 자코비안 $\mathbf{J}_i$에서 0이 아닌 열은 오직 그 factor에 실제로 연결된 소수 변수의 열뿐이다. 따라서 $\mathbf{J}_i'^\top \mathbf{J}_i'$를 합쳐 만든 $\mathbf{H}$에서도 0이 아닌 블록은 **같은 factor를 공유하는 변수 쌍**의 교차점에만 생긴다. SLAM의 factor 대부분은 두세 개 변수만 연결하므로, 행렬 $\mathbf{H}$는 거대하더라도 대부분이 0으로 채워진 희소 행렬이 된다.
+이 식에서 factor graph가 왜 빠른지 설명해 주는 결정적인 성질이 드러난다. factor $i$의 자코비안 $\mathbf{J}_i$에서 0이 아닌 열은 오직 그 factor에 실제로 연결된 소수 변수의 열뿐이다. 따라서 $\mathbf{J}_i'^\top \mathbf{J}_i'$를 합쳐 만든 $\mathbf{H}$에서도 0이 아닌 블록은 **같은 factor를 공유하는 변수 쌍**의 교차점에만 생긴다. SLAM의 factor 대부분은 두세 개 변수만 연결하므로, 행렬 $\mathbf{H}$는 거대하더라도 대부분이 0으로 채워진 희소 행렬이 된다.
 
-Gauss-Newton은 정규 방정식을 풀어 얻은 보정량 $\Delta\mathbf{X}^{(k)}$를 현재 추정치에 반영하기를 수렴할 때까지 되풀이한다.
+Gauss-Newton에서는 정규 방정식을 풀어 얻은 보정량 $\Delta\mathbf{X}^{(k)}$를 현재 추정치에 반영하는 과정을 수렴할 때까지 반복한다.
 
 $$\mathbf{X}^{(k+1)} = \mathbf{X}^{(k)} \boxplus \Delta\mathbf{X}^{(k)}$$
 
@@ -935,10 +935,10 @@ Gauss-Newton은 2차 미분 항을 버리고 $\mathbf{J}^\top\mathbf{J}$만으�
 $$(\mathbf{H} + \lambda \mathbf{I}) \Delta\mathbf{X} = -\mathbf{b}$$
 
 감쇠 계수 $\lambda$의 크기에 따라 거동이 달라진다.
-- $\lambda$가 작으면 → $\mathbf{H}\Delta\mathbf{X} \approx -\mathbf{b}$가 되어 Gauss-Newton에 가깝게 동작한다(해 근처의 조건이 좋으면 2차 수렴에 가깝게 빠르게 다가간다).
+- $\lambda$가 작으면 → $\mathbf{H}\Delta\mathbf{X} \approx -\mathbf{b}$가 되어 Gauss-Newton에 가깝게 동작한다(해 근처의 조건이 좋으면 2차 수렴에 가까운 속도로 빠르게 다가간다).
 - $\lambda$가 크면 → $\Delta\mathbf{X} \approx -\frac{1}{\lambda}\mathbf{b}$가 되어 gradient 반대 방향으로 조심스럽게 한 걸음씩 내딛는 경사 하강법에 가까워진다.
 
-매 반복마다 $\lambda$는 갱신 결과의 성패를 보고 동적으로 조절한다. 시험 삼아 계산한 스텝으로 실제 비용이 줄어들면 근사가 잘 맞았다는 뜻이므로 $\lambda$를 낮춰 Gauss-Newton 쪽으로 속도를 높이고, 반대로 비용이 늘어나면 그 스텝을 기각한 뒤 $\lambda$를 키워 보폭을 줄이고 다시 시도한다.
+반복마다 갱신 결과의 성패를 보고 $\lambda$를 동적으로 조절한다. 시험 삼아 계산한 스텝으로 실제 비용이 줄어들면 근사가 잘 맞았다는 뜻이므로 $\lambda$를 낮춰 Gauss-Newton 쪽으로 속도를 높이고, 반대로 비용이 늘어나면 그 스텝을 기각한 뒤 $\lambda$를 키워 보폭을 줄이고 다시 시도한다.
 
 ### 4.5.5 매니폴드 위의 최적화 (Optimization on Manifolds)
 
@@ -966,12 +966,12 @@ $$\mathbf{J}_i = \frac{\partial \mathbf{r}_i}{\partial \boldsymbol{\xi}}\bigg|_{
 
 ### 4.5.6 iSAM2: Incremental Smoothing
 
-실제 주행 중에는 새 키프레임과 관측이 계속 들어온다. 키프레임이 추가될 때마다 처음부터 끝까지 batch 최적화를 매번 새로 돌리면 궤적이 길어질수록 연산 시간이 감당할 수 없이 늘어난다. **iSAM2**([Kaess et al., 2012](https://doi.org/10.1177/0278364911430419))는 factor graph를 매번 통째로 다시 푸는 대신, **Bayes tree**라는 자료구조를 도입해 새 관측의 영향을 받는 부분만 증분식으로 갱신한다.
+실제 주행 중에는 새 키프레임과 관측이 계속 들어온다. 키프레임이 추가될 때마다 처음부터 끝까지 batch 최적화를 새로 돌리면 궤적이 길어질수록 연산 시간이 감당할 수 없이 늘어난다. **iSAM2**([Kaess et al., 2012](https://doi.org/10.1177/0278364911430419))는 factor graph를 매번 통째로 다시 푸는 대신, **Bayes tree**라는 자료구조를 도입해 새 관측의 영향을 받는 부분만 증분식으로 갱신한다.
 
 iSAM2를 떠받치는 네 가지 핵심 장치는 다음과 같다.
 
-1. **Bayes Tree**: Factor graph에 변수 소거(variable elimination)를 수행한 결과를 방향성 트리로 옮겨 담은 자료구조다. 트리의 각 노드는 함께 묶인 변수 집합(clique)의 조건부 확률 밀도를 저장한다.
-2. **Incremental Update**: 새 factor가 들어오면 그래프 전체를 다시 분해하지 않고, 새 factor가 건드린 clique에서 트리의 루트까지 올라가는 경로만 다시 계산하고 나머지 트리는 그대로 재사용한다.
+1. **Bayes Tree**: Factor graph에 변수 소거(variable elimination)를 적용한 결과를 방향성 트리로 옮겨 담은 자료구조다. 트리의 각 노드는 함께 묶인 변수 집합(clique)의 조건부 확률 밀도를 저장한다.
+2. **Incremental Update**: 새 factor가 들어와도 그래프 전체를 다시 분해하지 않는다. 해당 factor가 건드린 clique에서 트리의 루트까지 올라가는 경로만 재계산하고, 나머지 트리는 그대로 재사용한다.
 3. **Fluid Relinearization**: 모든 변수를 매번 재선형화하는 대신, 현재 추정치가 직전 선형화 지점에서 미리 정한 임계값 이상 멀어진 변수만 골라내 선형화를 갱신한다. 덕분에 주기적인 전체 batch 재계산 없이도 비선형 오차를 제어한다.
 4. **변수 순서 재정렬(Variable Reordering)**: 새 변수나 factor가 추가될 때 영향받는 트리 부분의 소거 순서만 국소적으로 다시 정리해 fill-in을 억제한다.
 
@@ -981,7 +981,7 @@ GTSAM 라이브러리에 iSAM2가 기본 탑재되어 있으며, 대표적으로
 
 ### 4.5.7 GTSAM / Ceres / g2o 비교
 
-실제 프로젝트에서 factor graph 최적화를 구현할 때는 직접 솔버를 짜기보다 검증된 C++ 최적화 라이브러리를 쓰는 것이 일반적이다. 로보틱스에서 가장 널리 쓰이는 세 라이브러리—GTSAM, Ceres Solver, g2o—의 설계 철학과 지원 기능을 정리하면 다음과 같다.
+실제 프로젝트에서 factor graph 최적화를 구현할 때는 직접 솔버를 짜기보다 검증된 C++ 최적화 라이브러리를 쓰는 것이 일반적이다. 로보틱스에서 가장 널리 쓰이는 세 라이브러리(GTSAM, Ceres Solver, g2o)의 설계 철학과 지원 기능을 정리하면 다음과 같다.
 
 | 특성 | GTSAM | Ceres Solver | g2o |
 |------|-------|-------------|-----|
@@ -995,7 +995,7 @@ GTSAM 라이브러리에 iSAM2가 기본 탑재되어 있으며, 대표적으로
 | 대표 사용처 | LIO-SAM | Cartographer, VINS-Mono | ORB-SLAM3, 많은 SLAM 시스템의 포즈 그래프 |
 | 학습 곡선 | Factor 정의만 하면 됨 | Cost function 정의 | Vertex/Edge 정의 |
 
-세 라이브러리 가운데 GTSAM은 Python 바인딩을 공식 지원해 프로토타이핑에 편리하다. 아래 예제는 한 변이 2m인 정사각형 경로를 돌며 odometry factor를 쌓은 뒤, 출발점 `x0`과 마지막 포즈 `x4`를 잇는 loop closure factor를 추가해 `iSAM2`로 오차를 보정하는 간단한 2D pose graph 최적화 코드다.
+세 라이브러리 가운데 GTSAM은 Python 바인딩을 공식 지원해 프로토타이핑에 편리하다. 아래는 간단한 2D pose graph 최적화 예제다. 이 코드에서는 한 변이 2m인 정사각형 경로를 돌며 odometry factor를 쌓은 뒤, 출발점 `x0`과 마지막 포즈 `x4`를 잇는 loop closure factor를 추가해 `iSAM2`로 오차를 보정한다.
 
 ```python
 # GTSAM으로 푸는 간단한 Pose Graph Optimization 예제
@@ -1048,7 +1048,7 @@ for i in range(5):
     print(f"Pose {i}: x={pose_i.x():.3f}, y={pose_i.y():.3f}, theta={pose_i.theta():.3f}")
 ```
 
-이 예제처럼 두 포즈 사이를 잇는 odometry factor는 간단히 그래프에 올릴 수 있다. 그런데 카메라나 LiDAR와 함께 200~1000Hz로 쏟아지는 고주파 IMU 측정을 factor graph에 집어넣으려면 문제가 달라진다. IMU 샘플마다 포즈 노드를 만들면 그래프가 순식간에 비대해지고, 그렇다고 두 키프레임 사이를 매번 처음부터 다시 적분하자니 최적화 속도가 떨어지기 때문이다. 이 병목을 푸는 핵심 기법이 다음 절의 IMU Preintegration이다.
+이 예제처럼 두 포즈 사이를 잇는 odometry factor는 간단히 그래프에 올릴 수 있다. 그런데 200~1000Hz로 쏟아지는 고주파 IMU 측정을 카메라나 LiDAR와 함께 factor graph에 집어넣으려면 문제가 달라진다. IMU 샘플마다 포즈 노드를 만들면 그래프가 순식간에 비대해지고, 그렇다고 두 키프레임 사이를 매번 처음부터 다시 적분하자니 최적화 속도가 떨어지기 때문이다. 이 병목을 푸는 핵심 기법이 다음 절의 IMU Preintegration이다.
 
 ---
 
@@ -1068,7 +1068,7 @@ $$\mathbf{R}_j = \mathbf{R}_i \prod_{k=i}^{j-1} \text{Exp}((\tilde{\boldsymbol{\
 $$\mathbf{v}_j = \mathbf{v}_i + \mathbf{g} \Delta t_{ij} + \sum_{k=i}^{j-1} \mathbf{R}_k (\tilde{\mathbf{a}}_k - \mathbf{b}_a) \Delta t$$
 $$\mathbf{p}_j = \mathbf{p}_i + \sum_{k=i}^{j-1}\left[\mathbf{v}_k \Delta t + \frac{1}{2}\left(\mathbf{R}_k(\tilde{\mathbf{a}}_k - \mathbf{b}_a) + \mathbf{g}\right)\Delta t^2\right]$$
 
-문제는 이 적분 결과가 시작 키프레임 $i$의 전역 상태 $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$와 바이어스 $(\mathbf{b}_g, \mathbf{b}_a)$에 직접 매여 있다는 점이다. 비선형 최적화는 반복 단계마다 키프레임 상태와 바이어스 추정치를 조금씩 고치는데, 그럴 때마다 중간 구간의 모든 적분과 exponential map을 수백 번씩 처음부터 다시 계산해야 한다면 실시간 처리가 어려워진다.
+문제는 이 적분 결과가 시작 키프레임 $i$의 전역 상태 $(\mathbf{R}_i, \mathbf{v}_i, \mathbf{p}_i)$와 바이어스 $(\mathbf{b}_g, \mathbf{b}_a)$에 직접 매여 있다는 점이다. 비선형 최적화에서는 반복 단계마다 키프레임 상태와 바이어스 추정치를 조금씩 고치는데, 그럴 때마다 중간 구간의 모든 적분과 exponential map을 수백 번씩 처음부터 다시 계산해야 한다면 실시간 처리가 어려워진다.
 
 **Preintegration의 해법**: 적분 식을 전역 좌표계 대신 키프레임 $i$의 body frame 기준 상대 변화량으로 다시 쓰면, 적분 결과 자체가 키프레임 $i$의 전역 포즈·속도와 완전히 독립이 된다. 그리고 최적화 중에 바이어스 추정치가 바뀌더라도, 미리 구해 둔 1차 자코비안으로 측정값만 보정해 재적분을 피해 간다.
 
@@ -1090,7 +1090,7 @@ $$\Delta\mathbf{p}_{ij} \triangleq \mathbf{R}_i^\top (\mathbf{p}_j - \mathbf{p}_
 
 #### Step 2: 재귀적 계산 (On-Manifold)
 
-실시간 파이프라인에서는 두 키프레임 사이의 IMU 측정을 한꺼번에 모아서 적분하지 않고, IMU 샘플이 도착할 때마다 재귀적으로 누적해 둔다.
+실시간 파이프라인에서는 두 키프레임 사이의 IMU 측정값을 한꺼번에 모아서 적분하지 않고, IMU 샘플이 도착할 때마다 재귀적으로 누적해 둔다.
 
 $$\Delta\mathbf{R}_{i,k+1} = \Delta\mathbf{R}_{ik} \cdot \text{Exp}((\tilde{\boldsymbol{\omega}}_k - \mathbf{b}_g)\Delta t) \in SO(3)$$
 $$\Delta\mathbf{v}_{i,k+1} = \Delta\mathbf{v}_{ik} + \Delta\mathbf{R}_{ik}(\tilde{\mathbf{a}}_k - \mathbf{b}_a)\Delta t \in \mathbb{R}^3$$
@@ -1100,7 +1100,7 @@ $$\Delta\mathbf{p}_{i,k+1} = \Delta\mathbf{p}_{ik} + \Delta\mathbf{v}_{ik}\Delta
 
 #### Step 3: 바이어스 변화의 1차 보정
 
-최적화가 진행되면서 바이어스 추정치가 $\mathbf{b} \to \mathbf{b} + \delta\mathbf{b}$만큼 수정되면, 원래 바이어스로 적분해 둔 preintegrated 측정값도 미세하게 달라진다. 이때도 구간 전체를 재적분하는 대신, 미리 계산해 둔 바이어스 자코비안을 곱하는 1차 테일러 근사로 즉시 보정한다.
+최적화가 진행되면서 바이어스 추정치가 $\mathbf{b} \to \mathbf{b} + \delta\mathbf{b}$로 수정되면, 원래 바이어스로 적분해 둔 preintegrated 측정값도 미세하게 달라진다. 이때도 구간 전체를 재적분하는 대신, 미리 계산해 둔 바이어스 자코비안을 곱하는 1차 테일러 근사로 즉시 보정한다.
 
 **회전 보정**:
 $$\Delta\hat{\mathbf{R}}_{ij}(\mathbf{b}_g + \delta\mathbf{b}_g) \approx \Delta\hat{\mathbf{R}}_{ij}(\mathbf{b}_g) \cdot \text{Exp}\left(\frac{\partial \Delta\bar{\mathbf{R}}_{ij}}{\partial \mathbf{b}_g} \delta\mathbf{b}_g\right)$$
@@ -1127,11 +1127,11 @@ $$\text{Jr}(\boldsymbol{\phi}) = \mathbf{I} - \frac{1 - \cos\theta}{\theta^2}[\b
 
 $$\boldsymbol{\Sigma}_{k+1} = \mathbf{A}_k \boldsymbol{\Sigma}_k \mathbf{A}_k^\top + \mathbf{B}_k \boldsymbol{\Sigma}_\eta \mathbf{B}_k^\top$$
 
-여기서 $\mathbf{A}_k$는 이전 시점 오차의 전파 자코비안, $\mathbf{B}_k$는 현재 샘플 노이즈의 입력 자코비안, $\boldsymbol{\Sigma}_\eta$는 IMU 센서 노이즈 공분산이다. 최종 구간 끝에서 얻은 $\boldsymbol{\Sigma}_{ij}$의 역행렬이 곧 factor graph 안 IMU factor의 정보 행렬이 된다.
+여기서 $\mathbf{A}_k$는 이전 시점 오차의 전파 자코비안, $\mathbf{B}_k$는 현재 샘플 노이즈의 입력 자코비안, $\boldsymbol{\Sigma}_\eta$는 IMU 센서 노이즈 공분산이다. 최종 구간 끝에서 얻은 $\boldsymbol{\Sigma}_{ij}$의 역행렬이 곧 factor graph 내 IMU factor의 정보 행렬이 된다.
 
 #### Step 5: Factor Graph의 IMU Factor
 
-이렇게 적분과 공분산 전파를 마친 preintegrated 측정은 두 키프레임 $i, j$의 포즈·속도와 시작점 바이어스를 하나로 묶는 IMU factor로 올라간다. 이 factor가 평가하는 9차원 잔차는 다음과 같다.
+이렇게 적분과 공분산 전파를 마친 뒤, preintegrated 측정은 두 키프레임 $i, j$의 포즈·속도와 시작점 바이어스를 하나로 묶는 IMU factor로 올라간다. 이 factor가 평가하는 9차원 잔차는 다음과 같다.
 
 $$\mathbf{r}_{\Delta\mathbf{R}_{ij}} = \text{Log}\left(\Delta\hat{\mathbf{R}}_{ij}^\top \mathbf{R}_i^\top \mathbf{R}_j\right) \in \mathbb{R}^3$$
 
@@ -1411,7 +1411,7 @@ IMU preintegration으로 키프레임 사이의 고주파 데이터를 하나로
 
 Factor graph 기반 SLAM이나 VIO에서는 새 키프레임이 들어올 때마다 상태 변수와 factor가 하나둘 보태진다. 지나온 키프레임을 전부 메모리에 붙들고 있으면 언젠가는 최적화 계산 시간이 실시간 주기를 넘어선다.
 
-그래서 실시간 VIO·LIO는 최근 $N$개의 키프레임만 활성 창에 남기고 가장 오래된 키프레임을 비우는 **슬라이딩 윈도우(sliding window)** 방식을 쓴다. 그런데 오래된 키프레임과 거기 매달린 관측 factor를 무작정 지워 버리면 과거에 쌓아 둔 기하 정보까지 함께 증발해 궤적이 쉽게 표류한다. **Marginalization**은 제거하려는 변수를 확률적으로 적분해 내보내면서, 그 변수들이 남는 변수들에게 걸어 주던 제약과 상관관계를 하나의 사전 분포(prior factor)로 압축해 전달하는 연산이다.
+그래서 실시간 VIO·LIO는 최근 $N$개의 키프레임만 활성 창에 남기고 가장 오래된 키프레임은 빼는 **슬라이딩 윈도우(sliding window)** 방식을 쓴다. 그런데 오래된 키프레임과 거기 매달린 관측 factor를 무작정 지워 버리면 과거에 쌓아 둔 기하 정보까지 함께 증발해 궤적이 쉽게 표류한다. **Marginalization**은 제거하려는 변수를 확률적으로 적분해 내보내면서, 그 변수들이 남는 변수들에게 걸어 주던 제약과 상관관계를 하나의 사전 분포(prior factor)로 압축해 전달하는 연산이다.
 
 ### 4.7.2 Schur Complement
 
@@ -1436,7 +1436,7 @@ $$\underbrace{(\mathbf{H}_{rr} - \mathbf{H}_{rm} \mathbf{H}_{mm}^{-1} \mathbf{H}
 
 **직관적 의미**: $\mathbf{x}_m$을 매개로 삼아서만 간접적으로 연결되어 있던 $\mathbf{x}_r$ 내부의 변수들이, $\mathbf{x}_m$이 사라지는 대신 서로 직접 연결된다(fill-in). 이 때문에 $\mathbf{H}^*$는 원래의 $\mathbf{H}_{rr}$보다 0이 아닌 항이 더 빽빽해질 수 있다.
 
-아래 코드는 블록 행렬 분할과 Schur complement 계산을 직접 구현해, 연쇄적으로 연결된 3개 2D 포즈 `[x0, x1, x2]` 가운데 가장 오래된 `x0`을 마지널라이즈할 때 정보 행렬의 희소 패턴이 어떻게 바뀌는지 확인하는 예제다.
+아래 코드는 블록 행렬 분할과 Schur complement 계산을 직접 구현해, 연쇄적으로 연결된 3개의 2D 포즈 `[x0, x1, x2]` 가운데 가장 오래된 `x0`을 마지널라이즈할 때 정보 행렬의 희소 패턴이 어떻게 바뀌는지 확인하는 예제다.
 
 ```python
 import numpy as np
@@ -1507,11 +1507,11 @@ print((np.abs(H_star) > 1e-10).astype(int))
 print("→ x0은 x1에만 연결돼 있어 새 fill-in은 생기지 않는다")
 ```
 
-이 예제에서는 `x0`이 `x1` 하나에만 붙어 있어 `H*`에 새로운 비영 블록이 생기지 않았지만, 실제 VIO처럼 제거할 포즈가 여러 랜드마크나 다수의 포즈와 동시에 연결되어 있을 때는 그 변수들을 한꺼번에 엮는 dense한 prior 블록이 새로 만들어진다. 게다가 이렇게 생성된 prior factor는 또 다른 미묘한 일관성 문제를 불러온다.
+이 예제에서는 `x0`이 `x1` 하나에만 붙어 있어 `H*`에 새로운 비영 블록이 생기지 않았다. 하지만 실제 VIO처럼 제거할 포즈가 여러 랜드마크나 다수의 포즈와 동시에 연결되어 있을 때는 그 변수들을 한꺼번에 엮는 dense한 prior 블록이 새로 만들어진다. 게다가 이렇게 생성된 prior factor는 또 다른 미묘한 일관성 문제를 불러온다.
 
 ### 4.7.3 First-Estimate Jacobian (FEJ)
 
-Schur complement로 만든 marginalization prior는 그 마지널라이즈 시점의 선형화 지점에서 계산된 값으로 굳어진다. 그런데 이후 최적화 반복에서 윈도우에 남은 변수의 추정치가 업데이트되면, **똑같은 변수인데도 marginalization prior 안에서는 예전 선형화 지점으로 평가되고, 새로 들어온 factor 안에서는 방금 바뀐 새 선형화 지점으로 평가되는 불일치**가 생긴다.
+Schur complement로 만든 marginalization prior는 그 마지널라이즈 시점의 선형화 지점에서 계산된 값으로 굳어진다. 그런데 이후 최적화 반복에서 윈도우에 남은 변수의 추정치가 업데이트되면, **똑같은 변수인데도 marginalization prior 안에서는 예전 선형화 지점에서 평가되고, 새로 들어온 factor 안에서는 방금 바뀐 새 선형화 지점에서 평가되는 불일치**가 생긴다.
 
 이처럼 한 변수를 두고 factor마다 서로 다른 지점에서 자코비안을 계산하면, §4.4.4에서 짚었던 관측 불가능한 gauge 방향으로 실제로는 존재하지 않는 가짜 정보가 유입되어 추정기가 과신하게 되고 일관성(consistency)을 잃는다.
 
@@ -1553,8 +1553,8 @@ Schur complement를 구할 때 $\mathbf{H}_{mm}^{-1}$을 계산해야 하는데,
 
 ## 참고 자료
 
-이 장에서는 단일 시점의 확률 분포를 재귀적으로 갱신하는 Bayesian filter(KF, EKF, ESKF, UKF, IEKF, Particle Filter)에서 출발해, 여러 시점을 묶어 비선형 최소자승 문제로 푸는 factor graph, 고주파 IMU 측정을 압축하는 on-manifold preintegration, 그리고 실시간 윈도우 크기를 묶어 두는 Schur complement와 FEJ까지 상태 추정의 핵심 도구를 살펴보았다.
+상태 추정의 핵심 도구 가운데 Bayesian filter(KF, EKF, ESKF, UKF, IEKF, Particle Filter)는 단일 시점의 확률 분포를 재귀적으로 갱신한다. 또한 factor graph는 여러 시점을 묶어 비선형 최소자승 문제로 풀고, on-manifold preintegration은 고주파 IMU 측정을 압축하며, Schur complement와 FEJ는 실시간 윈도우 크기를 묶어 둔다.
 
-이 밖에도 최근 상태 추정 연구에서는 기하학적 대칭과 학습 기반 접근으로 필터의 한계를 넓히려는 시도가 이어지고 있다. Invariant EKF와 Equivariant Filter는 Lie 군의 대칭 구조를 활용해, 조건이 충족되는 시스템에서 오차 동역학이 현재 추정치에 덜 의존하도록 설계한다. 또한 [AI-Aided Kalman Filters (Shlezinger et al., 2025)](https://arxiv.org/abs/2410.12289)는 칼만 이득이나 불완전한 시스템 모델 일부를 신경망으로 학습해 보완하는 흐름을 정리했다. 다만 학습 기반 요소가 들어간 추정기는 학습 분포 밖의 환경에서도 일관성과 안전성을 지키는지 별도로 검증해야 한다.
+이 밖에도 최근 상태 추정 연구에서는 기하학적 대칭과 학습 기반 접근으로 필터의 한계를 넓히려는 시도가 이어지고 있다. Invariant EKF와 Equivariant Filter는 Lie 군의 대칭 구조를 활용해, 조건이 충족되는 시스템에서 오차 동역학이 현재 추정치에 덜 의존하도록 설계된다. 또한 [AI-Aided Kalman Filters (Shlezinger et al., 2025)](https://arxiv.org/abs/2410.12289)는 칼만 이득이나 불완전한 시스템 모델 일부를 신경망으로 학습해 보완하는 흐름을 정리했다. 다만 학습 기반 요소가 들어간 추정기는 학습 분포 밖의 환경에서도 일관성과 안전성을 지키는지 별도로 검증해야 한다.
 
 한편 지금까지 다룬 칼만 필터와 factor graph는 모두 "지금 들어온 관측이 지도나 이전 프레임의 어느 점·랜드마크에 해당하는지 이미 안다"는 전제 위에서 작동한다. 실제 센서 데이터에서 이 대응 관계를 찾아내는 특징 매칭과 데이터 연관이 다음 장의 주제다(→ 5장).
