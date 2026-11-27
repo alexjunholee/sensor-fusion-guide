@@ -504,7 +504,7 @@ class DistributedPoseGraphNode:
 
 ---
 
-## 8.6 System Design in Practice
+## 8.6 Sensor Selection, Timing Sync, and Failure Handling
 
 Even mathematically sound fusion estimators fail in deployment without careful hardware selection, clock synchronization, and fault handling.
 

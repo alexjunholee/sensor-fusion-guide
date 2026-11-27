@@ -639,7 +639,7 @@ Consequently, deep learning currently delivers its highest payoff in **auxiliary
 
 ---
 
-## 7.7 2023–2024 Research
+## 7.7 Simplified and Covariance-Aware LiDAR Odometry (2023–2024)
 
 Recent LiDAR odometry work has pushed in two complementary directions: stripping pipelines down for cross-platform generality, and accelerating covariance-aware registration.
 

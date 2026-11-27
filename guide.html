@@ -567,7 +567,7 @@ mark.search-highlight {
   font-size: 12px;
   font-weight: 700;
   color: var(--accent);
-  margin-right: 10px;
+  margin-right: 6px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -7891,7 +7891,7 @@ LOAM 계열의 곡률 기반 특징 추출은 레이저 채널이 일정한 스�
 
 ---
 
-## 7.7 2023–2024년 연구
+## 7.7 단순화와 공분산 기반 LiDAR 정합 (2023–2024)
 
 최근의 LiDAR 오도메트리 연구는 복잡한 특징 추출이나 무거운 딥러닝 모델로 가기보다, 고전 정합 알고리즘의 핵심 병목을 정교하게 다듬어 단순성과 범용성을 극대화하는 방향으로 다시 모이고 있다.
 
@@ -8441,7 +8441,7 @@ class DistributedPoseGraphNode:
 
 ---
 
-## 8.6 시스템 설계 실전
+## 8.6 센서 선정·시간 동기화·고장 대응 실전 설계
 
 알고리즘과 결합 구조를 정했더라도 실제 하드웨어 위에 올려 안정적으로 굴리려면 센서 선정, 시간 동기화, 고장 대응(degradation handling)이라는 실전 과제가 남는다.
 
@@ -10289,7 +10289,7 @@ $$\mathbf{T}^* = \arg\min \sum_{\text{robot } r} \sum_{(i,j) \in \mathcal{E}_r} 
 
 ---
 
-## 10.5 2022–2024년 연구
+## 10.5 대규모 오검출 대응 증분 백엔드 (2022–2024)
 
 루프 클로저 백엔드의 최근 흐름은 대규모 오검출이 쏟아지는 극한 환경에서도 실시간 증분 최적화를 무너지지 않게 지탱하는 방향으로 발전해 왔다.
 
@@ -19738,7 +19738,7 @@ Consequently, deep learning currently delivers its highest payoff in **auxiliary
 
 ---
 
-## 7.7 2023–2024 Research
+## 7.7 Simplified and Covariance-Aware LiDAR Odometry (2023–2024)
 
 Recent LiDAR odometry work has pushed in two complementary directions: stripping pipelines down for cross-platform generality, and accelerating covariance-aware registration.
 
@@ -20279,7 +20279,7 @@ class DistributedPoseGraphNode:
 
 ---
 
-## 8.6 System Design in Practice
+## 8.6 Sensor Selection, Timing Sync, and Failure Handling
 
 Even mathematically sound fusion estimators fail in deployment without careful hardware selection, clock synchronization, and fault handling.
 
@@ -22084,7 +22084,7 @@ Each robot optimizes over its own local edges $\mathcal{E}_r$ while exchanging b
 
 ---
 
-## 10.5 Recent Research
+## 10.5 Outlier-Robust Incremental Back-Ends (2022–2024)
 
 Recent backend research pushes robust incremental optimization and multi-robot outlier rejection even further:
 
@@ -24846,7 +24846,7 @@ Across all thirteen chapters, one theme unifies sensor fusion: every physical se
         numSpan.className = 'overview-chapter-num';
         numSpan.textContent = state.lang === 'ko' ? chNum + '장' : 'Chapter ' + chNum;
         chLink.appendChild(numSpan);
-        chLink.appendChild(document.createTextNode(ch.title));
+        chLink.appendChild(document.createTextNode(' ' + ch.title));
         chWrap.appendChild(chLink);
 
         if (ch.sections.length) {

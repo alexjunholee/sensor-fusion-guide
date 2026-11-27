@@ -73,7 +73,7 @@ OVERVIEW_CSS = """\
   font-size: 12px;
   font-weight: 700;
   color: var(--accent);
-  margin-right: 10px;
+  margin-right: 6px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -164,7 +164,7 @@ OVERVIEW_JS = r"""
         numSpan.className = 'overview-chapter-num';
         numSpan.textContent = state.lang === 'ko' ? chNum + '장' : 'Chapter ' + chNum;
         chLink.appendChild(numSpan);
-        chLink.appendChild(document.createTextNode(ch.title));
+        chLink.appendChild(document.createTextNode(' ' + ch.title));
         chWrap.appendChild(chLink);
 
         if (ch.sections.length) {

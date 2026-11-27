@@ -871,7 +871,7 @@ Each robot optimizes over its own local edges $\mathcal{E}_r$ while exchanging b
 
 ---
 
-## 10.5 Recent Research
+## 10.5 Outlier-Robust Incremental Back-Ends (2022–2024)
 
 Recent backend research pushes robust incremental optimization and multi-robot outlier rejection even further:
 
